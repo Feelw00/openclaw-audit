@@ -17,7 +17,8 @@ ls findings/drafts/ findings/ready/ issue-candidates/ solutions/ 2>/dev/null
 
 | 조건 | 액션 |
 |---|---|
-| PR #68489 등 openclaw 에 올린 PR 에 리뷰/봇 코멘트 있음 | `/Users/lucas/Project/openclaw-pr` 에서 대응 → force push |
+| PR 에 follow-up commit push 완료 | **Greptile 자동 재리뷰 없음** — PR 에 `@greptile review and provide confidence score` 코멘트로 수동 트리거 (`openclaw-pr-tracker.md` §"Greptile 재리뷰" 참조) |
+| PR 에 리뷰/봇 코멘트 있음 | 해당 worktree 에서 대응 → push → Greptile 재트리거 |
 | `findings/drafts/` 에 파일 있음 | `validate.py --all --move` |
 | `findings/ready/` ≥ 2 건 (같은 도메인 누적) | clusterer 페르소나 호출 |
 | `issue-candidates/` 에 gatekeeper 미평가 CAND 있음 (`state: pending_gatekeeper`) | gatekeep 3-step (sanitize → agent → apply --shadow) |
@@ -115,7 +116,6 @@ Agent × 3 (general-purpose, 병렬):
   - `calibration/CAL-001-maintainer-verdict-CAND-004.md` (메인테이너가 잡음)
   - `calibration/CAL-002-greptile-review-CAND-005.md` (Greptile bot)
   - `calibration/CAL-003-cross-review-retract-CAND-006.md` (self-caught, R-7 원천)
-- PR #68531 리뷰: `https://github.com/openclaw/openclaw/pull/68531` (CAND-005)
-- PR #68543 리뷰: `https://github.com/openclaw/openclaw/pull/68543` (CAND-009)
-- PR #68511 (self-closed): `https://github.com/openclaw/openclaw/pull/68511` (CAND-006)
-- PR #68489 (maintainer-closed): `https://github.com/openclaw/openclaw/pull/68489` (CAND-004)
+- **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
+  - 파이프라인 외 PR (#63105 cron-store split) 포함
+  - Greptile 재리뷰 수동 트리거 절차
