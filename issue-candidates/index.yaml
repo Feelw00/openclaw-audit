@@ -5,15 +5,16 @@ candidates:
     state: needs-human-review   # gatekeeper shadow uncertain@medium; re-gatekeep 대기
     revision_note: "FIND-001 retract, FIND-003 만 유지"
   - id: CAND-002
-    type: epic
-    finding_count: 2
-    state: pending_gatekeeper
-    note: "FIND-cron-concurrency-001 + FIND-cron-concurrency-003 — 공통 원인 runningAtMs claim 비원자성"
-  - id: CAND-003
     type: single
     finding_count: 1
-    state: pending_gatekeeper
-    note: "FIND-cron-concurrency-002 — stuck marker heartbeat/ownership 부재"
+    state: needs-human-review   # gatekeeper shadow uncertain@medium; FIND-003 retract 후 single
+    note: "FIND-cron-concurrency-001 단독 — locked.ts storeLocks in-memory only"
+    revision_note: "FIND-003 gatekeeper 반증 후 제외"
+  - id: CAND-003
+    type: retracted
+    finding_count: 0
+    state: retracted   # gatekeeper reject_suspected@high + secops CODEOWNERS 제약
+    note: "retracted: FIND-002 rejected (CronService.start 가 runningAtMs clear 수행). 파일 /src/cron/service/jobs.ts 는 @openclaw/secops 소유."
   - id: CAND-004
     type: single
     finding_count: 1

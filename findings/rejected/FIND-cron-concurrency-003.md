@@ -1,4 +1,7 @@
 ---
+rejected_reasons:
+  - "gatekeeper counter_evidence: executeJob 의 공개 API run 경로(ops.ts:567-610 prepareManualRun) 가 locked() 내부에서 runningAtMs CAS guard(ops.ts:587-590) 를 수행. executeJob 자체는 runDueJobs 와 regression test 에서만 호출 — onTimer 가 claim 한 job 을 manual run 이 가로채는 시나리오는 상위 경로에서 차단됨."
+  - "CAND-002 epic 에서 제외. FIND-cron-concurrency-001 (locked.ts in-memory, 프로세스 경계) 만 단독 CAND 로 유지."
 id: FIND-cron-concurrency-003
 cell: cron-concurrency
 title: executeJob 이 runningAtMs 선점 검사 없이 바로 덮어써, 타이머와 수동 run 동시 실행 가능

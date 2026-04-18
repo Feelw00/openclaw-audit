@@ -1,14 +1,15 @@
 ---
 candidate_id: CAND-002
-type: epic
+type: single
 finding_ids:
   - FIND-cron-concurrency-001
-  - FIND-cron-concurrency-003
-cluster_rationale: "공통 원인: `CronJobState.runningAtMs` 의 claim 이 원자적 조건부 교체(CAS) 가 아니라 '읽고 대입 후 persist' 순서의 비조건 write 로만 구현됨. 이 때문에 두 FIND 모두 '서로 다른 실행 주체가 같은 job 을 거의 동시에 claim 하는 window' 를 만들어 낸다. FIND-001 은 그 주체가 다른 프로세스(멀티 인스턴스), FIND-003 은 같은 프로세스 내 다른 코루틴(onTimer vs executeJob manual run). 두 FIND 모두 root_cause_chain 에서 명시적으로 CAS 부재를 지적: FIND-001 root_cause_chain[2] because=\"onTimer 의 locked 블록 안에서 단순 in-memory 필드 대입(job.state.runningAtMs = now) 후 persist 만 하며, 읽기-수정-쓰기 사이클이 다른 프로세스의 동일 사이클에 대해 보호되지 않는다\"; FIND-003 root_cause_chain[1] because=\"함수가 forced: boolean 옵션을 받지만 내부적으로 사용하지 않고, 조건 분기가 없다. onTimer 가 이미 claim 한 상태인지 확인하는 guard 가 없음\". 또한 FIND-003 은 이미 `cross_refs: [FIND-cron-concurrency-001]` 를 선언. Epic 으로 묶는 이유: 두 FIND 가 같은 필드(`runningAtMs`)의 같은 claim 연산을 다른 각도(프로세스 경계 / 코루틴 경계)에서 기술하며, 해결의 근본 축(atomic conditional claim) 이 공통이다. severity 는 더 높은 FIND-001 의 P1 상속."
-proposed_title: "cron runningAtMs claim 이 원자적 CAS 가 아니어서 inter/intra-process 중복 실행"
+cluster_rationale: "원래 FIND-001 + FIND-003 epic 이었으나 gatekeeper 가 FIND-003 을 반증 — prepareManualRun(ops.ts:587-590) 의 CAS guard 로 intra-process race 차단됨. 남은 FIND-001 은 inter-process (멀티 인스턴스 동일 storePath) claim race: locked.ts 의 storeLocks 는 모듈-스코프 Map 으로 프로세스 내부만 보호. 배포 토폴로지가 multi-instance 를 지원/권장하는지는 openclaw 상위 문서 확인 필요 (openclaw 가 단일 gateway 프로세스 전제일 가능성도 있음)."
+proposed_title: "cron storeLocks in-memory-only: 멀티 인스턴스 동일 storePath 배포 시 중복 claim"
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-04-18
+revised_at: 2026-04-18
+revision_note: "FIND-003 gatekeeper 반증 후 제외, single 로 축소"
 ---
 
 # cron runningAtMs claim 이 원자적 CAS 가 아니어서 inter/intra-process 중복 실행

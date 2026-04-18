@@ -1,4 +1,7 @@
 ---
+rejected_reasons:
+  - "gatekeeper reject_suspected@high: CronService.start() → ops.start() 가 기동 시 모든 job 의 runningAtMs unconditional clear 수행 후 runMissedJobs() 로 catch-up. 따라서 FIND 의 '재기동 후 2h 지연' mechanism 성립 안 함 (ops.ts:101-131). FIND 의 Self-check 가 이 가정을 플래그했지만 ops.ts:113-131 을 manual-run 경로로만 오독했음."
+  - "추가 제약: /src/cron/service/jobs.ts 는 @openclaw/secops CODEOWNERS 소유 — 수정 가능 파일 아님."
 id: FIND-cron-concurrency-002
 cell: cron-concurrency
 title: stuck runningAtMs 복구가 고정 2시간 상수에만 의존, heartbeat/liveness 갱신 없음

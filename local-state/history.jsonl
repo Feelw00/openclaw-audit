@@ -9,3 +9,6 @@
 {"item_id": "FIND-cron-concurrency-002", "from": null, "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-04-18T08:32:38+00:00", "extras": {}}
 {"item_id": "FIND-cron-concurrency-003", "from": null, "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-04-18T08:32:38+00:00", "extras": {}}
 {"item_id": "FIND-agents-registry-memory-002", "from": "rejected", "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-04-18T08:33:00+00:00", "extras": {}}
+{"item_id": "FIND-cron-concurrency-002", "from": "discovered", "to": "rejected", "actor": "human", "reason": "gatekeeper reject/drop + retract after scope review", "at": "2026-04-18T08:51:46+00:00", "extras": {}}
+{"item_id": "FIND-cron-concurrency-003", "from": "discovered", "to": "rejected", "actor": "human", "reason": "gatekeeper reject/drop + retract after scope review", "at": "2026-04-18T08:51:46+00:00", "extras": {}}
+{"item_id": "CAND-003", "from": null, "to": "rejected", "actor": "human", "reason": "gatekeeper reject_suspected@high + secops CODEOWNERS on jobs.ts", "at": "2026-04-18T08:51:53+00:00", "extras": {}}

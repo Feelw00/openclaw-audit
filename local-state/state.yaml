@@ -95,23 +95,44 @@ items:
     updated_at: '2026-04-18T08:32:38+00:00'
   FIND-cron-concurrency-002:
     kind: find
-    state: discovered
+    state: rejected
     transitions:
     - from: null
       to: discovered
       actor: validate
       reason: validate passed
       at: '2026-04-18T08:32:38+00:00'
+    - from: discovered
+      to: rejected
+      actor: human
+      reason: gatekeeper reject/drop + retract after scope review
+      at: '2026-04-18T08:51:46+00:00'
     created_at: '2026-04-18T08:32:38+00:00'
-    updated_at: '2026-04-18T08:32:38+00:00'
+    updated_at: '2026-04-18T08:51:46+00:00'
   FIND-cron-concurrency-003:
     kind: find
-    state: discovered
+    state: rejected
     transitions:
     - from: null
       to: discovered
       actor: validate
       reason: validate passed
       at: '2026-04-18T08:32:38+00:00'
+    - from: discovered
+      to: rejected
+      actor: human
+      reason: gatekeeper reject/drop + retract after scope review
+      at: '2026-04-18T08:51:46+00:00'
     created_at: '2026-04-18T08:32:38+00:00'
-    updated_at: '2026-04-18T08:32:38+00:00'
+    updated_at: '2026-04-18T08:51:46+00:00'
+  CAND-003:
+    kind: candidate
+    state: rejected
+    transitions:
+    - from: null
+      to: rejected
+      actor: human
+      reason: gatekeeper reject_suspected@high + secops CODEOWNERS on jobs.ts
+      at: '2026-04-18T08:51:53+00:00'
+    created_at: '2026-04-18T08:51:53+00:00'
+    updated_at: '2026-04-18T08:51:53+00:00'
