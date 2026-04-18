@@ -152,3 +152,98 @@
 
 **Assurance**: Sweeper cleanup present, but no hard cap.
 
+---
+
+### memory-leak-hunter (2026-04-18, 재실행)
+
+**재실행 사유**: FIND-agents-registry-memory-001 은 `line_range` multi-range 포맷 반려 (B-1-3).
+본 세션은 R-1 (단일 연속 라인 범위) 엄수 + FIND-001 과 **의미론적으로 다른** 이슈 한 건 발견.
+
+**R-3 Grep 결과 (자료구조별)**:
+
+```
+rg -n "pendingLifecycleErrorByRunId\.(delete|clear)" src/agents/
+  subagent-registry.ts:233  delete  (clearPendingLifecycleError — run-scoped, explicit)
+  subagent-registry.ts:240  clear   (clearAllPendingLifecycleErrors — TEST ONLY)
+  subagent-registry.ts:250  delete  (timer callback, grace-period guard, FIND-001)
+
+rg -n "subagentRuns\.(delete|clear)" src/agents/
+  subagent-registry.ts:563             delete   (sweeper, session TTL)
+  subagent-registry.ts:593             delete   (sweeper, archiveAtMs)
+  subagent-registry.ts:754             clear    (testReset)
+  subagent-registry.test-helpers.ts:7  clear    (test helper)
+
+rg -n "resumeRetryTimers\.(delete|clear)" src/agents/
+  subagent-registry.ts:425  delete  (timer callback, self-delete unconditional)
+  subagent-registry.ts:753  clear   (testReset)
+
+rg -n "setInterval\(|setTimeout\(" src/agents/subagent-registry*.ts
+  subagent-registry.ts:245            setTimeout  (pending error grace timer)
+  subagent-registry.ts:424            setTimeout  (resume retry timer)
+  subagent-registry.ts:524            setInterval (sweeper, 60s)
+  subagent-registry-lifecycle.ts:71   setTimeout  (lifecycle timeout — out of scope)
+
+rg -n "sweeper|reaper|cleanup|ttl|TTL" subagent-registry*.ts  (대량)
+  - LIFECYCLE_ERROR_RETRY_GRACE_MS = 15_000   (line 137)
+  - SESSION_RUN_TTL_MS = 5 * 60_000           (line 139)
+  - PENDING_ERROR_TTL_MS = 5 * 60_000         (line 141)
+  - sweeper startup: line 500 (restore), run-manager 259/356 (register/steer)
+  - sweeper self-stop: line 613-614           ← FIND-002 핵심
+  - resetForTests: line 748-773               (테스트 전용 전체 cleanup)
+```
+
+**cap / eviction / TTL 테이블**:
+
+| 자료구조 | set 라인 | delete 라인 | TTL | cleanup 신뢰성 |
+|---|---|---|---|---|
+| `subagentRuns` (Map) | run-manager:330, 255 (register/steer) | 563, 593 (sweeper) | session: 5min after cleanupCompletedAt; non-session: archiveAtMs | sweeper 가능 시 OK. sweeper self-stop 후 새 run 대기 — **FIND-002 연관** |
+| `pendingLifecycleErrorByRunId` (Map) | 272 (schedulePending) | 233 (clear), 240 (clearAll), 250 (timer), 557, 574, 606 (sweeper) | 5min (PENDING_ERROR_TTL_MS) | 15s grace mismatch 경로에서 timer delete skip (FIND-001). 또한 sweeper self-stop 시 TTL cleanup 자체 중단 (**FIND-002**) |
+| `resumeRetryTimers` (Set) | 433 | 425 (timer self-delete unconditional), 753 (testReset) | timer fire 시 즉시 | **OK**. 자체 delete 무조건 실행. No leak. |
+| `resumedRuns` (Set) | 216 decl, 434, 462 | 429 (timer), 755 (testReset), `resetFlagFor` 함수 | N/A | allowed_paths 내 reset 경로 다수. 추가 FIND 대상 아님. |
+| `endedHookInFlightRunIds` (Set) | 217 decl | testReset only | N/A | run-manager 범위 밖. 본 세션에서 deep-audit 미수행. |
+| `sweeper` (setInterval) | 524 | 537 (stopSweeper), 614 (self-stop), 762 (testReset) | 60s period | self-stop 조건이 pending map 무시 → **FIND-002** |
+
+**적용 카테고리 (재실행)**:
+- [x] A. 무제한 자료구조 성장 — 발견 1건 (FIND-002, 이전 FIND-001 과 cross_ref)
+- [x] B. EventEmitter/리스너 누수 — 재확인. `ensureListener` guard + `listenerStop` cleanup 정상.
+- [x] C. 강한 참조 체인 — timer closure retention 은 FIND-002 mechanism 에 흡수.
+- [ ] D. 핸들/리소스 누수 — skipped (fs/HTTP 없음)
+- [x] E. 캐시 TTL 부재 — **cleanup 조건부 무력화** (FIND-002 의 본질)
+
+**신규 FIND**:
+- FIND-agents-registry-memory-002: `sweeper self-stop on empty runs strands pendingLifecycleError entries indefinitely` (P2, single line_range 603-615)
+
+**FIND-001 과의 차별화 (중복 금지 요건)**:
+- FIND-001: grace-period timer callback 의 early-return 으로 15s → 5min gap 동안 map 잔존
+  (*동적 실행 중* 의 시간 창 문제).
+- FIND-002: sweeper self-stop 조건이 pending map 크기를 무시해 5min TTL 이 **발동 자체가
+  중단** 되는 정적 구조 문제 (*sweeper shutdown 후* 의 무기한 누출).
+
+두 이슈는 `cross_refs: [FIND-agents-registry-memory-001]` 으로 연결됨.
+
+**스킵 사유 (false-positive 방지)**:
+- `resumeRetryTimers`: timer callback 내 `resumeRetryTimers.delete(timer)` 가 **unconditional
+  first statement** (line 425). FIND 대상 아님.
+- `subagentRuns` 의 단순 무제한 성장: sweeper 가 정상 가동 시 TTL 로 cleanup. FIND-002 의
+  sweeper stopped 경로는 **pendingLifecycleErrorByRunId** 문제로 특정 — subagentRuns 자체는
+  `size === 0` 이 되는 시점에만 stop 하므로 runs 누적과 무관.
+- EventEmitter/리스너: `ensureListener` 의 `listenerStarted` guard 와 `listenerStop` cleanup
+  handle 이 올바르게 쌍을 이룸.
+
+**Self-critique (미확인 영역)**:
+- `replaceSubagentRunAfterSteer` (run-manager.ts) 의 내부 로직은 allowed_paths 제한으로
+  본 세션에서 deep-read 못함. 거기서 `clearPendingLifecycleError(oldRunId)` 를 호출한다면
+  FIND-002 의 일부 시나리오가 완화될 수 있다.
+- 프로덕션 process graceful shutdown 경로 (상위 orchestrator) 는 allowed_paths 밖.
+- telemetry (map size 시계열) 부재로 실제 누적 속도 미측정. 추정치만 보고.
+
+### clusterer (2026-04-18)
+
+- **CAND-004 (single)**: FIND-agents-registry-memory-002. `sweepSubagentRuns` 의 self-stop 조건이
+  `subagentRuns.size === 0` 만 검사하고 `pendingLifecycleErrorByRunId.size` 를 무시하여 TTL 미도달
+  pending error 엔트리가 무기한 잔존하는 문제를 단독 CAND 로 발행. FIND 의 cross_refs 는
+  FIND-agents-registry-memory-001 (grace-period timer 누출) 을 가리키나 FIND-001 은 본 배치에
+  포함되지 않아 epic 구성 불가 — FIND-001 이 ready/ 에 재등장하면 CAND-004 의 epic 승격 재평가.
+- 본 도메인의 다른 FIND 들(cron/plugins)과 root_cause_chain 의미론 중복 없음. 공통 원인으로 묶을
+  epic 후보 타 도메인에서 발견되지 않음.
+

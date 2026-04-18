@@ -71,3 +71,14 @@
 ### clusterer (2026-04-18)
 
 - CAND-001 (epic): 공통 원인 "plugins 도메인 글로벌 Map 캐시에 eviction 정책 부재" 로 2 FIND 묶음 (FIND-plugins-memory-001: registryCache, FIND-plugins-memory-003: jitiLoaders)
+
+### clusterer (2026-04-18, 2차)
+
+- 본 배치(ready/ 5건)에 FIND-plugins-memory-003 이 포함되어 있었으나 이미 기존 CAND-001 에 수용되어
+  있으므로 새 CAND 생성하지 않음 (CAND-001 은 `needs-human-review` 상태, 본 세션에서 수정 금지).
+- 다른 도메인 FIND 들(cron 계열: runningAtMs 관련, agents-registry 계열: sweeper self-stop) 과
+  plugins FIND-003(jitiLoaders eviction 부재) 의 root_cause_chain 의미론 비교:
+  - cron 은 "특정 필드의 claim/liveness 동시성" 축 — 공통성 없음.
+  - agents-registry 는 "sweeper cleanup 조건 불완전" 축 — jitiLoaders 는 sweeper 가 아예 없는
+    unbounded Map 이므로 축 다름.
+  - 결론: plugins FIND-003 을 다른 도메인 FIND 와 묶을 epic 근거 없음. CAND-001 유지.

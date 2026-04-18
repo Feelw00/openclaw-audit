@@ -4,4 +4,19 @@ candidates:
     finding_count: 1
     state: needs-human-review   # gatekeeper shadow uncertain@medium; re-gatekeep 대기
     revision_note: "FIND-001 retract, FIND-003 만 유지"
+  - id: CAND-002
+    type: epic
+    finding_count: 2
+    state: pending_gatekeeper
+    note: "FIND-cron-concurrency-001 + FIND-cron-concurrency-003 — 공통 원인 runningAtMs claim 비원자성"
+  - id: CAND-003
+    type: single
+    finding_count: 1
+    state: pending_gatekeeper
+    note: "FIND-cron-concurrency-002 — stuck marker heartbeat/ownership 부재"
+  - id: CAND-004
+    type: single
+    finding_count: 1
+    state: pending_gatekeeper
+    note: "FIND-agents-registry-memory-002 — sweeper self-stop 이 pending error TTL 무력화"
 published: []
