@@ -87,11 +87,35 @@ git push
 echo "next: {한 줄}" >> orchestrator-log.md
 ```
 
-## 7. 긴급 참조
+## 7. PR 발행 전 cross-review (CAL-003 필수)
+
+PR 제출 **직전** 3 에이전트 병렬 호출 — 긍정/비판/중립:
+
+```
+Agent × 3 (general-purpose, 병렬):
+- Positive: "왜 머지해야 하는가" 증거 수집
+- Critical: "왜 close 해야 하는가" 반증 (primary-path inversion 적극)
+- Neutral: 균형
+```
+
+합의 2/3 미만이면 retract 또는 scope 축소. 특히 **긍정 시점마저 real 판정 못 하면** 거의 확실한 false positive.
+
+판정 enum:
+- `real-problem-real-fix`
+- `real-problem-fix-insufficient`
+- `synthetic-only` (test path ≠ production hot-path)
+- `false-positive` (primary cleanup 이 이미 처리)
+
+## 8. 긴급 참조
 
 - 운영 상세: `OPERATIONS.md`
 - 기여 규칙: `openclaw-contribution.md`
-- 페르소나 규율: `agents/memory-leak-hunter.md` §"필수 규율 R-1~R-5"
-- **과거 false positive 회고 (반드시 읽기)**: `calibration/CAL-001-maintainer-verdict-CAND-004.md`
-- PR #68511 리뷰: `https://github.com/openclaw/openclaw/pull/68511` (CAND-006)
-- PR #68489 (closed): `https://github.com/openclaw/openclaw/pull/68489` (CAND-004, retracted by maintainer)
+- 페르소나 규율: `agents/memory-leak-hunter.md` §"필수 규율 R-1~R-7"
+- **과거 false positive 회고 (반드시 읽기)**:
+  - `calibration/CAL-001-maintainer-verdict-CAND-004.md` (메인테이너가 잡음)
+  - `calibration/CAL-002-greptile-review-CAND-005.md` (Greptile bot)
+  - `calibration/CAL-003-cross-review-retract-CAND-006.md` (self-caught, R-7 원천)
+- PR #68531 리뷰: `https://github.com/openclaw/openclaw/pull/68531` (CAND-005)
+- PR #68543 리뷰: `https://github.com/openclaw/openclaw/pull/68543` (CAND-009)
+- PR #68511 (self-closed): `https://github.com/openclaw/openclaw/pull/68511` (CAND-006)
+- PR #68489 (maintainer-closed): `https://github.com/openclaw/openclaw/pull/68489` (CAND-004)

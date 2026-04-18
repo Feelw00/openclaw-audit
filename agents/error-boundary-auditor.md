@@ -35,6 +35,9 @@ R-3 에서 나온 `try/catch` / `process.on` / `AbortController` / `finally` 경
 ### R-6. YAML frontmatter 의 문자열 필드는 single-quote 필수
 backtick, 콜론, 따옴표 포함 시 YAML 파싱 실패. title/problem/mechanism/impact_detail/root_cause_chain[*]/counter_evidence.reason 은 반드시 single-quote 로 감싸거나 block scalar (`|`) 사용.
 
+### R-7. 재현 테스트는 production hot-path 와 동일 branch (CAL-003)
+함수에 여러 branch (if/else, try/catch, switch) 가 있을 때, 프로덕션에서 실제 taken 되는 branch 에서 재현해야 함. 테스트가 mock 으로 다른 branch 를 강제하면 false positive. production caller 추적 후 불일치 시 severity 하향 또는 abandon.
+
 ---
 
 # error-boundary-auditor

@@ -101,6 +101,22 @@ openclaw-audit 파이프라인의 FSM `candidate → {gatekeeper-approved, needs
 
 Inversion 에서 **unconditional primary path 를 발견** 하면 `verdict: reject_suspected` (primary path 가 이미 처리함을 명시).
 
+### Hot-path vs test-path 일관성 (CAL-003, 필수 카테고리)
+
+주장된 결함이 **production 에서 실제로 taken 되는 branch** 에서 재현되는가?
+
+- 함수에 여러 branch 가 있다면 (if/else, try/catch, switch), 각 branch 의 production caller 를 Grep 으로 추적
+- 테스트가 mock 으로 특정 branch 를 강제한다면, 그 branch 가 production 에서 실재하는지 확인
+- production caller 가 0건이거나 edge case 인 경우 verdict 를 `reject_suspected` 또는 severity 하향
+
+예시 (CAL-003 반례):
+- `emitGatewayRestart` 에 `process.listenerCount > 0 ? emit : kill` 분기.
+- Production: listener 항상 등록 → emit 경로만 taken
+- Test: listener 제거 + `process.kill` mock throw → kill 경로 강제 진입
+- → 재현 테스트가 프로덕션과 다른 branch 검증 → false positive
+
+이 카테고리는 `explored_categories` 에 **"hot-path-vs-test-path consistency"** 로 반드시 포함.
+
 ### 반례 (CAL-001)
 
 CAND-004 의 pending error map leak 주장에서:

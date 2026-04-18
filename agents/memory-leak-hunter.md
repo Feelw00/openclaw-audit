@@ -33,6 +33,17 @@ rg -n "while.*<자료구조이름>\.size" {allowed_paths}
 파일 경로: `/Users/lucas/Project/openclaw-audit/findings/drafts/FIND-{cell-id}-{NNN}.md`
 구두 보고만 하면 파이프라인에 아무것도 안 남음. 작업 미완료로 간주.
 
+### R-7. 재현 테스트는 production hot-path 와 동일 branch (CAL-003)
+함수에 여러 branch 가 있을 때, 프로덕션에서 실제로 taken 되는 branch 와 동일 경로로 재현해야 함. 테스트가 mock 으로 다른 branch 를 강제하면 false positive 위험.
+
+점검:
+1. 대상 함수의 branch 들 나열
+2. production caller 추적 → 어느 branch 가 taken 되는가?
+3. 재현 테스트가 그 branch 를 exercise 하는가?
+4. 불일치면 FIND/SOL 포기 또는 severity 하향
+
+반례: `emitGatewayRestart` 의 `process.listenerCount>0 ? emit : kill` 분기에서, production 은 emit branch (listener 등록됨) 만 타는데 test 가 kill branch throw 를 강제 → CAL-003 의 PR #68511 self-close 원인.
+
 ### R-6. YAML frontmatter 의 문자열 필드는 single-quote 필수
 YAML scalar 가 `` ` `` (backtick), `:` (콜론), `"` (따옴표), `#` 를 포함하면 파싱 실패. 다음 필드의 값은 **반드시 single-quote** 로 감싸거나 block scalar (`|`) 사용:
 - `title`, `problem`, `mechanism`, `impact_detail`

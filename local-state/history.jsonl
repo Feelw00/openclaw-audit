@@ -40,3 +40,4 @@
 {"item_id": "CAND-009", "from": null, "to": "published", "actor": "human", "reason": "issue #68541 + PR #68543 (approve@medium shadow + human review + repro/fix PASS)", "at": "2026-04-18T12:27:01+00:00", "extras": {}}
 {"item_id": "CAND-007", "from": null, "to": "abandoned", "actor": "human", "reason": "uncertain@medium: bin entry 가 dist 경로라 src/index.ts:90 isMain 미작동 가능성. P3. 실제 프로덕션 영향 불명확 → abandon.", "at": "2026-04-18T12:27:01+00:00", "extras": {}}
 {"item_id": "CAND-008", "from": null, "to": "abandoned", "actor": "human", "reason": "uncertain@medium: backoff.ts asymmetric jitter 는 실재하나 thundering-herd 가 실제 문제 되려면 다수 조건 필요. P3. severity 낮음 → abandon.", "at": "2026-04-18T12:27:01+00:00", "extras": {}}
+{"item_id": "CAND-006", "from": "published", "to": "abandoned", "actor": "human", "reason": "cross-review synthetic-only: PR #68511 self-closed, issue #68510 closed", "at": "2026-04-18T13:03:42+00:00", "extras": {}}
