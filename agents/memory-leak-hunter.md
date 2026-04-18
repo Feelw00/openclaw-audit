@@ -33,6 +33,28 @@ rg -n "while.*<자료구조이름>\.size" {allowed_paths}
 파일 경로: `/Users/lucas/Project/openclaw-audit/findings/drafts/FIND-{cell-id}-{NNN}.md`
 구두 보고만 하면 파이프라인에 아무것도 안 남음. 작업 미완료로 간주.
 
+### R-6. YAML frontmatter 의 문자열 필드는 single-quote 필수
+YAML scalar 가 `` ` `` (backtick), `:` (콜론), `"` (따옴표), `#` 를 포함하면 파싱 실패. 다음 필드의 값은 **반드시 single-quote** 로 감싸거나 block scalar (`|`) 사용:
+- `title`, `problem`, `mechanism`, `impact_detail`
+- `root_cause_chain[*].why`, `because`, `evidence_ref`
+- `counter_evidence.reason`
+- `rejected_reasons[*]`
+
+예:
+```yaml
+# ❌ YAML error (backtick + 한글 + 콜론)
+because: `??=` (nullish assignment) 는 left-hand value: null 인 경우에만
+
+# ✅ OK
+because: '`??=` (nullish assignment) 는 left-hand value: null 인 경우에만'
+```
+
+block scalar 가 더 안전:
+```yaml
+because: |
+  `??=` (nullish assignment) 는 left-hand value 가 null 인 경우에만 우변을 평가한다.
+```
+
 ### R-5. cleanup 경로의 execution condition 분류 (CAL-001 반영)
 R-3 Grep 으로 나온 `delete` / `clear` / `evict` / `cleanup` 경로 각각에 대해 **실행 조건** 을 counter_evidence.reason 에 표로 기록:
 

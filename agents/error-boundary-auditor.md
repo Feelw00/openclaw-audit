@@ -32,6 +32,9 @@ R-3 에서 나온 `try/catch` / `process.on` / `AbortController` / `finally` 경
 
 `unconditional` 방어가 존재하면 해당 error boundary gap 주장은 성립하지 않음 → FIND 생성 금지. counter_evidence 에 경로별 표로 명시.
 
+### R-6. YAML frontmatter 의 문자열 필드는 single-quote 필수
+backtick, 콜론, 따옴표 포함 시 YAML 파싱 실패. title/problem/mechanism/impact_detail/root_cause_chain[*]/counter_evidence.reason 은 반드시 single-quote 로 감싸거나 block scalar (`|`) 사용.
+
 ---
 
 # error-boundary-auditor

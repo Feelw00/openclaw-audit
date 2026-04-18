@@ -91,3 +91,71 @@ openclaw 의 `src/cron/**` 서브시스템에 대한 영구 관찰 기록.
   검증 부재" 로 CAND-002 (claim 연산 원자성) 와 다름. heartbeat/PID/boot-ID/lease token 부재 + 단일
   STUCK_RUN_MS 상수 의존. Severity P1.
 - 두 CAND 는 인접하지만 독립적 해결 축(atomic claim vs liveness probe) 을 가지므로 epic 통합하지 않음.
+
+### memory-leak-hunter (2026-04-18)
+
+셀: `cron-memory` (allowed_paths: `src/cron/**`). 결론: **FIND 0건** (품질 > 수량).
+
+#### 적용 카테고리 (agents/memory-leak-hunter.md §탐지 카테고리)
+
+- [x] A. 무제한 자료구조 성장 — 적용 (결과: FIND 없음. 아래 상세)
+- [x] B. EventEmitter / 리스너 누수 — 적용 (결과: FIND 없음)
+- [x] C. 강한 참조 체인 (weak 부재) — 적용 (결과: FIND 없음)
+- [x] D. 핸들/리소스 누수 — 적용 (결과: FIND 없음)
+- [x] E. 캐시 TTL 부재 — 적용 (결과: FIND 없음)
+
+#### R-3 Grep 결과
+
+모듈-스코프 Map/Set 전수 조사 (`rg "^(const|let|var)\s+\w+\s*=\s*new (Map|Set|WeakMap)" src/cron/`):
+
+| 변수 | 파일:라인 | 쓰기 | 정리 | 키 도메인 |
+|---|---|---|---|---|
+| `staggerOffsetCache` | `service/jobs.ts:40` | `.set` 82 | `.delete` 79 (FIFO, cap 4096) | `${staggerMs}:${jobId}` — 잡 개수 경계 |
+| `cronEvalCache` | `schedule.ts:7` | `.set` 30 | `.delete` 26 (FIFO, cap 512) | `${tz}\0${expr}` — 크론 표현식 경계 |
+| `COMPLETED_DIRECT_CRON_DELIVERIES` | `isolated-agent/delivery-dispatch.ts:142` | `.set` 242 | `.delete` 204, 220 (TTL + cap 2000) | idempotency key — TTL 24h |
+| `writesByPath` | `run-log.ts:81` | `.set` 169 | `.delete` 174 (`get===next` guard, finally) | 파일 경로 — 잡당 1 |
+| `serializedStoreCache` | `store.ts:9` | `.set` 162,164,232,248 | `.delete` 170,171 (ENOENT), 매 write 덮어쓰기 | storePath — 프로세스당 1-2 |
+| `storeLocks` | `service/locked.ts:3` | `.set` 19 | **없음** | `state.deps.storePath` — 프로세스당 1-2 |
+| `lastSweepAtMsByStore` | `session-reaper.ts:22` | `.set` 74,106 | `.clear` 148 (**test-only**) | storePath — 프로세스당 1-2 |
+| `activeJobIds` (글로벌 싱글톤) | `active-jobs.ts:11` | `.add` 19 | `.delete` 26 (markCronJobActive↔clearCronJobActive) | jobId — 구성된 잡 개수 경계 |
+
+`rg "setInterval\(|setTimeout\(" src/cron/` / `rg "clearInterval|clearTimeout" src/cron/`:
+- `delivery.ts:61` setTimeout ↔ `:89` clearTimeout (finally, unconditional).
+- `service/timer.ts:92` setTimeout ↔ `:100` clearTimeout (finally, unconditional).
+- `service/timer.ts:1149` setTimeout ↔ `:1154` clearTimeout (onAbort callback, unconditional once fired or aborted).
+- `service/timer.ts:661, 676` `state.timer = setTimeout(...)` ↔ `armTimer`, `armRunningRecheckTimer`, `stopTimer` 의 `clearTimeout(state.timer)` (616, 674, 1400). 재무장/종료 시 항상 clear. 기존 cron-reliability-auditor 기록과 일치.
+
+`rg "\.on\(|addEventListener|removeListener|\.off\(|removeEventListener" src/cron/`:
+- `service/timer.ts:1158` `abortSignal.addEventListener("abort", onAbort, { once: true })` ↔ `:1150, :1155` `removeEventListener`. `once: true` + 양방향 removeListener 패턴. 누수 없음.
+- 다른 EventEmitter 리스너 등록 없음.
+
+#### R-5 execution condition 분류 (counter_evidence 각 후보당)
+
+| 후보 | 경로 | 조건 |
+|---|---|---|
+| `storeLocks` | 없음 | — (저장 경로 상수화로 성장 바운드) |
+| `lastSweepAtMsByStore` | `resetReaperThrottle` (148) | **test-only** |
+| `activeJobIds` — 타이머 틱 | `applyOutcomeToStoredJob` 첫 줄 `clearCronJobActive(result.jobId)` (timer.ts:582) | **unconditional** — `applyOutcomeToStoredJob` 진입 시 무조건 실행. |
+| `activeJobIds` — ops 경로 | `executeJob` 말미 `clearCronJobActive(job.id)` (timer.ts:1350) | **conditional-edge** — try/finally 감싸기 없음. 하지만 이전 단계(`applyJobResult`, `emitJobFinished`) 가 예외 던질 가능성 낮음 (순수 상태 변이 + try-wrapped emit). |
+| `writesByPath` | `writesByPath.delete(resolved)` (run-log.ts:174) in finally with `get===next` guard | **unconditional (소유자 promise 기준)** — 최신 set 의 finally 가 자신 엔트리를 반드시 delete. |
+| `serializedStoreCache` | 매 `saveCronStore` 시 `set` 으로 덮어쓰기 | **unconditional** — 새 값이 오래된 값을 대체. |
+| `COMPLETED_DIRECT_CRON_DELIVERIES` | `pruneCompletedDirectCronDeliveries` (200-222) in `remember` + `get` 양쪽 | **unconditional** — TTL 24h + cap 2000 FIFO 병행. |
+| `staggerOffsetCache`, `cronEvalCache` | FIFO eviction at cap | **unconditional** |
+
+#### FIND 생성 금지 근거 (R-5 적용)
+
+- **storeLocks / lastSweepAtMsByStore / serializedStoreCache**: 키가 `state.deps.storePath` 로 구성-레벨 상수. 단일 게이트웨이 프로세스에서 1-2 항목. 이론상 누수지만 *growth rate = 0* 이므로 leak 주장 불성립.
+- **activeJobIds (ops 경로)**: clearCronJobActive 미-finally 배치는 defensive weakness 이나 (a) `applyJobResult`/`emitJobFinished` 가 실질적으로 throw 하지 않고, (b) Set 키가 구성된 jobId 로 바운드되어 동일 jobId 재마크는 `Set.add` idempotent → 성장 없음. CAL-001 의 false-positive 패턴 (primary-path 부재 전제) 을 반복할 위험 커서 FIND 미생성.
+- **writesByPath**: 가드된 delete 패턴 (`get===next`) 은 의도된 unconditional cleanup (소유자-promise 기준). race 분석 결과 Node single-thread 마이크로태스크 순서로 safe.
+- **타이머 / AbortSignal 리스너**: 모두 unconditional clear. 기존 cron-reliability-auditor 도 B/D 카테고리 skip 확인.
+
+#### CAL-002 반영 (array + object-typed field 양쪽 검증)
+
+cron 도메인은 registry-style public field (`registry.X.push` + `registry.X[key]=`) 가 없음. `state.store.jobs` 는 배열이고 delete는 filter 교체. object-typed hidden-field 누수 대상 모듈 구조 없음.
+
+#### 확인 못 한 영역 (self-critique)
+
+- `src/gateway/server-cron.ts` (allowed_paths 밖): `warnedLegacyWebhookJobs = new Set<string>()` 는 delete 없음. 이벤트 jobId 마다 add 하나 발생 (실패 알림 legacy path). 본 셀 스코프 밖이므로 별도 셀 (`gateway-memory`) 에서 다뤄야 함.
+- `state.deps.onEvent` 콜백이 caller 측에서 리스너 누적 구조를 쓰는지: 콜백 등록은 caller 책임. cron 본체 내부 leak 아님.
+- `isolated-agent/run-*.runtime.ts` 의 runtime 캐시: dynamic-import promise 변수 (`gatewayCallRuntimePromise` 등) 는 모듈 한 번만 로드하므로 leak 아님.
+- `task-executor` / `task-registry` 연동 (`createRunningTaskRun` 등) 은 allowed_paths 밖. 해당 registry 의 cleanup 은 외부 책임.

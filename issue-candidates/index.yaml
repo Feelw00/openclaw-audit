@@ -45,6 +45,21 @@ candidates:
     openclaw_pr: 68511
     openclaw_branch: "fix/infra-restart-authorization-count-leak"
     openclaw_commit: 7cc65a51ce
+  - id: CAND-007
+    type: single
+    finding_count: 1
+    state: pending_gatekeeper
+    note: "FIND-infra-process-memory-001 — installUnhandledRejectionHandler idempotency 부재로 process.on('unhandledRejection') 리스너 중복 등록 (P3)"
+  - id: CAND-008
+    type: single
+    finding_count: 1
+    state: pending_gatekeeper
+    note: "FIND-infra-retry-concurrency-002 — computeBackoff 가 단방향 + Math.random jitter 로 thundering-herd 완화 반감, retry.ts 와 비일관 (P3)"
+  - id: CAND-009
+    type: single
+    finding_count: 1
+    state: pending_gatekeeper
+    note: "FIND-infra-retry-concurrency-003 — retryAsync 가 retryAfterMs 에도 대칭 jitter 적용해 서버 Retry-After 하방 위반 (P2)"
 published:
   - cand_id: CAND-004
     issue: 68487

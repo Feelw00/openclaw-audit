@@ -138,3 +138,92 @@
   process.kill EPERM) 하고 clusterer.md Step 3 의 "같은 인프라 축" 기준을
   충족하지 않아 epic 불가. 각각 single CAND 로 분리 (CAND-005, CAND-006)
   하고 cross_refs 로만 관련성 표시.
+
+### error-boundary-auditor (2026-04-18)
+
+**적용 카테고리:**
+- [x] A. unhandledRejection / uncaughtException handler chain — 상위 process-level handler 가
+      plugins 경계 밖 (src/infra/unhandled-rejections.ts) 이라 간접 탐색만.
+- [x] B. Floating promise — 발견 2건 (FIND-001, FIND-002). async register 의 Promise 가
+      `void register(...)` 또는 diagnostic-only 처리로 escape.
+- [x] C. JSON.parse 미보호 — skipped (모든 JSON.parse 지점에 try/catch 또는 Result 기반 ok/error
+      반환 확인: conversation-binding.ts:337, marketplace.ts:262+328, bundle-config-shared.ts:40,
+      bundle-commands.ts:65, clawhub.ts:432, bundled-plugin-metadata.ts:64, manifest.ts:664 전부
+      방어됨 — unconditional try/catch 존재).
+- [x] D. AbortController / AbortSignal 전파 — skipped (runtime-channel.ts:297 의 abort listener
+      는 once:true + disposed flag guard 로 safe. 누수 없음).
+- [x] E. fs/network 동기 호출 — skipped (fs.readFileSync 가 hot path 가 아닌 manifest/config 경로.
+      본 감사에서 error-boundary 가 아닌 perf 축. 에러는 모두 try 안).
+
+**발견 FIND:**
+- FIND-plugins-error-boundary-001 (P1, error-boundary-gap): bundled-capability-runtime.ts:300
+  `void register(captured.api)` — async register 시 unhandled rejection + silent registration
+  loss. webhooks 가 실제 async register 사용 → production trigger 확정.
+- FIND-plugins-error-boundary-002 (P2, error-boundary-gap): loader.ts:1815-1823 — full loader 의
+  async register 감지는 되어 있으나 Promise 는 diagnostic push 만 하고 `.catch()` 없이 floating.
+- FIND-plugins-error-boundary-003 (P2, error-boundary-gap): install.ts:20-25,
+  provider-runtime.runtime.ts:15-22, provider-discovery.ts:7-12, provider-auth-ref.ts:18-22 의
+  `xxxRuntimePromise ??= import(...)` 패턴. 첫 import reject 시 rejected Promise 영구 캐시.
+  프로세스 재시작 전 recovery 불가.
+
+**R-3 Grep 결과 — 방어 경로 매핑 테이블:**
+
+| 경로 | 방어 유무 | R-5 분류 |
+|---|---|---|
+| `try { JSON.parse(...) }` in conversation-binding.ts:332-364 | 존재 | unconditional |
+| `try { JSON.parse(...) }` in marketplace.ts:261-265 | 존재 | unconditional |
+| `try { JSON.parse(...) }` in bundle-config-shared.ts:39-49 | 존재 | unconditional |
+| `try { JSON.parse(...) }` in bundle-commands.ts:64-73 | 존재 | unconditional |
+| `try { JSON.parse(...) }` in clawhub.ts:430-437 | 존재 | unconditional |
+| `try { JSON.parse(...) }` in bundled-plugin-metadata.ts:63-67 | 존재 | unconditional |
+| `try { JSON.parse(...) }` in manifest.ts:663-673 | 존재 | unconditional |
+| `void Promise.resolve(result).catch(() => undefined)` in setup-registry.ts:278 | 존재 (swallow) | unconditional |
+| `void register(captured.api)` in bundled-capability-runtime.ts:300 | **부재** (sync-only try) | conditional for sync / **gap for async** |
+| `const result = register(api); if (async) { diagnostic.push }` in loader.ts:1815-1823 | **부분** (diagnostic only) | conditional — Promise 부동 |
+| `xxxRuntimePromise ??= import(...)` 4곳 | **부재** (reset 경로 없음) | conditional-edge (첫 실패 후 stuck) |
+| `runtime-channel.ts:297 abort listener` | 존재 (once:true + disposed flag) | unconditional |
+
+**핵심 관찰:**
+
+1. **SDK contract vs runtime reality gap**: SDK 타입 `register: (api) => void` 은 sync 를
+   의도하지만 TS 의 void 반환 타입은 async function 을 widening 으로 허용. `no-misused-promises`
+   lint rule 미적용. 실제 bundled extension `extensions/webhooks/index.ts:10` 이 `async register`
+   사용 중 → 타입 시스템 밖 gap.
+
+2. **두 loader 경로 간 정책 불일치**: loader.ts:1815 (full/setup-runtime) 은 sync register +
+   diagnostic only, loader.ts:2236 (cli-metadata) 은 `await register(api)`. 동일 plugin 이 두 경로
+   모두 타지만 async 처리 방식 상반됨.
+
+3. **`??=` lazy-load idiom 의 reliability 맹점**: 4곳 모두 동일 패턴으로 rejected promise 가
+   프로세스 lifetime 동안 영구 캐시. `src/plugins/install-security-scan.ts:37-39` 는 다른 패턴
+   (`return await import(...)`) 으로 매 호출 재시도 가능 — 같은 도메인 내에 안전 대안 존재.
+
+4. **상위 try/catch 의 async rejection 비-보호**: bundled-capability-runtime.ts:298-470,
+   loader.ts:1814-1862 양쪽 모두 try/catch 가 **sync throw 만** 잡음. Promise rejection 은
+   async stack 으로 도달하므로 동기 try/catch 로 격리 불가. R-5 primary-path inversion 에 따라
+   "이 crash 가 성립하려면 어떤 try 가 없어야 하는가?" → "Promise chain 에 .catch 가 없어야
+   한다" 조건 자체가 현재 코드에 성립.
+
+**자체 한계:**
+
+- `src/infra/unhandled-rejections.ts` 의 정확한 handler 정책 (log-only / fatal / 선택적) 은
+  allowed_paths 외. 이 정책이 fatal 이면 FIND-001/002 severity 상향 (P1 → P0, P2 → P1) 가능.
+- dynamic import 의 Node 22 정확한 재시도 semantics — spec 상 evaluation failure 는 registry 에
+  cache 되지 않지만 구현 디테일 미검증. FIND-003 의 P2 가 "실제 transient recovery 가능성" 가정에
+  기댐.
+- third-party plugin 에서 async register 사용 빈도 실측 데이터 없음 — bundled extension 만
+  grep 했고 webhooks 한 건 매치. 실제 production 영향 정량화 제한.
+- registry.httpRoutes 의 consumer snapshot vs live read 여부 — gateway/** 확인 필요 (allowed_paths 외).
+  이 세부에 따라 async register resolve 시 "silent late-insert" 가 기능 부재 vs 기능 작동 여부 결정.
+
+## 다음 페르소나를 위한 힌트
+
+### concurrency-auditor / gatekeeper
+
+- FIND-001/002/003 의 severity 재평가에 src/infra/unhandled-rejections.ts 정책 확인 필수.
+- FIND-001 과 FIND-002 는 root cause axis 유사 (async register 의 floating Promise) — clusterer
+  가 epic 으로 묶을지, 또는 별도 CAND 로 분리할지 판단. bundled-capability-runtime 경로 vs
+  full loader 경로가 **다른 실행 경로** 이므로 각각 별도 SOL 이 필요할 가능성 높음.
+- FIND-003 은 독립 축 (dynamic import cache). 다른 FIND 와 epic 근거 약함.
+- webhooks async register 가 실제 production 에서 reject 하는 경로가 있는지 (config I/O 에러 등)
+  재현 테스트 작성 시 구체화 필요.
