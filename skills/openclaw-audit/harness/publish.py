@@ -187,11 +187,30 @@ def create_issue(repo: str, title: str, body: str, labels: list[str]) -> tuple[i
 # ────────────────────────────────────────────────────────────
 # 메인
 # ────────────────────────────────────────────────────────────
-def process(cand_id: str, apply_mode: bool, repo: str, force: bool, labels: list[str]) -> bool:
+def run_dedup_check(cand_id: str, repo: str) -> bool:
+    """dedup.py 를 서브프로세스로 실행. 매치 있으면 False."""
+    script = Path(__file__).resolve().parent / "dedup.py"
+    cmd = [sys.executable, str(script), cand_id, "--repo", repo]
+    out = subprocess.run(cmd, capture_output=False, text=True, check=False)
+    return out.returncode == 0
+
+
+def process(cand_id: str, apply_mode: bool, repo: str, force: bool, labels: list[str],
+            acknowledge_dedup: bool = False) -> bool:
     cand_path = CANDIDATES_DIR / f"{cand_id}.md"
     if not cand_path.exists():
         print(f"[ERROR] CAND not found: {cand_path}", file=sys.stderr)
         return False
+
+    # Pre-publish dedup check on upstream. Retrofit after CAND-004 — we should
+    # never file without at least a keyword/function search against the repo.
+    print(f"\n─ upstream dedup pre-check ({repo})")
+    dedup_ok = run_dedup_check(cand_id, repo)
+    if not dedup_ok and not (acknowledge_dedup or force):
+        print(f"\n[STOP] dedup 매치 있음. 사람 검토 후 --acknowledge-dedup 로 진행.", file=sys.stderr)
+        return False
+    if not dedup_ok and acknowledge_dedup:
+        print("[INFO] --acknowledge-dedup 로 진행 (사람이 중복 아님을 확인)")
 
     cand_fm, cand_body = parse_frontmatter(cand_path.read_text(encoding="utf-8"))
     if cand_fm is None:
@@ -273,6 +292,8 @@ def main() -> None:
     p.add_argument("--apply", action="store_true", help="실제 발행 (기본 dry-run)")
     p.add_argument("--repo", default=None, help="target repo (owner/name). 기본: openclaw origin")
     p.add_argument("--force", action="store_true", help="state 불일치/dedup 무시")
+    p.add_argument("--acknowledge-dedup", action="store_true",
+                   help="dedup 매치 확인 후 중복 아님을 확인했을 때만 진행")
     p.add_argument("--label", action="append", default=None, help="추가 라벨 (기본: bug)")
     args = p.parse_args()
 
@@ -284,7 +305,8 @@ def main() -> None:
     labels = args.label if args.label else list(DEFAULT_LABELS)
 
     print(f"모드: {'APPLY' if args.apply else 'DRY-RUN'}")
-    ok = process(args.cand_id, args.apply, repo, args.force, labels)
+    ok = process(args.cand_id, args.apply, repo, args.force, labels,
+                 acknowledge_dedup=args.acknowledge_dedup)
     sys.exit(0 if ok else 1)
 
 

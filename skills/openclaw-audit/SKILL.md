@@ -58,10 +58,18 @@ python skills/openclaw-audit/harness/gatekeep.py sanitize CAND-001 > /tmp/gk-inp
 python skills/openclaw-audit/harness/gatekeep.py apply CAND-001 --verdict-json /tmp/gk-verdict.json --shadow
 ```
 
-### 모드 6: 발행 — "publish {cand-id}"
+### 모드 6: Upstream 중복 검사 — "dedup {cand-id}"
 ```bash
-python skills/openclaw-audit/harness/publish.py CAND-001               # dry-run
+python skills/openclaw-audit/harness/dedup.py CAND-001 --repo openclaw/openclaw
+```
+- exit 0 → 매치 없음, 발행 안전
+- exit 1 → 매치 있음, 사람 검토 필수
+
+### 모드 7: 발행 — "publish {cand-id}"
+```bash
+python skills/openclaw-audit/harness/publish.py CAND-001               # dry-run (+ dedup pre-check)
 python skills/openclaw-audit/harness/publish.py CAND-001 --apply       # 실제 발행
+python skills/openclaw-audit/harness/publish.py CAND-001 --apply --acknowledge-dedup  # dedup 매치 있지만 중복 아님 확인함
 ```
 
 ## 호출 예시 (에이전트 프롬프트 템플릿)

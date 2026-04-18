@@ -125,15 +125,31 @@ scripts/committer --fast "WIP local" <files>
 
 ## 12. 파이프라인 별 PR 준비 체크리스트
 
-CAND 별 PR 생성 전:
+CAND 별 Issue/PR 생성 전:
 
 - [ ] gatekeeper 판정이 approve 또는 uncertain→사람 승인 완료
 - [ ] 재현 테스트 드래프트 (vitest) 가 openclaw 에서 수정 전 fail, 수정 후 pass 확인
 - [ ] 수정 파일이 CODEOWNERS @openclaw/secops 아님 (또는 소유자 동의 있음)
 - [ ] `pnpm build && pnpm check && pnpm test` 전부 green
 - [ ] 수정 scope 가 single bug (one thing per PR)
+- [ ] **upstream 중복 검사** — `python dedup.py CAND-N --repo openclaw/openclaw` 통과 (exit 0) 또는 매치 있어도 사람이 직접 확인 후 중복 아님 판단
 - [ ] PR 제목: `fix(<scope>): <summary>` 형식
 - [ ] PR 본문: 12개 템플릿 섹션 채움
 - [ ] AI-assisted 표시
 - [ ] 저자당 열린 PR 수 확인 (10 미만)
 - [ ] 관련 Issue 발행 후 `Closes #N` 연결
+
+### 중복 검사 세부 (dedup.py)
+
+자동 검색 전략:
+- 파일 stem (예: `subagent-registry`, `runtime-web-channel-plugin`)
+- evidence 블록에서 추출한 함수/변수 이름 (길이 ≥ 6)
+- FIND/CAND 제목의 영문 키워드 (길이 ≥ 5, 상위 2개 phrase)
+
+각 쿼리로 `gh issue list` + `gh pr list` (state=all, limit 15) 실행.
+자기 자신 (이미 발행된 이슈/PR) 은 local_state / index.yaml 참조로 제외.
+
+매치 있을 때 사람 판단 기준:
+- **진짜 중복** → 해당 이슈/PR 에 댓글로 추가 정보 제공, 새 PR 열지 않음
+- **관련이지만 다른 문제** → 새 PR 에 `Related #N` 로 언급
+- **완전히 다른 문제** → 무시, `--acknowledge-dedup` 로 publish 진행

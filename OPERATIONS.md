@@ -141,14 +141,32 @@ pnpm check            # lint/type OK
 pnpm build            # build OK
 ```
 
-### Step 10. Issue 발행
+### Step 10. Upstream 중복 검사 (필수)
 ```bash
-# dry-run
+# openclaw repo 에 이미 같은 이슈/PR 있는지 탐지
+python skills/openclaw-audit/harness/dedup.py CAND-001 --repo openclaw/openclaw
+```
+- 검색: 파일 stem + 함수/변수 이름 + 제목 키워드 (이슈 + PR, 전체 state)
+- 자기 자신 (local_state / index.yaml 의 openclaw_issue/pr) 은 자동 제외
+- exit 1 (매치 있음) → 사람이 각 링크 직접 확인 후 중복 아니면 `--acknowledge-dedup` 로 진행
+- exit 0 (매치 없음) → 안전하게 publish
+
+publish.py 가 dedup 을 pre-flight 로 자동 실행하므로 이 단계를 스킵해도 publish 가 차단.
+
+### Step 11. Issue 발행
+```bash
+# dry-run (dedup 자동 실행 후 body preview)
 python skills/openclaw-audit/harness/publish.py CAND-001
 
 # 실제 (사람 승인 후)
 python skills/openclaw-audit/harness/publish.py CAND-001 --apply
+
+# dedup 매치 있지만 중복 아님 확인한 경우
+python skills/openclaw-audit/harness/publish.py CAND-001 --apply --acknowledge-dedup
 ```
+
+참고: publish.py 의 body 는 한국어 FIND 카드 기반이라 upstream 발행 시 **영문 재작성 권장**.
+대안: `gh issue create --repo openclaw/openclaw --title ... --body-file ...` 로 수동 작성.
 
 ### Step 11. PR
 ```bash
