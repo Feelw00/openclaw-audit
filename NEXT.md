@@ -24,8 +24,9 @@ git log upstream/main --since="2 weeks ago" --oneline -- src/plugins/ src/cron/ 
 
 | 조건 | 액션 |
 |---|---|
-| PR 에 follow-up commit push 완료 | **Greptile 자동 재리뷰 없음** — PR 에 `@greptile review and provide confidence score` 코멘트로 수동 트리거 (`openclaw-pr-tracker.md` §"Greptile 재리뷰" 참조) |
-| PR 에 리뷰/봇 코멘트 있음 | 해당 worktree 에서 대응 → push → Greptile 재트리거 |
+| **메인테이너 (CODEOWNERS / maintainers.md 인물) CHANGES_REQUESTED / COMMENT** | **R-10 필수** — 답변 쓰기 전 3 agent cross-review (positive/critical/neutral) 먼저. 특히 critical agent 에 "메인테이너가 놓친 edge case 도 함께 탐색" 프롬프트. pushback 톤 금지. `calibration/CAL-006-maintainer-review-tone.md` 참조 |
+| PR 에 follow-up commit push 완료 | **Greptile 자동 재리뷰 없음** — PR 에 `@greptile review and provide confidence score` 코멘트로 수동 트리거 |
+| PR 에 bot 리뷰/코멘트 있음 | 해당 worktree 에서 대응 → push → Greptile 재트리거 |
 | `findings/drafts/` 에 파일 있음 | `validate.py --all --move` |
 | `findings/ready/` ≥ 2 건 (같은 도메인 누적) | clusterer 페르소나 호출 |
 | `issue-candidates/` 에 gatekeeper 미평가 CAND 있음 (`state: pending_gatekeeper`) | gatekeep 3-step (sanitize → agent → apply --shadow) |
@@ -119,10 +120,13 @@ Agent × 3 (general-purpose, 병렬):
 - 운영 상세: `OPERATIONS.md`
 - 기여 규칙: `openclaw-contribution.md`
 - 페르소나 규율: `agents/memory-leak-hunter.md` §"필수 규율 R-1~R-7"
-- **과거 false positive 회고 (반드시 읽기)**:
-  - `calibration/CAL-001-maintainer-verdict-CAND-004.md` (메인테이너가 잡음)
-  - `calibration/CAL-002-greptile-review-CAND-005.md` (Greptile bot)
-  - `calibration/CAL-003-cross-review-retract-CAND-006.md` (self-caught, R-7 원천)
+- **과거 실패 회고 (반드시 읽기)**:
+  - `calibration/CAL-001-maintainer-verdict-CAND-004.md` (메인테이너 post-merge reject, R-5 원천)
+  - `calibration/CAL-002-greptile-review-CAND-005.md` (Greptile bot partial gap)
+  - `calibration/CAL-003-cross-review-retract-CAND-006.md` (self-caught synthetic-only, R-7 원천)
+  - `calibration/CAL-004-upstream-merge-lag-CAND-005.md` (upstream superseded, R-8 원천)
+  - `calibration/CAL-005-bot-contradiction-boundary.md` (bot contradiction, R-9 원천)
+  - `calibration/CAL-006-maintainer-review-tone.md` (메인테이너 톤 실수, **R-10 원천 — 가장 위험**)
 - **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
   - 파이프라인 외 PR (#63105 cron-store split) 포함
   - Greptile 재리뷰 수동 트리거 절차

@@ -41,6 +41,9 @@ backtick, 콜론, 따옴표 포함 시 YAML 파싱 실패. title/problem/mechani
 ### R-7. 재현 테스트는 production hot-path 와 동일 branch (CAL-003)
 함수에 여러 branch (if/else, try/catch, switch) 가 있을 때, 프로덕션에서 실제 taken 되는 branch 에서 재현해야 함. 테스트가 mock 으로 다른 branch 를 강제하면 false positive. production caller 추적 후 불일치 시 severity 하향 또는 abandon.
 
+### R-10. 메인테이너 리뷰 대응 (CAL-006, 외부 리뷰 단계 규율)
+이 페르소나 자체는 FIND 작성용이지만, 네가 생산한 FIND 가 PR 이 되어 메인테이너 review 받으면 답변 작성 전에 **반드시** cross-review 3 agent (positive/critical/neutral) 선 실행. Critical agent 는 메인테이너가 지적한 불변식의 **주변 edge case** (non-integer, NaN, boundary, hidden rounding) 까지 탐색. 답변 톤은 사과 + 재검토 결과 보고. 상세: maintainer-review-protocol.md
+
 ---
 
 # cron-reliability-auditor

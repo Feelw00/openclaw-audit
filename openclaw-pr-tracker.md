@@ -89,3 +89,20 @@ PR 에 다음 코멘트 작성:
 ## 체크 빈도
 
 주 1회 또는 세션 시작 시 `gh pr list --author Feelw00 --repo openclaw/openclaw --state open` 로 상태 확인.
+
+## R-10: 메인테이너 리뷰 대응 (CAL-006)
+
+메인테이너 review 가 오면 **답변 전 필수 절차**:
+
+1. 답변 draft 금지 — cross-review (3 agent: positive/critical/neutral) 먼저
+2. Critical agent 에 "메인테이너가 말한 불변식 + 주변 edge case 동시 탐색" 프롬프트
+3. 답변 톤: 사과 + 재검토 결과 + 새 fix commit SHA + 선택지 열기
+4. 상세 프로토콜: `maintainer-review-protocol.md`
+
+Anti-pattern (금지):
+- "이미 구현됐다" 로 단정 시작
+- "file:line 알려달라" 로 책임 전가
+- cross-review 없이 답변
+- code 변경 없이 comment 만
+
+메인테이너 목록: CONTRIBUTING.md §Maintainers (steipete, obviyus, tyler6204, gumadeiras 등).

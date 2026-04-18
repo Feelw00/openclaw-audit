@@ -81,6 +81,9 @@ R-3 Grep 으로 나온 `delete` / `clear` / `evict` / `cleanup` 경로 각각에
 
 **반례 (CAL-001, CAND-004)**: `pendingLifecycleErrorByRunId.delete` 경로 4개 열거했지만 L250 (15초 timer 본체 첫 줄, unconditional) 을 "entry 부재 시 조건부" 로 오독. 결과: maintainer 가 false positive 지적.
 
+### R-10. 메인테이너 리뷰 대응 (CAL-006, 외부 리뷰 단계 규율)
+이 페르소나 자체는 FIND 작성용이지만, 네가 생산한 FIND 가 PR 이 되어 메인테이너 review 받으면 답변 작성 전에 **반드시** cross-review 3 agent (positive/critical/neutral) 선 실행. Critical agent 는 메인테이너가 지적한 불변식의 **주변 edge case** (non-integer, NaN, boundary, hidden rounding) 까지 탐색. 답변 톤은 사과 + 재검토 결과 보고. 상세: maintainer-review-protocol.md
+
 ---
 
 # memory-leak-hunter
