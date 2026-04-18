@@ -417,3 +417,39 @@ items:
         \ '`' that cannot start any token\n  in \"<unicode string>\", line 48, column\
         \ 12:\n      because: `??=` (nullish assignment) 는 lef ... \n            \
         \   ^"
+  CAND-009:
+    kind: candidate
+    state: published
+    transitions:
+    - from: null
+      to: published
+      actor: human
+      reason: 'issue #68541 + PR #68543 (approve@medium shadow + human review + repro/fix
+        PASS)'
+      at: '2026-04-18T12:27:01+00:00'
+    created_at: '2026-04-18T12:27:01+00:00'
+    updated_at: '2026-04-18T12:27:01+00:00'
+  CAND-007:
+    kind: candidate
+    state: abandoned
+    transitions:
+    - from: null
+      to: abandoned
+      actor: human
+      reason: 'uncertain@medium: bin entry 가 dist 경로라 src/index.ts:90 isMain 미작동 가능성.
+        P3. 실제 프로덕션 영향 불명확 → abandon.'
+      at: '2026-04-18T12:27:01+00:00'
+    created_at: '2026-04-18T12:27:01+00:00'
+    updated_at: '2026-04-18T12:27:01+00:00'
+  CAND-008:
+    kind: candidate
+    state: abandoned
+    transitions:
+    - from: null
+      to: abandoned
+      actor: human
+      reason: 'uncertain@medium: backoff.ts asymmetric jitter 는 실재하나 thundering-herd
+        가 실제 문제 되려면 다수 조건 필요. P3. severity 낮음 → abandon.'
+      at: '2026-04-18T12:27:01+00:00'
+    created_at: '2026-04-18T12:27:01+00:00'
+    updated_at: '2026-04-18T12:27:01+00:00'

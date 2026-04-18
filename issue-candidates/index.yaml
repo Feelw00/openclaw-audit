@@ -48,18 +48,24 @@ candidates:
   - id: CAND-007
     type: single
     finding_count: 1
-    state: pending_gatekeeper
-    note: "FIND-infra-process-memory-001 — installUnhandledRejectionHandler idempotency 부재로 process.on('unhandledRejection') 리스너 중복 등록 (P3)"
+    state: abandoned
+    note: "FIND-infra-process-memory-001 — installUnhandledRejectionHandler idempotency"
+    retracted_reason: "uncertain@medium: bin entry 가 dist 경로라 isMain 경로 미작동 가능성, P3 — human abandon"
   - id: CAND-008
     type: single
     finding_count: 1
-    state: pending_gatekeeper
-    note: "FIND-infra-retry-concurrency-002 — computeBackoff 가 단방향 + Math.random jitter 로 thundering-herd 완화 반감, retry.ts 와 비일관 (P3)"
+    state: abandoned
+    note: "FIND-infra-retry-concurrency-002 — computeBackoff asymmetric jitter"
+    retracted_reason: "uncertain@medium: thundering-herd 실재성 약함, P3 — human abandon"
   - id: CAND-009
     type: single
     finding_count: 1
-    state: pending_gatekeeper
-    note: "FIND-infra-retry-concurrency-003 — retryAsync 가 retryAfterMs 에도 대칭 jitter 적용해 서버 Retry-After 하방 위반 (P2)"
+    state: published
+    note: "FIND-infra-retry-concurrency-003 — retryAsync retryAfterMs 하방 위반"
+    openclaw_issue: 68541
+    openclaw_pr: 68543
+    openclaw_branch: "fix/retry-after-lower-bound"
+    openclaw_commit: 0fd08a0fd0
 published:
   - cand_id: CAND-004
     issue: 68487
@@ -72,4 +78,8 @@ published:
   - cand_id: CAND-005
     issue: 68529
     pr: 68531
+    at: 2026-04-18
+  - cand_id: CAND-009
+    issue: 68541
+    pr: 68543
     at: 2026-04-18
