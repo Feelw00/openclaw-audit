@@ -53,9 +53,12 @@ counter_evidence:
   reason: 'none_found: dispose/teardown 경로를 Read 로 전부 확인하지 못함. flushRegistryCache
     같은 명시적 cleanup API 는 이 파일에서 발견 못함. 기존 test 에서 Map 크기 검증 없음 (vitest.plugins.config.ts
     샘플).'
-status: discovered
+status: rejected
 discovered_by: memory-leak-hunter
 discovered_at: '2026-04-18'
+rejected_reasons:
+  - "retracted: gatekeeper counter_evidence 에서 setCachedPluginRegistry (loader.ts:346-352) 의 while-loop FIFO eviction 로직 발견. registryCache 는 실제로 pluginRegistryCacheEntryCap 상한 강제됨. FIND 는 선언부(196-199) 만 보고 cap 강제 로직을 누락한 성급한 결론."
+  - "evidence retained for calibration in metrics/shadow-runs.jsonl"
 ---
 # registryCache Map 에 eviction/TTL 정책 없이 계속 set 만 호출됨
 

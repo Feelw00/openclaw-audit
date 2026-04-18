@@ -1,6 +1,7 @@
 candidates:
   - id: CAND-001
-    type: epic
-    finding_count: 2
-    state: pending_gatekeeper
+    type: single
+    finding_count: 1
+    state: needs-human-review   # gatekeeper shadow uncertain@medium; re-gatekeep 대기
+    revision_note: "FIND-001 retract, FIND-003 만 유지"
 published: []
