@@ -64,6 +64,11 @@ feature 제안, 리팩터만 하는 PR, CI 수정 PR 은 금지 (CONTRIBUTING.md
 - 테스트: per-instance 스텁, 프로토타입 변경 금지.
 - 보안 민감 경로 수정 시 `.github/CODEOWNERS` 확인.
 
+## 세션 시작 — `NEXT.md` 를 먼저 열어라
+
+**새 세션에서 가장 먼저**: `NEXT.md` 의 결정 트리에 따라 다음 액션 선택.
+이 CLAUDE.md 는 규칙 참조용, NEXT.md 는 실행 가이드.
+
 ## 세션 시작 체크리스트
 
 ```bash
