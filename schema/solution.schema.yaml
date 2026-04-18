@@ -1,0 +1,164 @@
+# Solution Card 스키마 v1
+#
+# 저장 위치: solutions/SOL-NNNN.md (영구)
+# 에이전트: solution-drafter (gatekeeper-approved 된 CAND 에서만 생성)
+#
+# Solution Card 는 "무엇을 어떻게 고칠까"를 기록.
+# Finding Card 는 문제만, Solution Card 는 해결만. 교차 참조로 연결.
+
+version: 1
+target_project: openclaw
+
+# ────────────────────────────────────────────────────────────
+# 필수 필드 (frontmatter)
+# ────────────────────────────────────────────────────────────
+required_fields:
+
+  id:
+    type: string
+    pattern: '^SOL-[0-9]{4}$'
+    description: '형식: SOL-NNNN. 전역 시퀀스.'
+
+  finding_ids:
+    type: array of string (FIND-xxx)
+    min_length: 1
+    description: '이 솔루션이 다루는 FIND 목록 (epic 이면 2개 이상).'
+
+  cand_id:
+    type: string
+    pattern: '^CAND-[0-9]{3}$'
+    description: '연결된 Issue Candidate ID.'
+
+  title:
+    type: string
+    max_length: 100
+
+  symptom_type:
+    type: enum
+    values: [memory-leak, lifecycle-gap, concurrency-race, error-boundary-gap, shutdown-gap, other]
+
+  severity:
+    type: enum
+    values: [P0, P1, P2, P3]
+
+  repro_test_target_file:
+    type: string
+    description: |
+      openclaw repo 내 이식 목적지 경로.
+      기존 테스트 파일에 추가하거나 새 파일 생성.
+      예: src/plugins/loader.test.ts, src/cron/service/timer.test.ts
+
+  repro_test_profile:
+    type: enum
+    values:
+      - default                # pnpm test
+      - cron                   # vitest.cron.config.ts
+      - plugins                # vitest.plugins.config.ts
+      - infra                  # vitest.infra.config.ts
+      - full-core-unit         # vitest.full-core-unit.config.ts
+      - contracts              # vitest.contracts.config.ts
+    description: '어느 vitest 프로필에 속하는가. CI 게이트와 매칭.'
+
+  repro_test_draft:
+    type: string (TypeScript code)
+    description: |
+      실제 failing test 코드. vitest 문법. 최소 완결된 1개 `it(...)` 블록.
+      이 테스트를 openclaw 에 이식하면 수정 전엔 실패, 수정 후엔 성공해야 함.
+      외부 mock 최소화 — 가능하면 메모리 내 검증으로.
+
+  fix_approach_candidates:
+    type: array
+    min_length: 1
+    max_length: 3
+    item_schema:
+      name: '후보 이름 (예: "add-ttl-eviction")'
+      summary: '한 줄 요약'
+      tradeoff: '이 후보의 위험/비용'
+      change_scope: 'XS | S | M (L/XL 은 피함)'
+      files_touched: '예상 수정 파일 목록'
+    description: |
+      최대 3개. 각각 tradeoff 명시.
+      XS/S 를 우선. M 이상은 사전 상의 권장.
+
+  chosen_fix:
+    type: integer | null
+    description: |
+      fix_approach_candidates 의 0-based index.
+      null 이면 미결정 (drafter 생성 직후 기본값).
+      사람이 검토 후 결정.
+
+  pr_size_estimate:
+    type: enum
+    values: [XS, S, M]
+    description: |
+      chosen_fix 기준 예상 diff 크기.
+      XS = < 50줄, S = 50-150줄, M = 150-400줄.
+      L 이상 예상 시 설계 단계로 복귀 (분할).
+
+  status:
+    type: enum
+    values: [drafted, chosen, implemented, pr-opened, pr-merged, abandoned]
+    default_on_create: drafted
+
+  drafted_by:
+    type: string
+    description: 'solution-drafter 또는 사람 이름'
+
+  drafted_at:
+    type: string
+    format: YYYY-MM-DD
+
+# ────────────────────────────────────────────────────────────
+# 선택 필드
+# ────────────────────────────────────────────────────────────
+optional_fields:
+
+  openclaw_issue_number:
+    type: integer
+    description: '발행 후 설정 (publish.py 가 채움)'
+
+  openclaw_pr_number:
+    type: integer
+    description: 'PR 생성 후 설정'
+
+  evidence_fingerprint:
+    type: object
+    description: |
+      chosen_fix 시점의 증거 파일 SHA256 (첫 120자 블록).
+      PR 직전 drift 체크용.
+
+  verification_log:
+    type: string
+    description: |
+      "pnpm test <path>" 실행 결과 요약. 수정 전 실패 / 수정 후 성공 증명.
+
+# ────────────────────────────────────────────────────────────
+# 본문 섹션
+# ────────────────────────────────────────────────────────────
+body_sections:
+  - name: 문제 요약
+    required: true
+    note: FIND 들의 핵심 한 문단.
+
+  - name: 재현 테스트
+    required: true
+    note: |
+      repro_test_draft 코드 블록 + 이식 가이드.
+      "openclaw/{repro_test_target_file} 에 추가" 형식.
+
+  - name: 해결 후보
+    required: true
+    note: fix_approach_candidates 각각을 별도 subsection 으로.
+
+  - name: 추천
+    required: true
+    note: chosen_fix 선택 근거 (또는 "미결정 — 사람 검토 필요").
+
+  - name: PR 계획
+    required: true
+    note: |
+      - 브랜치 이름 제안
+      - 커밋 메시지 초안
+      - 수정할 파일 목록
+      - 영향 받는 기존 테스트 (있다면)
+      - 메인테이너 notify 대상 (CODEOWNERS 확인)

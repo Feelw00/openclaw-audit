@@ -1,0 +1,263 @@
+# Finding (Reliability Problem Card) 스키마 v1
+#
+# 저장 위치:
+#   findings/drafts/    — 에이전트 초안 (게이트 대기)
+#   findings/ready/     — 게이트 통과 (ephemeral, 발행 후 삭제)
+#   findings/rejected/  — 반려 (6개월 보존)
+#
+# 이 카드는 '문제와 원인'만 기록. 해결 방안은 Solution Card (SOL-NNNN.md) 에서.
+# 에이전트는 항상 drafts/ 에 먼저 쓴다. validate.py 통과 후 ready/ 로 이동.
+
+version: 1
+target_project: openclaw      # TS/Node.js/pnpm monorepo
+target_project_root: /Users/lucas/Project/openclaw
+
+change_log:
+  - v1: 초기. Spring 파이프라인에서 재작성 — @Transactional/@Version/JPA 필드 제거.
+        symptom_type 도입 (memory-leak/lifecycle-gap/concurrency-race/error-boundary-gap/shutdown-gap).
+        counter_evidence 를 필수로 승격 (gatekeeper invariant 와 일치).
+
+# ────────────────────────────────────────────────────────────
+# 필수 필드 (YAML frontmatter)
+# ────────────────────────────────────────────────────────────
+required_fields:
+
+  id:
+    type: string
+    pattern: '^FIND-[a-z][a-z0-9-]*-[0-9]{3}$'
+    description: |
+      형식: FIND-{cell-id}-{3자리 시퀀스}
+      예: FIND-plugins-memory-001, FIND-cron-concurrency-012
+      셀 기반 네임스페이스로 병렬 실행 시 충돌 회피.
+
+  cell:
+    type: string
+    pattern: '^[a-z]+(-[a-z]+)+$'
+    description: 'grid.yaml 셀 ID. 예: plugins-memory, cron-concurrency'
+
+  title:
+    type: string
+    max_length: 80
+    description: 한 줄 요약. 본문 # 헤더와 동일.
+
+  file:
+    type: string
+    description: |
+      증거 파일 경로 (openclaw repo 루트 기준 상대경로).
+      grid.yaml 의 해당 cell → domain → allowed_paths 중 하나에 glob 매칭 필요.
+      (B-1-1 경로 스코프 검증)
+
+  line_range:
+    type: string
+    pattern: '^[0-9]+(-[0-9]+)?$'
+    description: '증거 코드의 라인 범위. 예: 87 또는 87-104. 파일 길이 내 필수.'
+
+  evidence:
+    type: string (markdown code fence)
+    description: |
+      실제 코드 스니펫. ```ts ... ``` 블록.
+      line_range 의 실제 파일 내용과 일치 (공백 정규화 후 비교).
+      최소 3라인.
+      (B-1-2 증거 실존 검증)
+
+  symptom_type:
+    type: enum
+    values:
+      - memory-leak          # 무제한 Map/Set 성장, setInterval 미정리, listener 누적
+      - lifecycle-gap        # load 실패 rollback 부재, unload/dispose 경로 누락
+      - concurrency-race     # Promise.race loser 처리, 공유 state 락 없음
+      - error-boundary-gap   # unhandledRejection 누락, floating promise, process.exit pre-cleanup
+      - shutdown-gap         # cleanup ordering, async cleanup 누락
+      - other                # 위 분류에 맞지 않음 — rationale 에 사유 기술
+    description: '증상 유형. 에이전트 페르소나별 자연스러운 분류와 일치.'
+
+  problem:
+    type: string
+    description: |
+      런타임 증상. "무엇이 잘못됐는가"만 기술.
+      해결책/권고/수정 제안 금지 (Solution Card 영역).
+
+  mechanism:
+    type: string
+    description: |
+      증상이 어떻게 발현되는가. 구체적 실행 시퀀스.
+        - memory-leak: "요청 N개 → Map.set() N회 → delete 없음 → 프로세스 생애 동안 무한 성장"
+        - concurrency-race: "T1: load → T2: load → T1: save → T2: save (last-writer-wins)"
+        - lifecycle-gap: "activate → ... throw → catch → registry 에 잔존 참조 유지"
+      번호 목록 또는 의사 시퀀스 권장.
+
+  root_cause_chain:
+    type: array
+    min_length: 3
+    max_length: 5
+    item_schema:
+      why: '이 지점에서 묻는 질문'
+      because: '이유'
+      evidence_ref: '파일:라인 | git hash | "N/A — {그 이유}"'
+    description: |
+      5 Whys. "API가 잘못됐다" 같은 1단계 표면 원인에서 멈추지 말 것.
+      최소 3단계. 각 단계에 evidence_ref (최소 2개는 concrete = 파일:라인).
+
+  impact_hypothesis:
+    type: enum
+    values:
+      - memory-growth       # 프로세스 메모리 누적 → OOM 또는 GC 부하
+      - crash               # 예외 전파 → 프로세스 종료
+      - hang                # 데드락 / 무한 대기
+      - data-loss           # 영구 저장 일관성 손실
+      - wrong-output        # 기능 오작동 / 잘못된 결과
+      - resource-exhaustion # 핸들/디스크/FD 누수
+    description: '가장 가능성 높은 최악 결과. enum 으로 좁혀서 추측 남발 방지.'
+
+  impact_detail:
+    type: string
+    description: |
+      정량 가능하면 정량: 호출 빈도, 메모리 증가률, 지연, 재현 조건.
+      불가능하면 "정성: {설명}" 로 명시. "빠를 것이다" 같은 모호 표현 금지.
+
+  severity:
+    type: enum
+    values: [P0, P1, P2, P3]
+    description: |
+      P0 = 프로덕션 장애 유발 / 데이터 손실 위험 / 자주 트리거됨
+      P1 = 체감 영향 (성장 속도, 재현 용이)
+      P2 = 조건 충족 시 발생 (드문 경로)
+      P3 = 위생 수준
+
+  counter_evidence:
+    type: object
+    schema:
+      path: 'string | null — 반증 위치'
+      line: 'string | null'
+      reason: '반증 내용 또는 "none_found: {탐색 요약}"'
+    description: |
+      페르소나가 이 주장을 반증하려 시도한 결과.
+      "찾지 못함" 도 valid — 단, 탐색한 카테고리를 rationale 에 명시.
+      필수 필드 (invariant, gatekeeper 와 정합).
+
+  status:
+    type: enum
+    values: [draft, discovered, candidate, gatekeeper-approved, published, rejected]
+    default_on_create: draft
+    description: |
+      draft               → drafts/ 위치, validate 미통과
+      discovered          → ready/ 위치, validate 통과
+      candidate           → issue-candidates/CAND-NNN.md 에 포함됨
+      gatekeeper-approved → gatekeeper 통과 (shadow 시에도 이 값)
+      published           → openclaw repo 에 GH Issue 발행됨 (local-state 에서 issue_number 연결)
+      rejected            → rejected/ 위치, rejected_reasons 동반
+
+  discovered_by:
+    type: string
+    description: '페르소나 이름 (예: memory-leak-hunter)'
+
+  discovered_at:
+    type: string
+    format: YYYY-MM-DD
+    description: 절대 날짜. 상대 표현 금지.
+
+# ────────────────────────────────────────────────────────────
+# 선택 필드
+# ────────────────────────────────────────────────────────────
+optional_fields:
+
+  cross_refs:
+    type: array of string (FIND-XXXX)
+    description: 같은 증상의 다른 도메인 FIND 연결 (clusterer 가 자주 채움)
+
+  solution_refs:
+    type: array of string (SOL-XXXX)
+    description: 연결된 Solution Card. drafter 가 채움.
+
+  domain_notes_ref:
+    type: string
+    description: 관련 domain-notes 파일 경로
+
+  related_tests:
+    type: array of string
+    description: |
+      openclaw repo 에서 이 증상을 이미 다루는(또는 실패해야 할) 기존 테스트 파일.
+      페르소나가 Grep 으로 찾은 결과.
+
+  rejected_reasons:
+    type: array of string
+    description: 반려 사유 (하네스 규칙 번호 + 설명). status == rejected 시에만.
+
+# ────────────────────────────────────────────────────────────
+# 본문 섹션 (frontmatter 뒤 마크다운)
+# ────────────────────────────────────────────────────────────
+body_sections:
+  - name: 문제
+    required: true
+    note: frontmatter problem 서술 확장
+
+  - name: 발현 메커니즘
+    required: true
+    note: frontmatter mechanism 확장. 시퀀스 다이어그램 환영.
+
+  - name: 근본 원인 분석
+    required: true
+    note: frontmatter root_cause_chain 의 각 단계를 서술로 풀어 기술
+
+  - name: 영향
+    required: true
+    note: impact_hypothesis + impact_detail 확장. 재현 시나리오 포함.
+
+  - name: 반증 탐색
+    required: true
+    note: |
+      counter_evidence 필드의 서술형 확장.
+      탐색한 카테고리 (최소 2개) 와 결과 나열:
+      - 숨은 방어 / defense-in-depth
+      - 기존 테스트 커버리지
+      - 호출 빈도 / 경로 활성 여부
+      - 설정 / feature flag
+      - 주변 코드 맥락 (주석/관련 클래스)
+
+  - name: Self-check
+    required: true
+    note: |
+      3개 subsection 필수:
+      ### 내가 확실한 근거
+      ### 내가 한 가정
+      ### 확인 안 한 것 중 영향 가능성
+
+# ────────────────────────────────────────────────────────────
+# 게이트키핑 (validate.py 가 강제)
+# ────────────────────────────────────────────────────────────
+gatekeeping:
+
+  B-1-1_path_scope:
+    rule: file 경로가 cell → domain → allowed_paths 중 하나에 glob 매칭
+    failure_action: reject
+
+  B-1-2_evidence_existence:
+    rules:
+      - openclaw repo 내 file 존재
+      - line_range 파싱 성공, 파일 길이 내
+      - evidence 코드 블록과 실제 파일 내용 일치 (공백 정규화 후)
+    failure_action: reject
+
+  B-1-3_schema_completeness:
+    rule: required_fields 전부 존재, 타입/패턴/enum 일치
+    failure_action: reject
+
+  B-1-4_duplicate:
+    rule: |
+      같은 cell 내에서 (file, line_range) 겹치면 반려.
+      다른 symptom_type 이면 cross_refs 로 연결하고 재제출 권장.
+    failure_action: reject
+
+  B-1-5_root_cause_depth:
+    rules:
+      - root_cause_chain.length ∈ [3, 5]
+      - 최소 2개는 concrete evidence_ref (파일:라인 또는 git hash)
+    failure_action: reject
+
+  B-1-6_body_sections:
+    rule: 6개 필수 body_sections 모두 존재 (특히 "반증 탐색", "Self-check")
+    failure_action: reject
+
+  B-1-7_counter_evidence:
+    rule: 'counter_evidence.reason 비어있지 않음 ("none_found: {탐색 요약}" 도 OK)'
+    failure_action: reject

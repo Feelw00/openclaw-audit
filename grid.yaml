@@ -1,0 +1,192 @@
+# openclaw 신뢰성 감사 — 셀 인벤토리
+#
+# 셀 = (domain, type). 한 셀 = 한 에이전트 호출 = FIND 최대 5건.
+# 페르소나별 1개 타입 전담, 도메인별 코드 범위 분리.
+#
+# 실행 시 각 페르소나의 allowed_paths 내부만 Grep/Read 허용 (토큰 절약 + scope 유지).
+
+version: 1
+target_project_root: /Users/lucas/Project/openclaw
+
+# ────────────────────────────────────────────────────────────
+# 타입 (문제 유형 × 담당 페르소나)
+# ────────────────────────────────────────────────────────────
+types:
+  - id: memory
+    name: 메모리 누수·무제한 성장
+    agent: memory-leak-hunter
+    focus: 'Map/Set unbounded, setInterval 미정리, EventEmitter 리스너 누적, WeakRef 미사용'
+
+  - id: lifecycle
+    name: 초기화·해제 비대칭
+    agent: plugin-lifecycle-auditor
+    focus: 'load 실패 rollback 부재, unload/dispose 경로 누락, jiti 캐시 일관성'
+
+  - id: concurrency
+    name: 동시성·레이스
+    agent: cron-reliability-auditor    # 크론 도메인 겸업. 비-크론은 concurrency-auditor 후속
+    focus: 'Promise.race loser 처리, 공유 state 락 없음, catch-up ordering'
+
+  - id: error-boundary
+    name: 에러 경계 누락
+    agent: error-boundary-auditor
+    focus: 'unhandledRejection, floating promise, process.exit pre-cleanup, JSON.parse'
+
+# 지연 도입 — 셀 생산성 나오면 추가
+#  - id: shutdown
+#    name: 종료 시퀀스 누락
+#    agent: shutdown-auditor
+
+# ────────────────────────────────────────────────────────────
+# 도메인 (코드 범위)
+# ────────────────────────────────────────────────────────────
+domains:
+  - id: plugins
+    name: 플러그인 시스템
+    allowed_paths:
+      - 'src/plugins/**'
+      - 'src/plugin-sdk/**'
+    priority_files:
+      - src/plugins/loader.ts
+      - src/plugins/registry.ts
+      - src/plugins/manifest-registry.ts
+      - src/plugins/discovery.ts
+
+  - id: cron
+    name: 크론·스케줄러
+    allowed_paths:
+      - 'src/cron/**'
+    priority_files:
+      - src/cron/service/timer.ts
+      - src/cron/store.ts
+      - src/cron/schedule.ts
+      - src/cron/delivery.ts
+
+  - id: agents-registry
+    name: 에이전트 런타임 레지스트리
+    allowed_paths:
+      - 'src/agents/subagent-registry*.ts'
+      - 'src/agents/subagent-registry-memory.ts'
+      - 'src/agents/live-cache-test-support.ts'
+    priority_files:
+      - src/agents/subagent-registry.ts
+      - src/agents/subagent-registry-memory.ts
+
+  - id: infra-process
+    name: 프로세스·에러 경계
+    allowed_paths:
+      - 'src/infra/unhandled-rejections.ts'
+      - 'src/infra/process-respawn.ts'
+      - 'src/infra/restart.ts'
+      - 'src/infra/abort-signal.ts'
+      - 'src/infra/approval-handler-runtime.ts'
+    priority_files:
+      - src/infra/unhandled-rejections.ts
+      - src/infra/process-respawn.ts
+
+  - id: infra-retry
+    name: 재시도·백오프
+    allowed_paths:
+      - 'src/infra/retry*.ts'
+      - 'src/infra/backoff.ts'
+    priority_files:
+      - src/infra/retry.ts
+      - src/infra/retry-policy.ts
+      - src/infra/backoff.ts
+
+# ────────────────────────────────────────────────────────────
+# 셀 (domain × type 교차)
+# ────────────────────────────────────────────────────────────
+# 초기 Phase 1 = 5셀 (우선순위). 나머지는 Phase 2.
+cells:
+  # ─── Phase 1 (우선순위) ───
+  - id: plugins-memory
+    domain: plugins
+    type: memory
+    state: planned
+    phase: 1
+    hints:
+      - 'registryCache Map cap 후 eviction 정책 (src/plugins/loader.ts:196 근방)'
+      - 'jiti-loader-cache — 동적 import 캐시 무한 누적 가능성'
+      - 'memory-state.ts — plugin 메모리 state TTL 누락 여부'
+
+  - id: plugins-lifecycle
+    domain: plugins
+    type: lifecycle
+    state: planned
+    phase: 1
+    hints:
+      - 'loader.ts 에서 load 실패 시 record.status=error 설정만, registry 에서 rollback 없음'
+      - 'manifest-registry parse 실패 후 partial entry 잔존 가능성'
+      - 'dispose/unload 메소드가 런타임 플러그인 타입별로 일관되게 호출되는지'
+
+  - id: cron-concurrency
+    domain: cron
+    type: concurrency
+    state: planned
+    phase: 1
+    hints:
+      - 'timer.ts locked() in-memory only — 멀티 인스턴스 중복 실행 위험'
+      - 'Promise.race([executeJobCore, timeout]) 후 loser promise 처리 (timer.ts:77-103)'
+      - 'startup catch-up stagger 중 새 trigger 들어올 때 ordering (timer.ts:1084-1115)'
+      - 'stuck runningAtMs marker 복구 경로 검증'
+
+  - id: agents-registry-memory
+    domain: agents-registry
+    type: memory
+    state: planned
+    phase: 1
+    hints:
+      - 'subagentRuns Map TTL/cap 여부 (subagent-registry-memory.ts)'
+      - 'pendingLifecycleErrorByRunId — 5분 TTL 타이머 누락 시 무한 누적'
+      - 'resumeRetryTimers Set — cleanup 경로 검증'
+
+  - id: infra-process-error-boundary
+    domain: infra-process
+    type: error-boundary
+    state: planned
+    phase: 1
+    hints:
+      - 'unhandledRejection handler chain ordering (unhandled-rejections.ts:339-380)'
+      - 'process.exit 호출 직전 cleanup (restoreTerminalState, DB close, flush) 순서'
+      - 'orphan recovery 의 floating promise (subagent-registry.ts:196-214)'
+
+  # ─── Phase 2 (초기 성공 확인 후) ───
+  - id: plugins-error-boundary
+    domain: plugins
+    type: error-boundary
+    state: unseeded
+    phase: 2
+  - id: cron-memory
+    domain: cron
+    type: memory
+    state: unseeded
+    phase: 2
+  - id: infra-retry-concurrency
+    domain: infra-retry
+    type: concurrency
+    state: unseeded
+    phase: 2
+  - id: infra-process-memory
+    domain: infra-process
+    type: memory
+    state: unseeded
+    phase: 2
+  - id: agents-registry-concurrency
+    domain: agents-registry
+    type: concurrency
+    state: unseeded
+    phase: 2
+
+# ────────────────────────────────────────────────────────────
+# 상태 전이 (셀 단위, grid.yaml 내 관리)
+# ────────────────────────────────────────────────────────────
+states:
+  - unseeded          # Phase 2, 아직 시작 안 함
+  - planned           # Phase 1, 대기 중
+  - in_progress       # 에이전트 실행 중
+  - done              # FIND 생성됨 (validate 통과 또는 반려)
+  - integrated        # clusterer 가 처리 완료
+  - verified          # 최소 1개 FIND 가 gatekeeper 통과
+  - published         # 최소 1개 Issue 발행
+  - skipped           # 의도적 스킵 (사유 명시)
