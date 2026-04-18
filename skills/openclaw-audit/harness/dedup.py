@@ -78,6 +78,29 @@ def gh_search(kind: str, repo: str, query: str, limit: int = 20) -> list[dict]:
         return []
 
 
+def gh_search_commits(repo: str, query: str, limit: int = 10) -> list[dict]:
+    """CAL-004: upstream 이 이미 merge 한 fix 를 commit 메시지로 탐지."""
+    owner, name = repo.split("/", 1)
+    cmd = [
+        "gh", "search", "commits",
+        "--owner", owner,
+        "--repo", name,
+        query,
+        "--json", "sha,commit,url,repository",
+        "--limit", str(limit),
+        "--sort", "author-date",
+        "--order", "desc",
+    ]
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if out.returncode != 0 or not out.stdout.strip():
+            return []
+        return json.loads(out.stdout)
+    except Exception as e:
+        print(f"[WARN] gh search commits failed for '{query}': {e}", file=sys.stderr)
+        return []
+
+
 # ────────────────────────────────────────────────────────────
 def extract_search_terms(cand_fm: dict, finds: list[tuple[dict, str]]) -> dict:
     """CAND + FIND 에서 검색 키 추출."""
@@ -227,6 +250,23 @@ def main() -> None:
     except Exception:
         pass
     self_ids.discard(None)
+
+    # CAL-004: upstream 이 이미 merge 한 fix 를 commit 메시지로 탐지
+    commit_hits: list[dict] = []
+    seen_shas: set[str] = set()
+    for fn in terms["function_names"][:3]:
+        if len(fn) >= 6:
+            for c in gh_search_commits(repo, fn, limit=5):
+                sha = c.get("sha", "")
+                if sha and sha not in seen_shas:
+                    seen_shas.add(sha)
+                    commit_hits.append(c)
+    if commit_hits:
+        print(f"\n── upstream merged commits (CAL-004 guard)")
+        for c in commit_hits[:10]:
+            msg = (c.get("commit") or {}).get("message", "").split("\n")[0][:100]
+            print(f"  {c.get('sha','')[:10]}  {msg}")
+            print(f"    {c.get('url','')}")
 
     results: list[dict] = []
     for label, kind, query in queries:

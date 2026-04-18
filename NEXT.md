@@ -2,13 +2,20 @@
 
 새 세션 시작 시 이 파일 하나만 보고 다음 액션 결정.
 
-## 1. 부팅 3 명령
+## 1. 부팅 4 명령 (CAL-004 반영)
 
 ```bash
 cd /Users/lucas/Project/openclaw-audit
 git pull --ff-only
 /tmp/openclaw-audit-venv/bin/python skills/openclaw-audit/harness/local_state.py show | head -40
 ls findings/drafts/ findings/ready/ issue-candidates/ solutions/ 2>/dev/null
+
+# CAL-004 필수: upstream 최신 확인 + 관심 영역 최근 변경
+cd /Users/lucas/Project/openclaw
+git remote | grep -q upstream || git remote add upstream https://github.com/openclaw/openclaw.git
+git fetch upstream main
+git log upstream/main --since="2 weeks ago" --oneline -- src/plugins/ src/cron/ src/infra/ src/agents/ src/context-engine/ | head -30
+# 관련 영역 최근 변경 있으면 worktree base 를 upstream/main 으로 rebase 또는 새 worktree 생성
 ```
 
 (venv 없으면: `python3 -m venv /tmp/openclaw-audit-venv && /tmp/openclaw-audit-venv/bin/pip install pyyaml`)

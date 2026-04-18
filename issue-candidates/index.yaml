@@ -1,86 +1,97 @@
 candidates:
-  - id: CAND-001
-    type: single
-    finding_count: 1
-    state: abandoned   # v2 gatekeeper (R-5 + primary-path inversion) reject_suspected@medium, human accept
-    revision_note: "FIND-001 retract, FIND-003 만 유지 → v2 재평가로 최종 reject"
-    retracted_reason: "manifest-registry 프로세스 수명 내 stable, plugin reload 는 재시작 기반 → jitiLoaders key drift 경로 없음"
-  - id: CAND-002
-    type: single
-    finding_count: 1
-    state: abandoned   # v2 gatekeeper reject_suspected@high (의미), human accept
-    note: "FIND-cron-concurrency-001 단독 — locked.ts storeLocks in-memory only"
-    revision_note: "FIND-003 반증 후 single → v2 에서 acquireGatewayLock + port bind 로 multi-instance 이미 차단 확인"
-    retracted_reason: "primary-path inversion 실패: acquireGatewayLock + port bind 가 unconditional guard"
-  - id: CAND-003
-    type: retracted
-    finding_count: 0
-    state: retracted   # gatekeeper reject_suspected@high + secops CODEOWNERS 제약
-    note: "retracted: FIND-002 rejected (CronService.start 가 runningAtMs clear 수행). 파일 /src/cron/service/jobs.ts 는 @openclaw/secops 소유."
-  - id: CAND-004
-    type: single
-    finding_count: 1
-    state: published
-    note: "FIND-agents-registry-memory-002 — sweeper self-stop 이 pending error TTL 무력화"
-    openclaw_issue: 68487
-    openclaw_pr: 68489
-    openclaw_branch: "fix/agents-sweeper-drain-pending-before-stop"
-    openclaw_commit: ca09e64418
-  - id: CAND-005
-    type: single
-    finding_count: 1
-    state: published
-    note: "FIND-plugins-lifecycle-001 — register throw 시 httpRoutes/services/commands/hooks 부분 등록 rollback 부재"
-    v2_verdict: "approve@medium — plugins-http.ts:70 / route-match.ts:26 / services.ts 등 status 필터 없는 소비 경로 존재. record.status='error' 가 effective rollback 아님."
-    openclaw_issue: 68529
-    openclaw_pr: 68531
-    openclaw_branch: "fix/plugin-register-partial-rollback"
-    openclaw_commit: 121302c58b
-  - id: CAND-006
-    type: single
-    finding_count: 1
-    state: abandoned
-    note: "FIND-infra-process-error-boundary-003 — emitGatewayRestart catch authorization leak"
-    openclaw_issue: 68510
-    openclaw_pr: 68511
-    openclaw_branch: "fix/infra-restart-authorization-count-leak"
-    openclaw_commit: 7cc65a51ce
-    retracted_reason: "cross-review synthetic-only (CAL-003): test 의 process.kill throw branch 가 production hot-path (process.emit with listener) 와 불일치. PR/issue self-closed."
-  - id: CAND-007
-    type: single
-    finding_count: 1
-    state: abandoned
-    note: "FIND-infra-process-memory-001 — installUnhandledRejectionHandler idempotency"
-    retracted_reason: "uncertain@medium: bin entry 가 dist 경로라 isMain 경로 미작동 가능성, P3 — human abandon"
-  - id: CAND-008
-    type: single
-    finding_count: 1
-    state: abandoned
-    note: "FIND-infra-retry-concurrency-002 — computeBackoff asymmetric jitter"
-    retracted_reason: "uncertain@medium: thundering-herd 실재성 약함, P3 — human abandon"
-  - id: CAND-009
-    type: single
-    finding_count: 1
-    state: published
-    note: "FIND-infra-retry-concurrency-003 — retryAsync retryAfterMs 하방 위반"
-    openclaw_issue: 68541
-    openclaw_pr: 68543
-    openclaw_branch: "fix/retry-after-lower-bound"
-    openclaw_commit: 0fd08a0fd0
+- id: CAND-001
+  type: single
+  finding_count: 1
+  state: abandoned
+  revision_note: FIND-001 retract, FIND-003 만 유지 → v2 재평가로 최종 reject
+  retracted_reason: manifest-registry 프로세스 수명 내 stable, plugin reload 는 재시작 기반 → jitiLoaders
+    key drift 경로 없음
+- id: CAND-002
+  type: single
+  finding_count: 1
+  state: abandoned
+  note: FIND-cron-concurrency-001 단독 — locked.ts storeLocks in-memory only
+  revision_note: FIND-003 반증 후 single → v2 에서 acquireGatewayLock + port bind 로 multi-instance
+    이미 차단 확인
+  retracted_reason: 'primary-path inversion 실패: acquireGatewayLock + port bind 가 unconditional
+    guard'
+- id: CAND-003
+  type: retracted
+  finding_count: 0
+  state: retracted
+  note: 'retracted: FIND-002 rejected (CronService.start 가 runningAtMs clear 수행).
+    파일 /src/cron/service/jobs.ts 는 @openclaw/secops 소유.'
+- id: CAND-004
+  type: single
+  finding_count: 1
+  state: published
+  note: FIND-agents-registry-memory-002 — sweeper self-stop 이 pending error TTL 무력화
+  openclaw_issue: 68487
+  openclaw_pr: 68489
+  openclaw_branch: fix/agents-sweeper-drain-pending-before-stop
+  openclaw_commit: ca09e64418
+- id: CAND-005
+  type: single
+  finding_count: 1
+  state: abandoned
+  note: FIND-plugins-lifecycle-001 — register throw 시 httpRoutes/services/commands/hooks
+    부분 등록 rollback 부재
+  v2_verdict: approve@medium — plugins-http.ts:70 / route-match.ts:26 / services.ts
+    등 status 필터 없는 소비 경로 존재. record.status='error' 가 effective rollback 아님.
+  openclaw_issue: 68529
+  openclaw_pr: 68531
+  openclaw_branch: fix/plugin-register-partial-rollback
+  openclaw_commit: 121302c58b
+  retracted_reason: 'upstream superseded (CAL-004): 59d07f0ab4 + e8fd148437 + 2a283e87a7
+    merged day before my PR'
+- id: CAND-006
+  type: single
+  finding_count: 1
+  state: abandoned
+  note: FIND-infra-process-error-boundary-003 — emitGatewayRestart catch authorization
+    leak
+  openclaw_issue: 68510
+  openclaw_pr: 68511
+  openclaw_branch: fix/infra-restart-authorization-count-leak
+  openclaw_commit: 7cc65a51ce
+  retracted_reason: 'cross-review synthetic-only (CAL-003): test 의 process.kill throw
+    branch 가 production hot-path (process.emit with listener) 와 불일치. PR/issue self-closed.'
+- id: CAND-007
+  type: single
+  finding_count: 1
+  state: abandoned
+  note: FIND-infra-process-memory-001 — installUnhandledRejectionHandler idempotency
+  retracted_reason: 'uncertain@medium: bin entry 가 dist 경로라 isMain 경로 미작동 가능성, P3
+    — human abandon'
+- id: CAND-008
+  type: single
+  finding_count: 1
+  state: abandoned
+  note: FIND-infra-retry-concurrency-002 — computeBackoff asymmetric jitter
+  retracted_reason: 'uncertain@medium: thundering-herd 실재성 약함, P3 — human abandon'
+- id: CAND-009
+  type: single
+  finding_count: 1
+  state: published
+  note: FIND-infra-retry-concurrency-003 — retryAsync retryAfterMs 하방 위반
+  openclaw_issue: 68541
+  openclaw_pr: 68543
+  openclaw_branch: fix/retry-after-lower-bound
+  openclaw_commit: 0fd08a0fd0
 published:
-  - cand_id: CAND-004
-    issue: 68487
-    pr: 68489
-    at: 2026-04-18
-  - cand_id: CAND-006
-    issue: 68510
-    pr: 68511
-    at: 2026-04-18
-  - cand_id: CAND-005
-    issue: 68529
-    pr: 68531
-    at: 2026-04-18
-  - cand_id: CAND-009
-    issue: 68541
-    pr: 68543
-    at: 2026-04-18
+- cand_id: CAND-004
+  issue: 68487
+  pr: 68489
+  at: 2026-04-18
+- cand_id: CAND-006
+  issue: 68510
+  pr: 68511
+  at: 2026-04-18
+- cand_id: CAND-005
+  issue: 68529
+  pr: 68531
+  at: 2026-04-18
+- cand_id: CAND-009
+  issue: 68541
+  pr: 68543
+  at: 2026-04-18

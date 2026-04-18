@@ -277,7 +277,7 @@ items:
     updated_at: '2026-04-18T11:04:18+00:00'
   CAND-005:
     kind: candidate
-    state: published
+    state: abandoned
     transitions:
     - from: null
       to: published
@@ -285,8 +285,15 @@ items:
       reason: 'issue #68529 + PR #68531 on openclaw/openclaw (v2 gatekeeper approve@medium
         + human review + repro test PASS/FAIL 증명 완료)'
       at: '2026-04-18T11:24:16+00:00'
+    - from: published
+      to: abandoned
+      actor: human
+      reason: 'upstream superseded: openclaw/main 의 59d07f0ab4 (Ayaan Zaidi) + e8fd148437
+        + 2a283e87a7 가 동일 scope 를 하루 먼저 merge. PR #68531 + issue #68529 self-closed.
+        CAL-004 회고 + dedup 에 commit 검색 추가.'
+      at: '2026-04-18T14:21:09+00:00'
     created_at: '2026-04-18T11:24:16+00:00'
-    updated_at: '2026-04-18T11:24:16+00:00'
+    updated_at: '2026-04-18T14:21:09+00:00'
   FIND-infra-process-memory-001:
     kind: find
     state: discovered
