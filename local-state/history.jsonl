@@ -23,3 +23,5 @@
 {"item_id": "SOL-0001", "from": null, "to": "abandoned", "actor": "human", "reason": "retract: maintainer false positive 판정 수용", "at": "2026-04-18T10:41:55+00:00", "extras": {}}
 {"item_id": "FIND-agents-registry-memory-002", "from": "discovered", "to": "rejected", "actor": "human", "reason": "retract after human verdict: primary cleanup path (line 249 timer delete) 을 페르소나가 놓침", "at": "2026-04-18T10:41:55+00:00", "extras": {}}
 {"item_id": "FIND-agents-registry-memory-002", "from": "rejected", "to": "rejected", "actor": "human", "reason": "retract after maintainer human verdict (PR #68489 closed): primary cleanup path missed", "at": "2026-04-18T10:42:12+00:00", "extras": {}}
+{"item_id": "CAND-001", "from": null, "to": "abandoned", "actor": "human", "reason": "v2 reject + human accept: primary-path inversion 결과 leak 성립 불가", "at": "2026-04-18T11:04:12+00:00", "extras": {}}
+{"item_id": "CAND-002", "from": null, "to": "abandoned", "actor": "human", "reason": "v2 reject + human accept: gateway-lock 이 primary guard, race 성립 불가", "at": "2026-04-18T11:04:18+00:00", "extras": {}}
