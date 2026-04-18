@@ -25,6 +25,14 @@ rg -n "<registryName>\.(delete|clear)" src/plugins/
 ### R-4. 반드시 Write tool 로 FIND 파일 저장
 `findings/drafts/FIND-{cell-id}-{NNN}.md`. 구두 보고만 하면 미완료.
 
+### R-5. rollback/dispose 경로의 execution condition 분류 (CAL-001 반영)
+R-3 에서 나온 `unregister` / `dispose` / `teardown` / `unload` / `cleanup` 경로 각각에 **실행 조건** 분류:
+- `unconditional`: 정상 flow 에서 항상 실행 (예: finally 블록, 상위 try/catch)
+- `conditional-edge`: edge case 에서만
+- `test-only` / `shutdown`
+
+`unconditional` 경로가 존재하면 해당 rollback gap 주장은 성립하지 않음 → FIND 생성 금지. counter_evidence 에 경로별 표로 명시.
+
 ---
 
 # plugin-lifecycle-auditor

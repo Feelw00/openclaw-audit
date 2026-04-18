@@ -78,17 +78,38 @@ openclaw-audit 파이프라인의 FSM `candidate → {gatekeeper-approved, needs
 - evidence 코드 블록이 실제 파일과 다름
 - root_cause_chain 이 Node.js / TypeScript 일반 동작을 오해
 
-## Counter-evidence 탐색 (의무, 최소 3 카테고리)
+## Counter-evidence 탐색 (의무, 최소 3 카테고리 — primary-path inversion 은 **필수**)
 
 승인 판단 전 반드시 반증 가능성 탐색:
 
 | 카테고리 | 질문 예시 |
 |---|---|
-| 숨은 방어 | 다른 곳에 이미 cleanup/dispose 가 있지 않은가 (e.g. teardown 메소드) |
-| 호출 빈도 | 이 경로가 실제로 유의미한 빈도로 호출되는가 (프로덕션 경로 vs test helper) |
-| 테스트 커버 | `test/vitest/vitest.*.config.ts` 에 이 시나리오 검증 테스트가 있는가 |
+| **primary-path inversion** (필수, CAL-001) | 이 결함이 성립하려면 어떤 **정상 경로** 가 실패해야 하는가? 그 실패 가능성 실제로 탐색. |
+| 숨은 방어 | 다른 곳에 이미 cleanup/dispose 가 있지 않은가 |
+| 호출 빈도 | 이 경로가 실제로 유의미한 빈도로 호출되는가 |
+| 테스트 커버 | 기존 테스트가 이 시나리오 검증하는가 |
 | 설정 | feature flag / env var 로 비활성 상태인가 |
 | 주변 맥락 | 주석/관련 함수/contracts 테스트가 다른 의도를 시사하지 않는가 |
+
+### Primary-path inversion 가이드
+
+주장된 결함 유형별 inversion 질문:
+- **memory-leak**: "이 entry 가 leak 되려면 어떤 cleanup 이 실패해야 하는가?" — 해당 cleanup 코드의 **실행 조건** (unconditional vs conditional-edge) 을 명시적으로 Read + 분류
+- **concurrency-race**: "이 race 가 재현되려면 어떤 atomic guard 가 우회돼야 하는가?" — 상위 lock / CAS / atomic operation 을 명시적으로 탐색
+- **error-boundary-gap**: "이 crash 가 성립하려면 어떤 상위 try/catch 가 없어야 하는가?" — 호출 stack 상위로 `process.on`/`try` 경로 올라가며 탐색
+- **lifecycle-gap**: "이 stale state 가 발생하려면 어떤 reload hook / watcher 가 누락돼야 하는가?"
+
+Inversion 에서 **unconditional primary path 를 발견** 하면 `verdict: reject_suspected` (primary path 가 이미 처리함을 명시).
+
+### 반례 (CAL-001)
+
+CAND-004 의 pending error map leak 주장에서:
+- 입력 FIND 가 sweeper self-stop = leak 으로 결론
+- Primary-path inversion 을 **안 돌리고** `숨은 방어` / `호출 빈도` / `테스트 커버` 만 탐색해 approve
+- 실제로는 `schedulePendingLifecycleError` 의 15초 timer 가 line 249 에서 unconditional delete → primary path 이미 처리
+- 메인테이너가 false positive 지적 후 close
+
+이번 실수 재발 방지: **`explored_categories` 배열에 "primary-path inversion" 이 반드시 포함되지 않으면 후처리에서 자동 `needs-human-review`**.
 
 각 카테고리를 Grep/Read 로 실제 탐색:
 ```

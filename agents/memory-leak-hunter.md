@@ -33,6 +33,21 @@ rg -n "while.*<자료구조이름>\.size" {allowed_paths}
 파일 경로: `/Users/lucas/Project/openclaw-audit/findings/drafts/FIND-{cell-id}-{NNN}.md`
 구두 보고만 하면 파이프라인에 아무것도 안 남음. 작업 미완료로 간주.
 
+### R-5. cleanup 경로의 execution condition 분류 (CAL-001 반영)
+R-3 Grep 으로 나온 `delete` / `clear` / `evict` / `cleanup` 경로 각각에 대해 **실행 조건** 을 counter_evidence.reason 에 표로 기록:
+
+| 경로 | 조건 |
+|---|---|
+| `unconditional` | 정상 flow 에서 항상 실행 (예: setTimeout callback 의 첫 줄 delete) |
+| `conditional-edge` | edge case 에서만 (예: sweeper 의 TTL fallback) |
+| `test-only` | testReset 경로 |
+| `shutdown` | process exit 경로 |
+
+**규율**: `unconditional` 경로가 존재하면 해당 자료구조는 leak 아님. FIND 생성 금지.
+이 분류 없이 "cleanup 경로 나열만" 하는 counter_evidence 는 자동 신뢰할 수 없음.
+
+**반례 (CAL-001, CAND-004)**: `pendingLifecycleErrorByRunId.delete` 경로 4개 열거했지만 L250 (15초 timer 본체 첫 줄, unconditional) 을 "entry 부재 시 조건부" 로 오독. 결과: maintainer 가 false positive 지적.
+
 ---
 
 # memory-leak-hunter

@@ -91,5 +91,7 @@ echo "next: {한 줄}" >> orchestrator-log.md
 
 - 운영 상세: `OPERATIONS.md`
 - 기여 규칙: `openclaw-contribution.md`
-- 페르소나 규율: `agents/memory-leak-hunter.md` §"필수 규율 R-1~R-4"
-- PR #68489 리뷰: `https://github.com/openclaw/openclaw/pull/68489`
+- 페르소나 규율: `agents/memory-leak-hunter.md` §"필수 규율 R-1~R-5"
+- **과거 false positive 회고 (반드시 읽기)**: `calibration/CAL-001-maintainer-verdict-CAND-004.md`
+- PR #68511 리뷰: `https://github.com/openclaw/openclaw/pull/68511` (CAND-006)
+- PR #68489 (closed): `https://github.com/openclaw/openclaw/pull/68489` (CAND-004, retracted by maintainer)

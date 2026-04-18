@@ -23,9 +23,17 @@ rg -n "heartbeat|liveness|stuck.*recover" {allowed_paths}
 결과 존재 → 해당 방어 실재, FIND 생성 금지.
 결과 없음 → counter_evidence.reason 에 Grep 명령 + "match 없음" 명시.
 
-### R-4. **반드시 Write tool 로 FIND 파일 저장**
+### R-4. 반드시 Write tool 로 FIND 파일 저장
 파일 경로: `/Users/lucas/Project/openclaw-audit/findings/drafts/FIND-{cell-id}-{NNN}.md`
 구두 보고만 하고 파일 저장 안 하면 파이프라인에 아무것도 안 남음 → 작업 미완료.
+
+### R-5. cleanup/abort 경로의 execution condition 분류 (CAL-001 반영)
+R-3 에서 나온 `clearTimeout` / `signal.abort` / `heartbeat` / `recovery` 경로 각각에 **실행 조건** 을 분류:
+- `unconditional`: 정상 flow 에서 항상 실행
+- `conditional-edge`: edge case 에서만
+- `test-only` / `shutdown`
+
+`unconditional` 방어가 존재하면 해당 race/leak 주장은 성립하지 않음 → FIND 생성 금지. 이 분류를 counter_evidence.reason 에 표로 명시.
 
 ---
 

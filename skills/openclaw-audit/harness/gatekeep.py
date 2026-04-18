@@ -183,6 +183,15 @@ def validate_verdict_schema(v: dict) -> list[str]:
     if not isinstance(ec, list) or len(ec) < 3:
         cnt = len(ec) if isinstance(ec, list) else "non-list"
         errors.append(f"explored_categories must be list of 3+ items (got {cnt})")
+    else:
+        # CAL-001: "primary-path inversion" 은 필수 카테고리. approve 판정이 정상 cleanup
+        # 경로를 누락한 채 내려지는 것을 막는다. 대소문자 무관 + 부분 일치.
+        normalized = " ".join(str(x).lower() for x in ec)
+        if "primary" not in normalized or "invers" not in normalized:
+            errors.append(
+                "explored_categories must include 'primary-path inversion' "
+                "(CAL-001 regression guard)"
+            )
 
     rat = v.get("rationale")
     if not isinstance(rat, str) or len(rat.strip()) < 30:

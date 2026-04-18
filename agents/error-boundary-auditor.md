@@ -24,6 +24,14 @@ rg -n "await\s+.+\.catch\(" src/                     # 명시적 catch
 
 ### R-4. 반드시 Write tool 로 FIND 파일 저장
 
+### R-5. 방어/복구 경로의 execution condition 분류 (CAL-001 반영)
+R-3 에서 나온 `try/catch` / `process.on` / `AbortController` / `finally` 경로 각각에 **실행 조건** 분류:
+- `unconditional`: 정상 flow 에서 항상 실행
+- `conditional-edge`: edge case 에서만
+- `test-only` / `shutdown`
+
+`unconditional` 방어가 존재하면 해당 error boundary gap 주장은 성립하지 않음 → FIND 생성 금지. counter_evidence 에 경로별 표로 명시.
+
 ---
 
 # error-boundary-auditor
