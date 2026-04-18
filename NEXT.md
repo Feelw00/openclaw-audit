@@ -61,12 +61,26 @@ open PR worktree (`openclaw-pr-*`) 는 `fix/*` 브랜치라 main 업데이트와
 # 아직 안 돌린 Phase 1 셀 확인
 grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 
-# 현재 Phase 1 상태 (2026-04-19 기준)
-# ✓ plugins-memory         — done (CAND-001 abandoned)
-# ✓ cron-concurrency       — done (CAND-002/003 abandoned)
-# ✓ agents-registry-memory — done (CAND-004 abandoned — maintainer closed PR #68489, CAL-001)
-# ✓ plugins-lifecycle      — done (CAND-005 abandoned — upstream superseded, CAL-004)
-# ✓ infra-process-error-boundary — done (CAND-006 abandoned — synthetic-only, CAL-003)
+# 현재 Phase 1+2 상태 (2026-04-19 기준, grid.yaml 10 셀 전부 done)
+#
+# Phase 1 (5/5 done):
+#   ✓ plugins-memory               — CAND-001 abandoned
+#   ✓ plugins-lifecycle            — CAND-005 abandoned (CAL-004 upstream superseded)
+#   ✓ cron-concurrency             — CAND-002/003 abandoned
+#   ✓ agents-registry-memory       — CAND-004 abandoned (CAL-001 maintainer reject)
+#   ✓ infra-process-error-boundary — CAND-006 abandoned (CAL-003 synthetic-only)
+#
+# Phase 2 (5/5 done):
+#   ✓ plugins-error-boundary       — 0 FIND (CAL-007 fresh 재감사, upstream 이미 fix)
+#   ✓ cron-memory                  — 0 FIND (전 Map/timer 방어 확인)
+#   ✓ infra-retry-concurrency      — adjacent: CAND-008 abandoned + CAND-009 open PR #68543
+#   ✓ infra-process-memory         — adjacent: CAND-007 abandoned
+#   ✓ agents-registry-concurrency  — adjacent: CAND-010 abandoned + CAND-011 open PR #68669
+#
+# 살아있는 PR 2건: #68543 (steipete CHANGES_REQUESTED → 대응 완료 11430f641c, 재리뷰 대기)
+#                  #68669 (메인테이너 리뷰 대기, Greptile 5/5)
+#
+# 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 ```
 
 셀 실행 프롬프트 템플릿 (Agent 도구, `subagent_type=general-purpose`):

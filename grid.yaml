@@ -103,7 +103,7 @@ cells:
   - id: plugins-memory
     domain: plugins
     type: memory
-    state: planned
+    state: done
     phase: 1
     hints:
       - 'registryCache Map cap 후 eviction 정책 (src/plugins/loader.ts:196 근방)'
@@ -113,7 +113,7 @@ cells:
   - id: plugins-lifecycle
     domain: plugins
     type: lifecycle
-    state: planned
+    state: done
     phase: 1
     hints:
       - 'loader.ts 에서 load 실패 시 record.status=error 설정만, registry 에서 rollback 없음'
@@ -123,7 +123,7 @@ cells:
   - id: cron-concurrency
     domain: cron
     type: concurrency
-    state: planned
+    state: done
     phase: 1
     hints:
       - 'timer.ts locked() in-memory only — 멀티 인스턴스 중복 실행 위험'
@@ -134,7 +134,7 @@ cells:
   - id: agents-registry-memory
     domain: agents-registry
     type: memory
-    state: planned
+    state: done
     phase: 1
     hints:
       - 'subagentRuns Map TTL/cap 여부 (subagent-registry-memory.ts)'
@@ -144,7 +144,7 @@ cells:
   - id: infra-process-error-boundary
     domain: infra-process
     type: error-boundary
-    state: planned
+    state: done
     phase: 1
     hints:
       - 'unhandledRejection handler chain ordering (unhandled-rejections.ts:339-380)'
@@ -155,28 +155,33 @@ cells:
   - id: plugins-error-boundary
     domain: plugins
     type: error-boundary
-    state: unseeded
+    state: done
     phase: 2
+    note: 'fresh upstream 재감사 (2026-04-19, CAL-007): 이전 3 FIND 전부 upstream 에서 이미 fix (5c1d6feb33, 2a283e87a7). 0 new FIND.'
   - id: cron-memory
     domain: cron
     type: memory
-    state: unseeded
+    state: done
     phase: 2
+    note: 'fresh upstream 재감사 (2026-04-19): 7 Map + 5 timer + EventEmitter 전부 unconditional eviction/clear. 0 FIND.'
   - id: infra-retry-concurrency
     domain: infra-retry
     type: concurrency
-    state: unseeded
+    state: done
     phase: 2
+    note: 'adjacent 발견: CAND-008 abandoned + CAND-009 open PR #68543.'
   - id: infra-process-memory
     domain: infra-process
     type: memory
-    state: unseeded
+    state: done
     phase: 2
+    note: 'adjacent 발견: CAND-007 abandoned (bin entry dist 경로 불확실, P3).'
   - id: agents-registry-concurrency
     domain: agents-registry
     type: concurrency
-    state: unseeded
+    state: done
     phase: 2
+    note: 'adjacent 발견: CAND-010 abandoned (5-agent scope-down) + CAND-011 open PR #68669.'
 
 # ────────────────────────────────────────────────────────────
 # 상태 전이 (셀 단위, grid.yaml 내 관리)

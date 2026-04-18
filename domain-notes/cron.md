@@ -172,3 +172,64 @@ cron 도메인은 registry-style public field (`registry.X.push` + `registry.X[k
 `rg "^(const|let|var)\s+\w+\s*=\s*new (Map|Set|WeakMap)" src/cron/` 재실행 결과 이전 인벤토리와 100% 일치 (7개 Map). 신규 누수 후보 없음.
 
 재결론: **FIND 0건** (품질 > 수량). primary-path inversion 후 모든 후보가 unconditional cleanup / bounded key domain / TTL+cap 중 하나에 해당.
+
+### memory-leak-hunter fresh re-audit (2026-04-19, CAL-007 대응)
+
+이전 두 세션(2026-04-18, 2026-04-19)은 stale upstream(913 commits behind) 에서 수행됐음이 CAL-007 로 확인됨.
+오퍼레이터가 upstream/main @ `8879ed153d` 로 local 을 fast-forward 한 뒤 `cron-memory` 셀 재투입.
+
+**변경 사항**: 지난 2주(upstream/main `--since="2 weeks ago"`) 내 `src/cron/` 커밋 100+ 건 — 대다수가
+test/perf/refactor (lazy-load runtime 분리, dedupe, seam mock) 이고, 메모리 의미에 영향을 주는 production
+변경은 다음 소수:
+
+| commit | 파일 | 메모리 측면 영향 |
+|---|---|---|
+| 9501656a8e (#67807) | isolated-agent/delivery-dispatch.ts | `cleanupDirectCronSessionIfNeeded` 에 `directCronSessionDeleted` idempotency guard 추가. `COMPLETED_DIRECT_CRON_DELIVERIES` 의 set/delete/prune 경로(240-262, 282, 293) 불변. 누수 방향 변화 없음. |
+| 13a0d7a9e0 / 49ae60d6ca / 31437b9e3b | message-tool policy | payload-filter 로직. 자료구조 증가 없음. |
+| f61896b03c (#68210) | awareness 라벨 preserve | normalize 경로. 자료구조 증가 없음. |
+| 190a4b4869 (#66113) / c602824215 (#66083) | next-run backoff/refire 방지 | nextRunAtMs 의 truthiness 가드. 메모리 누수 아닌 logic fix. |
+| 905e56d191 (#63507) | zero nextRunAtMs invalid | validator. 자료구조 변화 없음. |
+| ae3d731810 / ab4efa47b5 / 28787985c4 … (perf: lazy-load) | 각 runtime.ts seam | `*RuntimePromise` 단일 dynamic-import promise — 모듈당 1회 할당 후 재사용. leak 아님. |
+| active-jobs.ts 리팩터 (이전 세션 대비) | `resolveGlobalSingleton` 으로 이동 | `activeJobIds` 가 module-level → global singleton 구조로 변경됐으나 의미 동일 (add/delete/clear 경로 불변). |
+
+**Map/Set 인벤토리 (fresh)**: 2026-04-18 기록과 100% 동일한 7개 Map + 1개 Set (global singleton).
+
+```
+store.ts:9              serializedStoreCache          (storePath key, set/delete + overwrite)
+service/locked.ts:3     storeLocks                    (storePath key, delete 없음 — growth rate 0)
+session-reaper.ts:22    lastSweepAtMsByStore          (storePath key, test-only clear)
+service/jobs.ts:40      staggerOffsetCache            (FIFO cap 4096)
+schedule.ts:7           cronEvalCache                 (FIFO cap 512 + test clear)
+run-log.ts:82           writesByPath                  (owner-guard delete in finally)
+isolated-agent/delivery-dispatch.ts:182 COMPLETED_DIRECT_CRON_DELIVERIES (TTL 24h + cap 2000 FIFO)
+active-jobs.ts:11       activeJobIds (singleton)      (add/delete per markCronJobActive/clear)
+```
+
+**타이머/리스너** (`setTimeout`/`clearTimeout`/`addEventListener`/`removeEventListener` 전수):
+
+| 페어 | 파일:라인 | cleanup 경로 | 조건 |
+|---|---|---|---|
+| delivery.ts | 61 set, 89 clear | finally | unconditional |
+| service/timer.ts (executeJobCoreWithTimeout) | 92 set, 100 clear | finally | unconditional |
+| service/timer.ts (armTimer) | 661 set ↔ 616 clear | 재무장 전 | unconditional |
+| service/timer.ts (armRunningRecheckTimer) | 676 set ↔ 674 clear | 재무장 전 | unconditional |
+| service/timer.ts (waitForAbortOrTimeout) | 1149 set, 1154 clear, 1150/1155 removeEventListener, 1158 addEventListener{once:true} | onAbort + finally | unconditional (양방향) |
+| service/timer.ts (stopTimer) | 1400 clear | shutdown | shutdown |
+
+`.on(` EventEmitter 등록은 cron/ 내부 프로덕션 경로에 0건. `storePaths` (timer.ts:816), `interruptedOneShotIds`
+(ops.ts:107), `prunedSessions` (session-reaper.ts:79), `referencedSessionIds` (session-reaper.ts:111),
+`latestByChild` (subagent-followup.ts:32), `allowFromOverride` (delivery-target.ts:201) 는 모두 함수-scope
+allocation — GC 대상.
+
+**R-5 primary-path inversion 재적용**:
+
+- 모든 Map/Set 에 대해 "이 누수가 성립하려면 어떤 cleanup 경로가 실패해야 하는가?" 질문 → 각 구조마다 최소 1개
+  unconditional cleanup 경로 존재. 따라서 FIND 불성립.
+- 예: `writesByPath.delete` 는 `try { await next } finally { if (get === next) delete }` 에서 finally
+  가 try 이후 무조건 실행되고, guard 는 concurrent-overwrite 시만 no-op (다른 owner 가 책임). 실제 leak 시나리오
+  재현 불가.
+- `storeLocks` 는 delete 부재가 진짜 defensive weakness 이지만 키 도메인이 `state.deps.storePath` 구성상수로
+  프로세스당 1-2. 성장률 0 → leak 주장 성립 안 함.
+
+**결론**: fresh upstream (8879ed153d) 에서 재검증한 결과 **FIND 0건**. 이전 두 세션의 0 판정 유지.
+최근 2주 변경은 메모리 의미에 영향 없음 (test/perf/lazy-load 리팩터, delivery idempotency guard 추가).

@@ -276,3 +276,41 @@
 - src/infra/unhandled-rejections.ts 의 installUnhandledRejectionHandler 가 gateway process 에서 실제 호출되는 call site 는 allowed_paths 외 (src/index.ts, src/cli/run-main.ts). 본 세션은 export 존재 + 로직 확인만. 만약 특정 entrypoint 에서 install 누락이면 FIND-001/002 crash 영향 하향.
 - third-party plugin 에서 async register 사용 빈도 정량 데이터 없음.
 - registry.httpRoutes 의 consumer snapshot vs live read 여부 (gateway/** 은 scope 외). 이에 따라 late-insert 가 silent 기능 부재로 귀결되는지 판별.
+
+### error-boundary-auditor (2026-04-19, CAL-007 retro, fresh upstream 8879ed153d)
+
+**배경**: 직전 세션은 stale main (913 commits behind upstream/main) 기반이라 CAL-007 로 FIND-001/002/003 전원 rejected. 본 세션은 fresh upstream 기준 각 주장 재검증.
+
+**fresh upstream 재검증 결과 (upstream/main @ 8879ed153d)**:
+
+| 이전 FIND | 이전 주장 | fresh 상태 | 판정 |
+|---|---|---|---|
+| FIND-001 | `bundled-capability-runtime.ts:301 void register(captured.api)` async escape -> process.exit(1) | 5c1d6feb33 "test(plugins): fix sync register call sites" 에서 `void` 키워드 제거 (line 300 `register(captured.api)`). 또 2a283e87a7 "fix(plugins): enforce synchronous registration" 로 bundled webhooks 가 async -> sync 로 변경됨. 현 bundled extensions grep 결과 `async register` 사용 0건 | **무효화** — literal `void` escape 제거 + 현 production input (bundled sync only) 로 trigger 불가 |
+| FIND-002 | `loader.ts:1753-1762 floating Promise with diagnostic` | 2a283e87a7 로 loader.ts 완전 재구성. 새 `runPluginRegisterSync` (loader.ts:398-412) 가 async 감지 시 `void Promise.resolve(result).catch(() => {})` swallow + `throw new Error("plugin register must be synchronous")` sync throw. throw 는 outer catch 에서 `rollbackPluginGlobalSideEffects` + `restorePluginRegistry` 로 정리. diagnostic-only 경로 완전히 제거됨 | **무효화** — Promise swallow + sync error 조합으로 방어 완결 |
+| FIND-003 | `install.ts/provider-runtime.runtime.ts/provider-discovery.ts/provider-auth-ref.ts 4곳 ??= import(...) 영구 캐시` | 4곳 모두 pattern 그대로 잔존 (verbatim). rejection invalidation 또는 reset API 부재. 단 `install.runtime.js` 등은 **동일 패키지 sibling 모듈** (dist 패키징 원자적) 이므로 transient import failure 는 현실적 production 경로 아님 | **pattern 잔존, 그러나 R-7 production hot-path 조건 미충족**: transient FS/import 실패가 실제 production-taken branch 아님. trigger scenario ("git pull in-flight on globally installed CLI") 이론적. P3 이하 hygiene 수준 |
+
+**fresh 에서 재탐색한 추가 카테고리**:
+
+- A. unhandledRejection 핸들러: `src/plugin-sdk/file-lock.ts:65 process.on("exit", releaseAllLocksSync)` — sync exit handler 에서 `void held.handle.close().catch(() => undefined)` 비동기 close 를 fire-and-forget 하나 exit 이벤트는 sync 라 close 완료 보장 없음. 단 주석이 "best-effort exit cleanup only" 로 의도 명시. 결함 없음.
+- B. Floating promise: `conversation-binding.ts:929 void notifyPluginConversationBindingResolved(params).catch((error) => { log.warn(...) })` — 정상 `.catch` 연결. `marketplace.ts:652/656 void reader.cancel().catch/void reader.read().then(ok, err)` — 양쪽 path 모두 처리. 결함 없음.
+- C. JSON.parse: 모든 plugins/ JSON.parse 지점 (bundled-plugin-metadata.ts:64, bundle-config-shared.ts:40, conversation-binding.ts:337, marketplace.ts:262+328, clawhub.ts:432, discovery.ts:413, sdk-alias.ts:270, bundle-lsp.ts:82, bundle-mcp.ts:185, install-security-scan.runtime.ts:398 등) 모두 try/catch 방어. counter_evidence 로 전부 기록 가능.
+- D. AbortController: 직접 사용 grep 0건 (runtime-channel 은 scope 외).
+- E. fs sync: readFileSync/statSync 는 openBoundaryFileSync 로 감싸진 boundary 또는 try 안. 단독 노출 없음.
+
+**새 FIND 작성 건수**: **0건**. 재검증 결과 이전 FIND-001/002 는 upstream fix 로 무효화되었고 FIND-003 는 pattern 은 잔존하나 R-7 (production hot-path same branch) 과 Self-check 에서 "concrete evidence 2개 이상" 기준을 충족하지 못함. 추측성 P3 탐색을 FIND 로 재제출하면 CAL-007 이후 또 다른 저품질 감사 재발.
+
+**핵심 관찰**:
+
+1. 직전 세션 FIND-001/002 는 upstream 이 2026-04-17 ~ 18 에 이미 **정확히 같은 root cause axis** 로 수정함 (2a283e87a7 + 5c1d6feb33). stale 상태로 제출했으면 CAL-004 와 동일한 "already fixed upstream" reject 였을 것. CAL-007 의 보완 조치 (부팅 절차 main fast-forward) 가 바로 이런 재발을 차단하기 위해 필요.
+
+2. `runPluginRegisterSync` 는 `loader.ts` 내부 함수로 export 되지 않음. `bundled-capability-runtime.ts:300` 과 `captured-registration.ts:184` 는 직접 `register(captured.api)` 호출 — async register 가 들어오면 floating Promise. 하지만 bundled-capability 경로는 `manifest.origin === "bundled"` 필터 (line 237) 로 third-party 배제 + 모든 bundled 가 sync 이므로 practical trigger 없음. captured-registration 의 `capturePluginRegistration` 는 test-only. **잠재 defensive gap 은 있으나 production crash 경로 아님**.
+
+3. FIND-003 의 `??=` pattern 은 정책 설계 이슈 (fail-once-fail-always) 지만 openclaw 특정 bug 가 아니라 "lazy-load idiom 의 일반 특성". 실제 production 중단 보고 부재 + install-security-scan.ts 대안 패턴이 같은 도메인에 있음. SOL 로 promotion 하려면 transient 실패 재현 테스트와 빈도 데이터가 전제. 본 셀 scope 에서 생성 가능한 evidence 상한 아래.
+
+**clusterer 를 위한 힌트**:
+- FIND-001/002 는 이미 upstream 에 fix 된 상태 → 추가 CAND 생성 없음.
+- FIND-003 pattern 은 domain-notes 에 "tech debt"  로만 기록. 향후 ClawHub 또는 third-party plugin install 빈번한 환경에서 실제 hang 재현 evidence 가 수집되면 별도 FIND 로 복귀 가능.
+
+**자체 한계**:
+- 본 세션도 `src/infra/unhandled-rejections.ts` 와 `src/index.ts` entrypoint install 경로는 scope 외. FIND-003 에 대해 node 22 의 dynamic import 재시도 semantic 을 empirical 로 확인하지 못함.
+- `captured-registration.ts:184` 의 `capturePluginRegistration` 이 향후 production 경로로 승격될지 여부 미확인. 현 시점 test-only.
