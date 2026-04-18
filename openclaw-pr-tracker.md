@@ -15,21 +15,22 @@
 - **브랜치**: `feat/split-cron-store-state` (내 로컬 기본 작업 브랜치이기도 함)
 - **관련 이슈**: Closes #53581
 
-### #68531 — fix(plugins): roll back partial registry array contributions when register() throws
-
-- **유형**: 파이프라인 CAND-005, cross-review 3/3 real
-- **상태**: OPEN, 체크 43/43 green
-- **Greptile**: 4/5 → gatewayHandlers/gatewayMethodScopes 지적 → follow-up commit 34770a1917 로 해결 (CAL-002)
-- **대기**: Greptile 재리뷰 (수동 트리거 필요) + 메인테이너 리뷰
-- **관련**: issue #68529
-
 ### #68543 — fix(infra): keep retryAsync delays above server-supplied Retry-After
 
 - **유형**: 파이프라인 CAND-009, cross-review 3/3 real
 - **상태**: OPEN, 체크 45/45 green
-- **Greptile**: **5/5 safe-to-merge**
-- **대기**: 메인테이너 리뷰
+- **Greptile**: **5/5 safe-to-merge** (초기), 이후 Math.round → Math.ceil follow-up fix `11430f641c`
+- **대기**: 메인테이너 @steipete 답변 (CAL-006 이후 편집된 사과 톤 comment 상태)
 - **관련**: issue #68541
+
+### #68669 — fix(agents): dedupe subagent browser session cleanup wrapper with dispatch flag
+
+- **유형**: 파이프라인 CAND-011, post-harness + pre-pr + post-commit cross-review (총 11 agent) 모두 real
+- **상태**: OPEN, CI pending
+- **Greptile**: 자동 리뷰 대기
+- **대기**: CI green + Greptile 리뷰 + 메인테이너 리뷰
+- **관련**: issue #68668
+- **특이사항**: cross-review 가 narrative overclaim 을 조기 탐지 → "IPC 중복" → "wrapper overhead + defense-in-depth" 로 정직하게 scope-down
 
 ## 종결된 PR
 
@@ -42,6 +43,11 @@
 - **결과**: false positive — CAL-003 참조
 - **사유**: test 가 process.kill branch throw 를 강제하지만 production 은 process.emit branch (listener 항상 등록) 만 탐
 - **교훈**: R-7 (hot-path vs test-path 일관성) + PR 발행 전 cross-review 3 에이전트 의무화
+
+### #68531 (CAND-005, self-closed)
+- **결과**: upstream superseded — CAL-004 참조
+- **사유**: upstream commit `59d07f0ab4 + e8fd148437 + 2a283e87a7` 가 내 PR 하루 전에 병합되어 동일 race 해결
+- **교훈**: R-8 (upstream 최신 commit 사전 확인) + dedup.py commit 검색 helper
 
 ---
 
