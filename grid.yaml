@@ -94,6 +94,36 @@ domains:
       - src/infra/retry-policy.ts
       - src/infra/backoff.ts
 
+  - id: gateway
+    name: 게이트웨이 (control plane)
+    allowed_paths:
+      - 'src/gateway/**'
+    priority_files:
+      - src/gateway/protocol/schema.ts
+      - src/gateway/auth-rate-limit.ts
+      - src/gateway/agent-event-assistant-text.ts
+      - src/gateway/assistant-identity.ts
+
+  - id: channels
+    name: 채널 라우팅·바인딩
+    allowed_paths:
+      - 'src/channels/**'
+      - 'src/routing/**'
+    priority_files:
+      - src/channels/allow-from.ts
+      - src/channels/ack-reactions.ts
+      - src/routing/bindings.ts
+      - src/routing/account-lookup.ts
+
+  - id: auto-reply
+    name: 자동 응답 큐·chunk·draing
+    allowed_paths:
+      - 'src/auto-reply/**'
+    priority_files:
+      - src/auto-reply/chunk.ts
+      - src/auto-reply/reply/queue/drain.ts  # upstream 최근 fix(queue) 영역
+      - src/auto-reply/command-detection.ts
+
 # ────────────────────────────────────────────────────────────
 # 셀 (domain × type 교차)
 # ────────────────────────────────────────────────────────────
@@ -182,6 +212,62 @@ cells:
     state: done
     phase: 2
     note: 'adjacent 발견: CAND-010 abandoned (5-agent scope-down) + CAND-011 open PR #68669.'
+
+  # ─── Phase 3 (Phase 1+2 완료 후 확장, 2026-04-19 추가) ───
+  - id: gateway-memory
+    domain: gateway
+    type: memory
+    state: planned
+    phase: 3
+    hints:
+      - 'session/connection Map 들 (AccountId → state, sessionKey → ws) 의 TTL/cap'
+      - 'auth-rate-limit 의 sliding window 버킷 unbounded 성장 가능성'
+      - 'agent event stream buffer 누적'
+  - id: gateway-concurrency
+    domain: gateway
+    type: concurrency
+    state: planned
+    phase: 3
+    hints:
+      - 'parallel RPC 처리 중 공유 state (예: subagent-registry 와 상호작용) 락 보장'
+      - 'control plane reconnect 시 in-flight request 중복 처리'
+      - 'rate-limit counter 의 increment race'
+  - id: gateway-error-boundary
+    domain: gateway
+    type: error-boundary
+    state: planned
+    phase: 3
+    hints:
+      - 'plugin throw → gateway RPC 응답 경로 catch 커버리지'
+      - 'malformed protocol message (schema 위반) 처리 경로'
+      - 'websocket drop 시 pending promise reject 전파'
+  - id: channels-error-boundary
+    domain: channels
+    type: error-boundary
+    state: planned
+    phase: 3
+    hints:
+      - 'incoming webhook payload JSON.parse 미보호'
+      - 'channel adapter throw → routing 큐에 미전파'
+      - 'allowlist-match 의 Regex throw'
+  - id: channels-lifecycle
+    domain: channels
+    type: lifecycle
+    state: planned
+    phase: 3
+    hints:
+      - 'channel open 중 실패 시 routing binding 부분등록 rollback'
+      - 'ack-reaction 등록 후 channel close 시 listener 해제'
+      - 'binding-scope 재진입성'
+  - id: auto-reply-concurrency
+    domain: auto-reply
+    type: concurrency
+    state: planned
+    phase: 3
+    hints:
+      - 'queue drain 중 새 item 추가 race (upstream 712644f0d9 fix 관련 추가 검증)'
+      - 'chunk.ts 의 동시 chunk 생성 race'
+      - 'command-detection 의 in-flight dedup'
 
 # ────────────────────────────────────────────────────────────
 # 상태 전이 (셀 단위, grid.yaml 내 관리)

@@ -80,6 +80,14 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # 살아있는 PR 2건: #68543 (steipete CHANGES_REQUESTED → 대응 완료 11430f641c, 재리뷰 대기)
 #                  #68669 (메인테이너 리뷰 대기, Greptile 5/5)
 #
+# Phase 3 (6셀 신규, 2026-04-19 확장, state=planned):
+#   ☐ gateway-memory              — memory-leak-hunter
+#   ☐ gateway-concurrency         — concurrency-auditor
+#   ☐ gateway-error-boundary      — error-boundary-auditor
+#   ☐ channels-error-boundary     — error-boundary-auditor
+#   ☐ channels-lifecycle          — plugin-lifecycle-auditor
+#   ☐ auto-reply-concurrency      — concurrency-auditor (upstream 712644f0d9 관련 검증)
+#
 # 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 ```
 
