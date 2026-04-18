@@ -30,7 +30,9 @@ git log upstream/main --since="2 weeks ago" --oneline -- src/plugins/ src/cron/ 
 | `findings/drafts/` 에 파일 있음 | `validate.py --all --move` |
 | `findings/ready/` ≥ 2 건 (같은 도메인 누적) | clusterer 페르소나 호출 |
 | `issue-candidates/` 에 gatekeeper 미평가 CAND 있음 (`state: pending_gatekeeper`) | gatekeep 3-step (sanitize → agent → apply --shadow) |
-| gatekeeper 판정 `needs-human-review` CAND 있음 | 사람 검토 → approve/reject 결정, SOL 작성 착수 |
+| gatekeeper 판정 끝난 CAND + 사용자 허락 | **R-11 post-harness cross-review** — `skills/cross-review/` 스킬 사용. `harness/run.py --target CAND-NNN --mode post-harness` 로 프롬프트 렌더 → Agent tool 로 병렬 실행 → `aggregate.py` 로 집계. 허락 없이 자동 실행 금지. 아래 §7.1 참조 |
+| gatekeeper `approve` + cross-review 2/3 이상 real | 사람 최종 검토 → SOL 작성 착수 |
+| gatekeeper `uncertain` / `needs-human-review` | cross-review 결과로 approve/scope-축소/abandon 결정 |
 | `solutions/` 에 `status: drafted` SOL 있음 | worktree 에서 재현 테스트 + fix → PR 경로 |
 | 위 전부 없음 | 새 셀 선택 (아래 §3) |
 
@@ -96,24 +98,62 @@ git push
 echo "next: {한 줄}" >> orchestrator-log.md
 ```
 
-## 7. PR 발행 전 cross-review (CAL-003 필수)
+## 7. Cross-review 단계 (R-11 post-harness + CAL-003 PR 직전)
 
-PR 제출 **직전** 3 에이전트 병렬 호출 — 긍정/비판/중립:
+### 7.0 실행 경로 (cross-review 스킬)
 
-```
-Agent × 3 (general-purpose, 병렬):
-- Positive: "왜 머지해야 하는가" 증거 수집
-- Critical: "왜 close 해야 하는가" 반증 (primary-path inversion 적극)
-- Neutral: 균형
-```
+모든 cross-review 는 `skills/cross-review/` 스킬 사용. 5단계 프로토콜:
 
-합의 2/3 미만이면 retract 또는 scope 축소. 특히 **긍정 시점마저 real 판정 못 하면** 거의 확실한 false positive.
+1. **사용자 허락** (gate 필수)
+2. `run.py --target <T> --mode <M>` 로 프롬프트 JSON 렌더
+3. Agent tool 병렬 dispatch (한 메시지, 여러 tool_use 블록)
+4. `aggregate.py --target <T> --mode <M>` 로 집계 + `metrics/cross-review-*.jsonl` 영구 기록
+5. `primary_decision.action` 에 따라 다음 단계
 
-판정 enum:
+상세: `skills/cross-review/SKILL.md`. 역할 카탈로그: `skills/cross-review/ROLES.md`. 모드 프리셋: `skills/cross-review/modes/*.yaml`.
+
+### 7.1 Post-harness cross-review (사용자 허락 게이트, 기본 5 agent)
+
+gatekeeper verdict (approve / uncertain) 직후, **사용자 허락을 받고** 병렬 실행. mode: `post-harness`.
+
+기본 역할 세트 (5개 기본, 3 최소):
+
+| 역할 | 프롬프트 초점 |
+|---|---|
+| **positive-advocate** | "왜 merge 해야 하는가" — 문제 존재 증거, production 영향 경로, 메인테이너 수용 가능성 |
+| **critical-devil** | "왜 close 해야 하는가" — primary-path inversion, CAL-001~005 재확인, unconditional guard 재탐색 |
+| **reproduction-realist** | 재현 테스트가 production hot-path 와 동일 branch 인가 (CAL-003). synthetic race 위험. fake timer / mock 의존도. |
+| **hot-path-tracer** | production caller stack 추적 — 문제 경로가 정상 사용자 시나리오에서 taken 되는가 |
+| **upstream-dup-checker** | `git log upstream/main` 에서 동일/유사 fix 이미 있는지 (CAL-004) |
+
+판정 enum (각 에이전트가 반드시 반환):
 - `real-problem-real-fix`
 - `real-problem-fix-insufficient`
 - `synthetic-only` (test path ≠ production hot-path)
 - `false-positive` (primary cleanup 이 이미 처리)
+- `upstream-duplicate` (이미 upstream 에서 해결)
+
+**결과 해석**:
+- 3/3 real → approve → SOL 작성
+- 2/3 real + 1 scope 우려 → scope 축소 후 진행
+- 긍정 시점마저 real 판정 못 함 → false-positive 가능성 높음 → abandon
+- 재현 에이전트가 synthetic-only → test 를 production branch 로 재작성하거나 abandon
+
+**CAL 추가 반영**:
+- CAL-001: critical agent 에 primary-path inversion 필수 포함
+- CAL-003: reproduction realist 필수 포함
+- CAL-004: upstream dup checker 포함 권장
+
+### 7.2 PR 발행 직전 cross-review (CAL-003, mode: pre-pr)
+
+PR 제출 **직전** 3 agent 병렬 재검증. fix 포함 최종 diff 기준.
+합의 2/3 미만이면 retract 또는 scope 축소. **긍정 시점마저 real 판정 못 하면** 거의 확실한 false positive.
+
+### 7.3 메인테이너 리뷰 답변 전 cross-review (R-10/CAL-006, mode: maintainer-response)
+
+메인테이너 CHANGES_REQUESTED / COMMENT 받으면 답변 전 `skills/cross-review/harness/run.py --target PR#NNNNN --mode maintainer-response --maintainer-quote "..." --invariant "..." --pr-reference "PR#NNNNN @<sha>"` 실행.
+기본 5 agent: critical-devil, maintainer-invariant-hunter, schema-boundary-fuzzer, caller-surface-auditor, reproduction-realist.
+톤 체크리스트: `modes/maintainer-response.yaml` 의 `tone_checklist`.
 
 ## 8. 긴급 참조
 

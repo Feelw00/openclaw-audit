@@ -1,0 +1,40 @@
+# pre-pr mode
+# PR 발행 직전 최종 검증 (CAL-003)
+# 목적: fix 포함 최종 diff 기준으로 real 여부 + 재현 테스트 quality 확정
+# 근거: CAND-006 (PR #68511) self-closed — PR 발행 후 synthetic-only 판정, 즉시 close
+
+description: "PR 발행 직전 최종 검증 (CAL-003)"
+target_types: [SOL, PR]
+
+required_roles:
+  - positive-advocate
+  - critical-devil
+  - reproduction-realist
+
+optional_roles:
+  - upstream-dup-checker
+  - hot-path-tracer
+
+min_agents: 3
+default_agents: 3
+
+consensus_rules:
+  # 평가 순서: 강한 신호 (scope-down/retract) 먼저, proceed 는 fallback.
+  scope_down_or_retract:
+    condition: "real_count <= 2 OR synthetic_count >= 1 OR false_positive_count >= 1"
+    action: "scope 축소 후 재-cross-review 또는 retract"
+  proceed_to_pr:
+    condition: "real_count == 3 AND synthetic_count == 0 AND false_positive_count == 0"
+    action: "PR 발행"
+
+user_permission_gate: required
+permission_prompt: |
+  SOL/PR 발행 직전 cross-review (최소 {min_agents} agent, 병렬).
+  특히 Critical agent 가 primary-path inversion 을, Reproduction agent 가 hot-path vs test-path 일관성을 재확인.
+  진행할까? (y/n)
+
+# 주의 사항 (CAL-003 교훈)
+notes: |
+  - PR 발행 후 synthetic-only 판정 시 비용이 매우 큼 (CAL-003 의 PR #68511 self-close 사례)
+  - positive/critical 합의조차 안 되면 거의 확실한 false positive
+  - reproduction agent 가 vi.fn mock 으로만 성립하는 재현을 지적하면 real branch 로 재작성

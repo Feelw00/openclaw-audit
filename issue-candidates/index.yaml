@@ -78,6 +78,28 @@ candidates:
   openclaw_pr: 68543
   openclaw_branch: fix/retry-after-lower-bound
   openclaw_commit: 0fd08a0fd0
+- id: CAND-010
+  type: epic
+  finding_count: 2
+  state: abandoned
+  note: FIND-agents-registry-concurrency-001/002 — beginSubagentCleanup atomic guard
+    coverage gap (resume 경로 + complete 경로의 cleanupBrowserSessions 가 guard 바깥)
+  retracted_reason: 'cross-review 5-agent scope-down: FIND-001 은 hot-path score 1/5
+    + 숨은 guards 4건 (registry.ts:403 cleanupCompletedAt, :384 !entry, :465 restoreAttempted,
+    lifecycle.ts:310 beginSubagentCleanup inside retryDeferred) → CAL-001 재발 위험.
+    FIND-002 만 CAND-011 single 로 재편.'
+- id: CAND-011
+  type: single
+  finding_count: 1
+  state: published
+  note: FIND-agents-registry-concurrency-002 — completeSubagentRun 의 cleanupBrowserSessionsForLifecycleEnd
+    wrapper 가 dual dispatch 시 2회 invoke. 실 CDP IPC 는 session-tab-registry take-and-drain
+    으로 이미 dedup 이나 wrapper overhead + defense-in-depth 가치로 진행. 48042c3875 endedHookEmittedAt
+    패턴 확장.
+  openclaw_issue: 68668
+  openclaw_pr: 68669
+  openclaw_branch: fix/subagent-registry-browser-cleanup-dedup
+  openclaw_commit: de10efb19c
 published:
 - cand_id: CAND-004
   issue: 68487
@@ -95,3 +117,7 @@ published:
   issue: 68541
   pr: 68543
   at: 2026-04-18
+- cand_id: CAND-011
+  issue: 68668
+  pr: 68669
+  at: 2026-04-19

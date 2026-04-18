@@ -1,0 +1,44 @@
+# post-harness mode
+# gatekeeper 판정 직후, 사용자 허락 게이트 통과 후 실행
+# 목적: real-problem 여부 최종 확정 (R-11)
+# 근거: 과거 CAND-004 (CAL-001), CAND-006 (CAL-003) 같은 false positive 를 cross-review 로 조기 차단
+
+description: "gatekeeper 판정 직후 real-problem 최종 확정 (R-11)"
+target_types: [CAND, FIND]
+
+required_roles:
+  - positive-advocate
+  - critical-devil
+  - reproduction-realist
+
+recommended_roles:
+  - hot-path-tracer
+  - upstream-dup-checker
+
+optional_roles:
+  - caller-surface-auditor
+
+min_agents: 3
+default_agents: 5
+
+consensus_rules:
+  # 평가 순서: 위에서 아래로, 첫 매치가 primary_decision.
+  # verdict enum: real-problem-real-fix / real-problem-fix-insufficient / synthetic-only / false-positive / upstream-duplicate
+  abandon:
+    condition: "false_positive_count >= 1 OR real_count <= 1"
+    action: "CAND 전체 abandon"
+  upstream_wait:
+    condition: "upstream_duplicate_count >= 1"
+    action: "CAL-004 reference 달고 abandon"
+  scope_down:
+    condition: "real_count >= 2 AND (fix_insufficient_count >= 2 OR synthetic_count >= 1)"
+    action: "FIND 중 synthetic / fix-insufficient 한 것 abandon, 나머지로 CAND 재편"
+  proceed:
+    condition: "real_count >= 3 AND false_positive_count == 0 AND upstream_duplicate_count == 0"
+    action: "사람 최종 검토 → SOL 작성"
+
+user_permission_gate: required
+permission_prompt: |
+  CAND 에 대해 cross-review (최소 {min_agents} agent, 병렬) 를 실행한다.
+  각 agent 는 독립적으로 Read/Grep 수행 후 JSON verdict 반환.
+  실행 시간 추정: 2~5분. 진행할까? (y/n)

@@ -247,3 +247,88 @@ rg -n "sweeper|reaper|cleanup|ttl|TTL" subagent-registry*.ts  (대량)
 - 본 도메인의 다른 FIND 들(cron/plugins)과 root_cause_chain 의미론 중복 없음. 공통 원인으로 묶을
   epic 후보 타 도메인에서 발견되지 않음.
 
+### concurrency-auditor (2026-04-19)
+
+**적용 카테고리:**
+- [x] A. Shared mutable state async 갱신 race — 발견 1건 (FIND-001, resumedRuns check-then-act)
+- [x] B. Promise.race loser 처리 — live-cache-test-support.ts `Promise.race([completeSimple(signal), timeout])` 확인. AbortController 로 loser 취소 정상. FIND 없음.
+- [x] C. Listener register race — `ensureListener` 의 `listenerStarted` sync guard 정상. `48042c3875` (endedHookEmittedAt) 이 hook duplicate 는 해결했으나 browser cleanup 은 미보호 → FIND-002.
+- [x] D. AbortController 전파 — waitForSubagentCompletion (run-manager.ts:75-132) 가 AbortSignal 을 받지 않음. listener 와 RPC 폴링 각각 독립 → FIND-002 의 일부 맥락. 단독 FIND 아님.
+- [ ] E. Microtask ordering — skipped. 대상 파일에 queueMicrotask 없음, setImmediate 는 테스트 파일 1건.
+- [x] F. Map/Set operation atomicity — resumedRuns check-then-act (FIND-001). 기타 Set/Map 동작은 sync prefix 안에서 원자적.
+- [x] G. Double-dispatch / re-entrance — FIND-001 (resumeSubagentRun retry-limit 재진입), FIND-002 (completeSubagentRun 병행 호출).
+- [ ] H. Race with cleanup/disposal — 프로덕션 graceful shutdown 경로 부재 (allowed_paths 외부). 테스트 전용 reset 만 있음.
+- [x] Primary-path inversion — beginSubagentCleanup, endedHookEmittedAt, inFlightRunIds Set 을 primary guard 후보로 탐색. 각 FIND 에서 guard 위치 표로 분석.
+- [x] Hot-path vs test-path — FIND-001 production hot-path (restore + steer-restart 겹침), FIND-002 production hot-path (embedded run listener + gateway RPC 둘 다 fire). 테스트는 둘 다 single-path 만 커버.
+
+**R-3 Grep 결과 요약**:
+
+```
+rg -n "Mutex|Semaphore|AsyncLock|acquire|release" src/agents/subagent-registry*.ts src/agents/live-cache-test-support.ts
+  → releaseSubagentRun (semantic, lock 아님). lock primitive match 없음.
+
+rg -n "AbortController|AbortSignal|signal\.(abort|addEventListener)" src/agents/subagent-registry*.ts src/agents/live-cache-test-support.ts
+  → live-cache-test-support.ts:76 (completeSimpleWithLiveTimeout 내부). 나머지 파일 match 없음.
+  → subagent-registry/lifecycle 모듈은 AbortController 를 아예 사용하지 않는다.
+
+rg -n "Promise\.race\(|Promise\.all\(|Promise\.allSettled\(" src/agents/subagent-registry*.ts src/agents/live-cache-test-support.ts
+  → subagent-registry-helpers.ts:188 (Promise.all([rootReal, dirReal])) — 파일 경로 realpath 병렬, loser 처리 무관.
+  → live-cache-test-support.ts:88 (completeSimple vs timeout race, AbortController 전파).
+  → subagent-registry.ts 본체에는 Promise.race/all 사용 없음. async 호출이 직접 이어진다.
+
+rg -n "once\(|prependListener|removeAllListeners\(" src/agents/subagent-registry*.ts src/agents/live-cache-test-support.ts
+  → match 없음. 리스너는 `listenerStop = onAgentEvent(cb)` 에서 unsubscribe 핸들 반환 방식.
+
+rg -n "setImmediate|queueMicrotask|process\.nextTick" src/agents/subagent-registry*.ts src/agents/live-cache-test-support.ts
+  → subagent-registry.steer-restart.test.ts:119 뿐. 본체 코드엔 없음.
+
+rg -n "beginSubagentCleanup|endedHookEmittedAt|endedHookInFlightRunIds" src/agents/subagent-registry*.ts
+  → beginSubagentCleanup: lifecycle.ts:280 정의, 310/476/492 호출 (세 호출자 모두 선행 가드로 사용).
+  → endedHookEmittedAt: registry.ts:327, completion.ts:58/91, run-manager.ts:231 (steer 재설정 시 undefined 로 reset).
+  → endedHookInFlightRunIds: registry.ts:216 선언, 346/675/742 전달/clear, completion.ts:61/65/97 가드.
+```
+
+**Upstream 사전 확인 (R-8)**:
+- `git log upstream/main --since="3 weeks ago" --oneline -- src/agents/subagent-registry.ts src/agents/subagent-registry-memory.ts src/agents/live-cache-test-support.ts`
+- 최근 10 commit 중 race/concurrent/lock/atomic/serialize 키워드 없음.
+- `48042c3875 fix(agents): avoid duplicate subagent ended hook loads` 는 endedHookEmittedAt 가드 추가 — FIND-002 는 **그 fix 바깥 범위** (browser cleanup). FIND-001 은 resumedRuns / finalizeResumedAnnounceGiveUp 무가드로 완전 별개.
+- `54cf4cd857 test(agents): isolate shared subagent state` 는 test isolation 관련. 본 findings 의 hot-path race 와 무관.
+- 현재 로컬 HEAD (d7cc6f7643) 가 upstream/main 보다 뒤쳐져 있으나 resumeSubagentRun 패턴은 upstream 에서도 유지 (직접 `git show upstream/main:src/agents/subagent-registry.ts` 으로 370-470 라인 재확인).
+
+**신규 FIND**:
+- FIND-agents-registry-concurrency-001 (P3): `resumeSubagentRun` retry-limit/expiry 분기가 resumedRuns.add + beginSubagentCleanup 둘 다 생략 → `finalizeResumedAnnounceGiveUp` 중복 dispatch → `notifyContextEngineSubagentEnded("deleted")` 2회 fire.
+- FIND-agents-registry-concurrency-002 (P2): `completeSubagentRun` 이 listener + waitForSubagentCompletion 두 경로에서 병행 호출될 때 `cleanupBrowserSessionsForLifecycleEnd` 가 `beginSubagentCleanup` 가드 바깥에 있어 동일 childSessionKey 에 대해 2회 발사.
+
+**스킵 사유 (false-positive 방지)**:
+- Promise.race loser (live-cache-test-support.ts): AbortController 가 전파되고 finally 가 두 timer 를 clear. loser 정리 정상. FIND 아님.
+- listener `ensureListener` double-register: `listenerStarted` sync flag 로 보호. FIND 아님.
+- `schedulePendingLifecycleError` 의 timer race (CAL-001 지목 함수): line 244-269 timer callback 의 `pending.timer !== timer` 체크 (line 246) 가 replacement 를 올바르게 감지. line 249 delete 는 replace 이후 old timer 가 fire 해도 새 pending 을 건드리지 않는다 — primary-path guard 정상. CAL-001 교훈 반영 확인.
+- `endedHookEmittedAt` idempotency (48042c3875 의 핵심): registry.ts:327 + completion.ts:58/91 + inFlightRunIds 조합이 hook 이중 발사를 막는다. 본 세션 FIND-002 는 이 가드 **바깥** 의 browser cleanup 에 대한 race 이며, hook race 자체는 해결됐다.
+- `sweeper self-stop` (FIND-agents-registry-memory-002 기존 이슈): sweeper 중지 조건 자체는 concurrency race 아닌 TTL cleanup gap. 본 세션 중복 아님.
+- `persistSubagentRuns()` 동시 호출 시 disk 쓰기 충돌: subagent-registry.store.ts out-of-scope.
+- `refreshFrozenResultFromSession` 동시 호출 시 `captureSubagentCompletionReply` race: captureSubagentCompletionReply 가 subagent-announce.ts 에 있어 allowed_paths 외부. 단독 FIND 생성 불가.
+- `markSubagentRunTerminated` vs `completeSubagentRun(COMPLETE)` 교차 시 `endedReason` last-writer-wins: 실제 영향은 훅 emit 시 reason 불일치 뿐인데 endedHookEmittedAt 이 1회로 제한 → 의미론적 race 이지만 실재 증상 제한적. P4 수준이라 FIND 4건 제한 하에 제외.
+
+**Self-critique (미확인 영역)**:
+- `subagent-orphan-recovery.js` (out-of-scope) 가 resumeSubagentRun 을 어떻게 호출하는지 미확인. 만일 recovery 가 같은 runId 에 반복 호출하면 FIND-001 재현 빈도 상승.
+- `browser-lifecycle-cleanup` 구현체 idempotency 미검증 — FIND-002 의 severity 는 "구현 의존" 으로 표기.
+- `waitForAgentRun` (run-wait.ts) 의 실제 동작 — 임베디드 run 에서 gateway RPC 로 resolve 되는지 재확인 없이 "그렇다고 가정" (주석 근거).
+- telemetry 부재로 실제 프로덕션 관측 불가. FIND 두 건 모두 정성적 영향만 기술.
+
+### clusterer (2026-04-19)
+
+- **CAND-010 (epic)**: FIND-agents-registry-concurrency-001 + FIND-agents-registry-concurrency-002 를
+  공통 원인 "subagent-registry 의 beginSubagentCleanup atomic guard 커버리지 갭" 으로 묶어 epic
+  발행. 두 FIND 모두 동일 `cleanupHandled` / `cleanupCompletedAt` sync guard 의 보호 범위 바깥에서
+  side-effect 가 dispatch 되는 구조적 결함을 드러낸다.
+  - FIND-001 (P3): resume 경로가 guard 를 건너뛰고 `finalizeResumedAnnounceGiveUp` 직접 dispatch.
+  - FIND-002 (P2): complete 경로에서 `cleanupBrowserSessionsForLifecycleEnd` 가 guard 진입 전에
+    실행.
+  - 두 FIND 의 file/symbol/trigger-source 는 다르지만 (registry.ts vs lifecycle.ts, resume vs
+    complete, restore+steer-restart vs listener+gateway-RPC), root_cause_chain 에서
+    "beginSubagentCleanup guard 가 해당 경로에 적용되지 않는다" 가 공통되게 확인됨. 따라서 해결책
+    축 ("guard coverage 확장") 이 공통이라고 추정, epic 으로 처리.
+  - proposed_severity: P2 (두 FIND 중 상위 값 상속).
+- 도메인 내 다른 FIND 들 (memory-001/002) 과는 root cause 가 달라 묶지 않음 (memory 계열은 sweeper
+  self-stop / grace-period timer gap 축).
+

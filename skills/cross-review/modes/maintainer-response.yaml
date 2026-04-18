@@ -1,0 +1,51 @@
+# maintainer-response mode
+# 메인테이너 리뷰 답변 전 (R-10 / CAL-006)
+# 목적: 답변 작성 전 메인테이너 불변식 충족 여부 + 주변 edge case 탐색
+# 근거: PR #68543 에서 첫 답변이 pushback 톤 → 사용자 "치명적 문제" 지적
+
+description: "메인테이너 리뷰 답변 전 (R-10/CAL-006)"
+target_types: [PR, review_comment]
+
+required_roles:
+  - critical-devil
+  - maintainer-invariant-hunter
+  - schema-boundary-fuzzer
+
+recommended_roles:
+  - caller-surface-auditor
+  - reproduction-realist
+
+min_agents: 3
+default_agents: 5
+
+# additional_context 는 사용자가 skill 호출 시 전달
+required_context:
+  - maintainer_quote  # 메인테이너 원문 (따옴표)
+  - invariant         # 지적된 불변식 (한 줄)
+  - pr_reference      # PR 번호 + 현재 fix commit SHA
+
+consensus_rules:
+  already_satisfied_report_back:
+    condition: "all agents report invariant_satisfied AND adjacent_violations == 0"
+    action: "답변: 사과 + 재검토 결과 보고 (stale review 가능성 언급, simplification 선택지 열기)"
+  fix_additional_violation:
+    condition: "maintainer_invariant_hunter reports adjacent_violations >= 1 OR critical_devil finds new gap"
+    action: "답변 전 fix commit 먼저 push → 답변에 commit SHA 인용 + 'thanks for catching'"
+  pushback_forbidden:
+    condition: "ALWAYS"
+    action: "답변 톤 금지어 체크: 'already implemented', 'if I'm misreading', 'point me to the file:line' 등"
+
+user_permission_gate: required
+permission_prompt: |
+  메인테이너 리뷰 응답 전 cross-review ({min_agents} agent, 병렬).
+  Critical + Invariant-hunter + Schema-fuzzer 가 메인테이너 불변식 + 주변 edge case 탐색.
+  답변은 cross-review 결과 확인 후 작성. 진행할까? (y/n)
+
+# 답변 톤 체크리스트 (R-10)
+tone_checklist:
+  - "첫 문장이 사과 ('Sorry — ...', 'Apologies for ...', 'Thanks for catching ...') 인가"
+  - "'I think', 'actually', 'already' 같은 주장 동사 없는가"
+  - "'If I'm misreading', 'if you could point to' 같은 책임 전가 문구 없는가"
+  - "commit 먼저 push 하고 답변에 SHA 인용하는가"
+  - "본문 끝에 메인테이너 선택권 (simplification 옵션) 열어두는가"
+  - "Critical agent 가 찾은 추가 edge case 를 '메인테이너 덕분' 으로 frame 하는가"
