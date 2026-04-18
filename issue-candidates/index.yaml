@@ -24,12 +24,16 @@ candidates:
 - id: CAND-004
   type: single
   finding_count: 1
-  state: published
+  state: abandoned
   note: FIND-agents-registry-memory-002 — sweeper self-stop 이 pending error TTL 무력화
   openclaw_issue: 68487
   openclaw_pr: 68489
   openclaw_branch: fix/agents-sweeper-drain-pending-before-stop
   openclaw_commit: ca09e64418
+  retracted_reason: 'maintainer (obviyus) closed PR #68489 as non-reproducing (CAL-001):
+    schedulePendingLifecycleError 의 line 249 setTimeout 콜백이 pendingLifecycleErrorByRunId.delete
+    를 unconditional 수행 → primary cleanup path. sweeper 는 defense-in-depth. primary-path
+    inversion 실패.'
 - id: CAND-005
   type: single
   finding_count: 1

@@ -42,12 +42,12 @@ git log upstream/main --since="2 weeks ago" --oneline -- src/plugins/ src/cron/ 
 # 아직 안 돌린 Phase 1 셀 확인
 grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 
-# 현재 Phase 1 상태 (2026-04-18 기준)
-# ✓ plugins-memory         — done (CAND-001 uncertain)
-# ✓ cron-concurrency       — done (CAND-002 uncertain, CAND-003 retracted)
-# ✓ agents-registry-memory — done (CAND-004 published, PR #68489)
-# ☐ plugins-lifecycle      — 페르소나: plugin-lifecycle-auditor
-# ☐ infra-process-error-boundary — 페르소나: error-boundary-auditor
+# 현재 Phase 1 상태 (2026-04-19 기준)
+# ✓ plugins-memory         — done (CAND-001 abandoned)
+# ✓ cron-concurrency       — done (CAND-002/003 abandoned)
+# ✓ agents-registry-memory — done (CAND-004 abandoned — maintainer closed PR #68489, CAL-001)
+# ✓ plugins-lifecycle      — done (CAND-005 abandoned — upstream superseded, CAL-004)
+# ✓ infra-process-error-boundary — done (CAND-006 abandoned — synthetic-only, CAL-003)
 ```
 
 셀 실행 프롬프트 템플릿 (Agent 도구, `subagent_type=general-purpose`):
