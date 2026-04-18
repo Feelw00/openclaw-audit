@@ -24,6 +24,16 @@ candidates:
     openclaw_pr: 68489
     openclaw_branch: "fix/agents-sweeper-drain-pending-before-stop"
     openclaw_commit: ca09e64418
+  - id: CAND-005
+    type: single
+    finding_count: 1
+    state: pending_gatekeeper
+    note: "FIND-plugins-lifecycle-001 — register throw 시 httpRoutes/services/commands/hooks 부분 등록 rollback 부재 (loader.ts:1839-1862 에 registry 배열 snapshot/restore 없음)"
+  - id: CAND-006
+    type: single
+    finding_count: 1
+    state: pending_gatekeeper
+    note: "FIND-infra-process-error-boundary-003 — emitGatewayRestart catch 가 sigusr1AuthorizedCount 감소 누락, 최대 5초 authorization leak"
 published:
   - cand_id: CAND-004
     issue: 68487
