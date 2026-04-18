@@ -159,3 +159,16 @@ cron 도메인은 registry-style public field (`registry.X.push` + `registry.X[k
 - `state.deps.onEvent` 콜백이 caller 측에서 리스너 누적 구조를 쓰는지: 콜백 등록은 caller 책임. cron 본체 내부 leak 아님.
 - `isolated-agent/run-*.runtime.ts` 의 runtime 캐시: dynamic-import promise 변수 (`gatewayCallRuntimePromise` 등) 는 모듈 한 번만 로드하므로 leak 아님.
 - `task-executor` / `task-registry` 연동 (`createRunningTaskRun` 등) 은 allowed_paths 밖. 해당 registry 의 cleanup 은 외부 책임.
+
+### memory-leak-hunter 재방문 (2026-04-19)
+
+이전 세션 (2026-04-18) 이 `cron-memory` 셀에 대해 **FIND 0건** 으로 결론. 24시간 내 변경 파일 재검증:
+
+- `src/cron/store.ts` (Apr 18 22:00 mtime): `serializedStoreCache` 구조 동일. `.set` (97, 141, 160) + `.delete` (101, ENOENT 경로). 키는 `storePath` — 프로세스 내 1-2 항목. 성장률 0.
+- `src/cron/service/jobs.ts` (Apr 18 22:00 mtime): 모듈-스코프 구조는 `staggerOffsetCache` 만 존재 (40). FIFO eviction at cap 4096 (76-81). 변화 없음.
+- `src/cron/service/ops.ts` (Apr 18 22:00 mtime): `nextManualRunId` (395) — 단조 증가 **number** (Map/Set 아님) → leak 카테고리 해당 없음.
+- `src/cron/service/timer.test.ts` (Apr 18 22:00 mtime): 테스트 파일. 프로덕션 경로 영향 없음.
+
+`rg "^(const|let|var)\s+\w+\s*=\s*new (Map|Set|WeakMap)" src/cron/` 재실행 결과 이전 인벤토리와 100% 일치 (7개 Map). 신규 누수 후보 없음.
+
+재결론: **FIND 0건** (품질 > 수량). primary-path inversion 후 모든 후보가 unconditional cleanup / bounded key domain / TTL+cap 중 하나에 해당.

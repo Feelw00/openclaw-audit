@@ -227,3 +227,52 @@
 - FIND-003 은 독립 축 (dynamic import cache). 다른 FIND 와 epic 근거 약함.
 - webhooks async register 가 실제 production 에서 reject 하는 경로가 있는지 (config I/O 에러 등)
   재현 테스트 작성 시 구체화 필요.
+
+### error-boundary-auditor (2026-04-19, 재실행)
+
+**배경**: 2026-04-18 세션의 FIND 001/002/003 이 YAML frontmatter parse error (R-6 위반: 콜론 포함 문자열, backtick, 이모지 등) 로 전원 reject 됨. 본 세션은 **내용은 동일 gap, YAML 규율 복원** 으로 재제출.
+
+**추가 확보된 반증/증거 (전 세션 미확인 부분)**:
+
+1. **src/infra/unhandled-rejections.ts:339-379 글로벌 handler 로직 직접 Read**:
+   - `installUnhandledRejectionHandler` 가 `process.on("unhandledRejection", ...)` 로 리스너 설치.
+   - reason classification 순서: `isUnhandledRejectionHandled` -> `isAbortError` (warn-only) -> `isFatalError` (exit) -> `isConfigError` (exit) -> `isTransientUnhandledRejectionError` (warn-only) -> **default branch: `process.exit(1)`**.
+   - 즉 plugin 의 일반 Error (fatal/config/transient 분류 미해당) 은 default branch 에서 **확정적 process crash**.
+   - 이 발견으로 FIND-001 severity **P1 -> P0 상향** (crash 경로 production-grade fatal 확인).
+
+2. **FIND-002 severity 는 P2 -> P1 로 상향**: 동일 unhandled-rejections 경로 공유. full loader 경로는 diagnostic push 가 있어 silent 보다 낫지만 Promise rejection 이 여전히 fatal 로 가는 사실은 동일.
+
+3. **discovery.ts 의 fs.statSync race 후보 (line 729-738)**: `fs.existsSync(resolved)` 후 `fs.statSync(resolved)` 가 try 없이 이어진다. 파일이 두 호출 사이에 삭제되면 stat 이 throw 하여 discoverFromPath 를 중단. 본 세션은 error-boundary 셀 scope 내이나 **매우 edge 조건** (빈도 낮음) 이고 memory-leak/lifecycle 영향 없음 → FIND 로 승격 안 함. lifecycle-auditor 다음 세션 후보로만 기록.
+
+**발견 FIND (재제출)**:
+- FIND-plugins-error-boundary-001 (P0, error-boundary-gap): bundled-capability-runtime.ts:301 `void register(captured.api)` - async Promise 가 try/catch 밖으로 escape, unhandled-rejections global handler 가 process.exit(1) 확정. severity **P1 → P0 상향**.
+- FIND-plugins-error-boundary-002 (P1, error-boundary-gap): loader.ts:1753-1762 - async register 감지는 하지만 Promise 는 diagnostic push 뿐 .catch 없음. 동일 crash 경로. severity **P2 → P1 상향**.
+- FIND-plugins-error-boundary-003 (P2, error-boundary-gap): install.ts/provider-runtime.runtime.ts/provider-discovery.ts/provider-auth-ref.ts 4곳의 `??= import(...)` lazy-load idiom - 첫 import reject 시 rejected Promise 영구 캐시. 프로세스 재시작 전 recovery 불가. severity P2 유지.
+
+**R-3 Grep 결과 — async register/Promise escape 경로 방어 매핑 (갱신)**:
+
+| 경로 | 방어 유무 | R-5 분류 |
+|---|---|---|
+| `void register(captured.api)` in bundled-capability-runtime.ts:301 | **부재** (sync-only try) | does-not-cover-async → global handler 에서 process.exit(1) |
+| `const result = register(api); if (async) diagnostic.push` in loader.ts:1753-1762 | **부분** (diagnostic only, .catch 없음) | does-not-cover-async → global handler 에서 process.exit(1) |
+| `void Promise.resolve(result).catch(() => undefined)` in setup-registry.ts:272-279 ignoreAsyncSetupRegisterResult | **존재** (명시 swallow) | unconditional swallow |
+| `await register(api)` in loader.ts:2175 (cli-metadata) | **존재** (try/catch 통합) | unconditional |
+| `xxxRuntimePromise ??= import(...)` 4곳 | **부재** (reset 경로 없음) | conditional-edge (첫 실패 후 stuck) |
+| `void notifyPluginConversationBindingResolved(params).catch(...)` in conversation-binding.ts:929 | **존재** (log.warn catch) | unconditional swallow |
+| `src/infra/unhandled-rejections.ts:345-379` 글로벌 handler | **존재** | unconditional, 일반 Error → process.exit(1) |
+
+**핵심 결론**:
+
+1. **두 경로 (bundled-capability-runtime 와 full loader) 모두 async Promise escape → global handler 의 default branch → process.exit(1) 확정 경로**. severity 상향 근거 확립.
+2. **setup-registry.ts 의 `ignoreAsyncSetupRegisterResult` 가 같은 파일 내 안전 대안으로 존재**. 이 helper 를 양쪽 경로가 채택했다면 전부 방어됨. 공유 미채택은 코드 일관성 결함.
+3. **설계 관점 — SDK 타입 `register: (api) => void` 가 async function 을 막지 않는다는 사실이 근본 취약 지점**. no-misused-promises lint 또는 signature 변경 없이는 실수 재발 우려.
+
+**clusterer 를 위한 힌트**:
+- FIND-001, FIND-002 는 같은 root axis (async register Promise floating + 글로벌 handler fatal) 이지만 **다른 실행 경로** (bundled-capability-runtime vs full loader). 별도 CAND 로 분리하되 cross_refs 로 연결 가능. 공통 SOL 후보: setup-registry.ts:272-279 의 helper 를 공유화.
+- FIND-003 은 독립 축 (dynamic import cache). 다른 FIND 와 epic 불가.
+- FIND-plugins-lifecycle-001 (register throw rollback 부재, CAND-005) 와 FIND-001/002 의 관계: **rollback 부재 축과 별개**. rollback 은 sync throw 를 catch 에서 잡은 후 부분 등록이 남는 문제, 본 FIND 는 애초에 catch 가 trigger 되지 않는 경로. 별도 CAND 유지.
+
+**자체 한계**:
+- src/infra/unhandled-rejections.ts 의 installUnhandledRejectionHandler 가 gateway process 에서 실제 호출되는 call site 는 allowed_paths 외 (src/index.ts, src/cli/run-main.ts). 본 세션은 export 존재 + 로직 확인만. 만약 특정 entrypoint 에서 install 누락이면 FIND-001/002 crash 영향 하향.
+- third-party plugin 에서 async register 사용 빈도 정량 데이터 없음.
+- registry.httpRoutes 의 consumer snapshot vs live read 여부 (gateway/** 은 scope 외). 이에 따라 late-insert 가 silent 기능 부재로 귀결되는지 판별.

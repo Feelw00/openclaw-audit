@@ -2,21 +2,40 @@
 
 새 세션 시작 시 이 파일 하나만 보고 다음 액션 결정.
 
-## 1. 부팅 4 명령 (CAL-004 반영)
+## 1. 부팅 절차 (CAL-004, CAL-007 반영)
 
+### A. audit repo sync
 ```bash
 cd /Users/lucas/Project/openclaw-audit
 git pull --ff-only
 /tmp/openclaw-audit-venv/bin/python skills/openclaw-audit/harness/local_state.py show | head -40
 ls findings/drafts/ findings/ready/ issue-candidates/ solutions/ 2>/dev/null
+```
 
-# CAL-004 필수: upstream 최신 확인 + 관심 영역 최근 변경
+### B. openclaw repo **반드시** upstream 최신화 + fork 동기화 (CAL-007 원천)
+
+**FIND / CAND 작업 시작 전 필수**. stale 코드로 감사하면 이미 fixed 된 결함을 false positive 로 재탐지하게 됨.
+
+```bash
 cd /Users/lucas/Project/openclaw
 git remote | grep -q upstream || git remote add upstream https://github.com/openclaw/openclaw.git
 git fetch upstream main
+BEHIND=$(git rev-list --count HEAD..upstream/main)
+echo "behind upstream: $BEHIND commits"
+
+# main 이 upstream/main 뒤면 fast-forward + fork 도 push
+if [ "$BEHIND" -gt 0 ]; then
+  git pull upstream main --ff-only
+  git push origin main  # fork 도 동기화 (Feelw00/openclaw main)
+fi
+
+# 관심 영역 최근 변경 확인 (upstream 발견 fix 와 중복 방지)
 git log upstream/main --since="2 weeks ago" --oneline -- src/plugins/ src/cron/ src/infra/ src/agents/ src/context-engine/ | head -30
-# 관련 영역 최근 변경 있으면 worktree base 를 upstream/main 으로 rebase 또는 새 worktree 생성
 ```
+
+### C. PR 작업 중 worktree 는 별도
+
+open PR worktree (`openclaw-pr-*`) 는 `fix/*` 브랜치라 main 업데이트와 독립. rebase 필요 시 `git rebase upstream/main` 로 개별 처리.
 
 (venv 없으면: `python3 -m venv /tmp/openclaw-audit-venv && /tmp/openclaw-audit-venv/bin/pip install pyyaml`)
 
