@@ -29,10 +29,13 @@ candidates:
   - id: CAND-005
     type: single
     finding_count: 1
-    state: gatekeeper-approved   # v2 approve@medium (primary-path inversion 실패 명확: plugins-http.ts:70 등 status 필터 없는 소비자)
-    note: "FIND-plugins-lifecycle-001 — register throw 시 httpRoutes/services/commands/hooks 부분 등록 rollback 부재 (loader.ts:1839-1862 에 registry 배열 snapshot/restore 없음)"
+    state: published
+    note: "FIND-plugins-lifecycle-001 — register throw 시 httpRoutes/services/commands/hooks 부분 등록 rollback 부재"
     v2_verdict: "approve@medium — plugins-http.ts:70 / route-match.ts:26 / services.ts 등 status 필터 없는 소비 경로 존재. record.status='error' 가 effective rollback 아님."
-    next_action: "SOL 작성 + PR 경로"
+    openclaw_issue: 68529
+    openclaw_pr: 68531
+    openclaw_branch: "fix/plugin-register-partial-rollback"
+    openclaw_commit: 121302c58b
   - id: CAND-006
     type: single
     finding_count: 1
@@ -50,4 +53,8 @@ published:
   - cand_id: CAND-006
     issue: 68510
     pr: 68511
+    at: 2026-04-18
+  - cand_id: CAND-005
+    issue: 68529
+    pr: 68531
     at: 2026-04-18
