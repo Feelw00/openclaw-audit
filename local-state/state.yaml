@@ -136,3 +136,20 @@ items:
       at: '2026-04-18T08:51:53+00:00'
     created_at: '2026-04-18T08:51:53+00:00'
     updated_at: '2026-04-18T08:51:53+00:00'
+  CAND-004:
+    kind: candidate
+    state: published
+    transitions:
+    - from: null
+      to: gatekeeper-approved
+      actor: human
+      reason: human-accept of shadow verdict approve@medium; fix + regression test
+        landed locally (ca09e64418)
+      at: '2026-04-18T09:14:09+00:00'
+    - from: gatekeeper-approved
+      to: published
+      actor: human
+      reason: 'issue #68487 + PR #68489 on openclaw/openclaw'
+      at: '2026-04-18T09:16:04+00:00'
+    created_at: '2026-04-18T09:14:09+00:00'
+    updated_at: '2026-04-18T09:16:04+00:00'

@@ -18,6 +18,14 @@ candidates:
   - id: CAND-004
     type: single
     finding_count: 1
-    state: pending_gatekeeper
+    state: published
     note: "FIND-agents-registry-memory-002 — sweeper self-stop 이 pending error TTL 무력화"
-published: []
+    openclaw_issue: 68487
+    openclaw_pr: 68489
+    openclaw_branch: "fix/agents-sweeper-drain-pending-before-stop"
+    openclaw_commit: ca09e64418
+published:
+  - cand_id: CAND-004
+    issue: 68487
+    pr: 68489
+    at: 2026-04-18
