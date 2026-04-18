@@ -32,10 +32,18 @@ candidates:
   - id: CAND-006
     type: single
     finding_count: 1
-    state: pending_gatekeeper
+    state: published
     note: "FIND-infra-process-error-boundary-003 — emitGatewayRestart catch 가 sigusr1AuthorizedCount 감소 누락, 최대 5초 authorization leak"
+    openclaw_issue: 68510
+    openclaw_pr: 68511
+    openclaw_branch: "fix/infra-restart-authorization-count-leak"
+    openclaw_commit: 7cc65a51ce
 published:
   - cand_id: CAND-004
     issue: 68487
     pr: 68489
+    at: 2026-04-18
+  - cand_id: CAND-006
+    issue: 68510
+    pr: 68511
     at: 2026-04-18

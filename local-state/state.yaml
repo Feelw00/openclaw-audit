@@ -206,3 +206,15 @@ items:
       at: '2026-04-18T10:02:49+00:00'
     created_at: '2026-04-18T10:02:49+00:00'
     updated_at: '2026-04-18T10:02:49+00:00'
+  CAND-006:
+    kind: candidate
+    state: published
+    transitions:
+    - from: null
+      to: published
+      actor: human
+      reason: 'issue #68510 + PR #68511 on openclaw/openclaw (approve@medium shadow
+        verdict accepted)'
+      at: '2026-04-18T10:26:26+00:00'
+    created_at: '2026-04-18T10:26:26+00:00'
+    updated_at: '2026-04-18T10:26:26+00:00'
