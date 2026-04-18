@@ -28,6 +28,19 @@ openclaw 프로젝트의 신뢰성 감사 파이프라인 홈.
 | `domain-notes/` | 영구 도메인 지식 |
 | `skills/openclaw-audit/` | 파이프라인 skill + harness |
 
+## openclaw 기여 규칙 필독
+
+`openclaw-contribution.md` 에 정리됨 (CONTRIBUTING.md + pull_request_template.md + CODEOWNERS 통합). PR 준비 전 반드시 스캔.
+
+핵심:
+- one thing per PR (관련 없는 수정 섞지 말 것)
+- 저자당 열린 PR 10개 한계
+- 리팩터만 또는 CI-만 PR 금지
+- `pnpm build && pnpm check && pnpm test` 전부 green 필수
+- CODEOWNERS 제약: `/src/cron/service/jobs.ts`, `/src/cron/stagger.ts`, `/src/agents/*auth*`, `/src/agents/sandbox*` 등 → 소유자 동의 없이 수정 금지
+- AI-assisted 표시 필수
+- PR 본문 12섹션 (Root Cause / Regression Test Plan / Security Impact 등) 채움
+
 ## 메인테이너 가이드 (openclaw)
 
 인용:
