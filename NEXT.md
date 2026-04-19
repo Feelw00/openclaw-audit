@@ -45,7 +45,8 @@ open PR worktree (`openclaw-pr-*`) 는 `fix/*` 브랜치라 main 업데이트와
 |---|---|
 | **메인테이너 (CODEOWNERS / maintainers.md 인물) CHANGES_REQUESTED / COMMENT** | **R-10 필수** — 답변 쓰기 전 3 agent cross-review (positive/critical/neutral) 먼저. 특히 critical agent 에 "메인테이너가 놓친 edge case 도 함께 탐색" 프롬프트. pushback 톤 금지. `calibration/CAL-006-maintainer-review-tone.md` 참조 |
 | PR 에 follow-up commit push 완료 | **Greptile 자동 재리뷰 없음** — PR 에 `@greptile review and provide confidence score` 코멘트로 수동 트리거 |
-| PR 에 bot 리뷰/코멘트 있음 | 해당 worktree 에서 대응 → push → Greptile 재트리거 |
+| **PR 에 Codex / Greptile bot P1+ 지적** | **CAL-009 프로토콜** — 병렬 2-agent (positive + critical) 로 지적 검증 → 반박 가능 시 공손 reply + `gh api graphql resolveReviewThread` / 반영 필요 시 worktree 에서 수정 → push → Greptile 재트리거 |
+| PR 에 bot 리뷰/코멘트 있음 (P2+) | 해당 worktree 에서 대응 → push → Greptile 재트리거 |
 | `findings/drafts/` 에 파일 있음 | `validate.py --all --move` |
 | `findings/ready/` ≥ 2 건 (같은 도메인 누적) | clusterer 페르소나 호출 |
 | `issue-candidates/` 에 gatekeeper 미평가 CAND 있음 (`state: pending_gatekeeper`) | gatekeep 3-step (sanitize → agent → apply --shadow) |
@@ -61,7 +62,7 @@ open PR worktree (`openclaw-pr-*`) 는 `fix/*` 브랜치라 main 업데이트와
 # 아직 안 돌린 Phase 1 셀 확인
 grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 
-# 현재 Phase 1+2 상태 (2026-04-19 기준, grid.yaml 10 셀 전부 done)
+# 현재 Phase 1+2+3 상태 (2026-04-19 기준, 10 + 진행 3 = 13 셀)
 #
 # Phase 1 (5/5 done):
 #   ✓ plugins-memory               — CAND-001 abandoned
@@ -77,16 +78,22 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ infra-process-memory         — adjacent: CAND-007 abandoned
 #   ✓ agents-registry-concurrency  — adjacent: CAND-010 abandoned + CAND-011 open PR #68669
 #
-# 살아있는 PR 2건: #68543 (steipete CHANGES_REQUESTED → 대응 완료 11430f641c, 재리뷰 대기)
-#                  #68669 (메인테이너 리뷰 대기, Greptile 5/5)
+# Phase 3 (3/6 done, 3 남음):
+#   ✓ auto-reply-concurrency       — CAND-012 → PR #68839 ★NEW (proceed) + CAND-013 scope_down
+#   ✓ gateway-memory               — CAND-014 → PR #68842 ★NEW (proceed) + CAND-015 → PR #68848 ★NEW + CAND-016 abandoned (CAL-008 upstream-dup PR #68801)
+#   ✓ gateway-error-boundary       — CAND-017/018 abandoned (synthetic + observability scope 밖)
+#   ☐ gateway-concurrency          — concurrency-auditor
+#   ☐ channels-error-boundary      — error-boundary-auditor
+#   ☐ channels-lifecycle           — plugin-lifecycle-auditor
 #
-# Phase 3 (6셀 신규, 2026-04-19 확장, state=planned):
-#   ☐ gateway-memory              — memory-leak-hunter
-#   ☐ gateway-concurrency         — concurrency-auditor
-#   ☐ gateway-error-boundary      — error-boundary-auditor
-#   ☐ channels-error-boundary     — error-boundary-auditor
-#   ☐ channels-lifecycle          — plugin-lifecycle-auditor
-#   ☐ auto-reply-concurrency      — concurrency-auditor (upstream 712644f0d9 관련 검증)
+# 살아있는 PR 5건 (내 repo, 열린 PR 카운트):
+#   • #68543 (CAND-009, infra-retry) — steipete CHANGES_REQUESTED → 11430f641c 대응, 재리뷰 대기
+#   • #68669 (CAND-011, agents-registry) — Greptile 5/5, 메인테이너 리뷰 대기
+#   • #68839 (CAND-012, auto-reply drain identity guard) ★NEW — 리뷰 대기
+#   • #68842 (CAND-014, costUsageCache FIFO) ★NEW — Codex P2 반박 완료 (CAL-009), thread resolved. 메인테이너 리뷰 대기
+#   • #68848 (CAND-015, nodeWakeById cleanup) ★NEW — 리뷰 대기
+#
+# warn=7 / block=10, 여유 있음. 신규 PR 은 2~3 개 까지 여유.
 #
 # 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 ```
@@ -224,6 +231,9 @@ PR 제출 **직전** 3 agent 병렬 재검증. fix 포함 최종 diff 기준.
   - `calibration/CAL-004-upstream-merge-lag-CAND-005.md` (upstream superseded, R-8 원천)
   - `calibration/CAL-005-bot-contradiction-boundary.md` (bot contradiction, R-9 원천)
   - `calibration/CAL-006-maintainer-review-tone.md` (메인테이너 톤 실수, **R-10 원천 — 가장 위험**)
+  - `calibration/CAL-007-stale-fetch-before-find.md` (stale upstream 기반 FIND, NEXT.md §1 fast-forward 강제 원천)
+  - `calibration/CAL-008-gatekeeper-upstream-dup-gap.md` (gatekeeper upstream-dup check 필수 원천)
+  - `calibration/CAL-009-codex-bot-review-rebuttal.md` (Codex/Greptile bot 지적 병렬 검증 → 반박/반영 결정 프로토콜)
 - **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
   - 파이프라인 외 PR (#63105 cron-store split) 포함
   - Greptile 재리뷰 수동 트리거 절차

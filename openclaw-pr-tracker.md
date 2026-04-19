@@ -32,6 +32,32 @@
 - **관련**: issue #68668
 - **특이사항**: cross-review 가 narrative overclaim 을 조기 탐지 → "IPC 중복" → "wrapper overhead + defense-in-depth" 로 정직하게 scope-down
 
+### #68839 — fix(auto-reply): guard FOLLOWUP_QUEUES delete against late drain finally
+
+- **유형**: 파이프라인 CAND-012, post-harness 5/5 + pre-pr v2 3/3 real
+- **상태**: OPEN, 2026-04-19 발행
+- **대기**: Greptile/Codex 리뷰 + 메인테이너 리뷰
+- **관련**: issue #68838
+- **특이사항**: pre-pr v1 에서 repro import 경로 + assertion 버그 발견 → repro v2 재작성 (restartIfIdle=false 패턴으로 D2 kick 억제 → D1 finally 만 유일 mutator 로 격리)
+
+### #68842 — fix(gateway): bound costUsageCache with MAX + FIFO eviction
+
+- **유형**: 파이프라인 CAND-014, post-harness 5/5 + pre-pr 3/3 real
+- **상태**: OPEN, 2026-04-19 발행
+- **Greptile**: 5/5 safe-to-merge
+- **Codex**: P2 "avoid evicting in-flight entries" → 병렬 2-agent 검증 후 sibling consistency + realistic caller rate + self-contained impact 근거로 반박 (CAL-009). review thread resolved
+- **대기**: 메인테이너 리뷰
+- **관련**: issue #68841
+- **Prior art**: PR #36682 (CLOSED, LRU+MAX=64 차별화) + PR #56318 (OPEN, bundled scope)
+
+### #68848 — fix(gateway): clear nodeWakeById on no-registration early-return
+
+- **유형**: 파이프라인 CAND-015, post-harness 5/5 + pre-pr 3/3 real
+- **상태**: OPEN, 2026-04-19 발행
+- **대기**: Greptile/Codex 리뷰 + 메인테이너 리뷰
+- **관련**: issue #68847
+- **특이사항**: PR #63709 (clearNodeWakeState on WS close) 과 scope 구분 명시 — 이 PR 은 unregistered-nodeId early-return path 처리 (complementary). 최소한의 `__testing` seam 추가 (agent-wait-dedupe.ts:223 / agents.ts:78 house style 미러)
+
 ## 종결된 PR
 
 ### #68489 (CAND-004, maintainer closed)
