@@ -599,3 +599,158 @@ items:
       at: '2026-04-18T19:00:12+00:00'
     created_at: '2026-04-18T17:42:36+00:00'
     updated_at: '2026-04-18T19:00:12+00:00'
+  FIND-auto-reply-concurrency-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-18T21:02:16+00:00'
+    created_at: '2026-04-18T21:02:16+00:00'
+    updated_at: '2026-04-18T21:02:16+00:00'
+  FIND-auto-reply-concurrency-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-18T21:02:16+00:00'
+    created_at: '2026-04-18T21:02:16+00:00'
+    updated_at: '2026-04-18T21:02:16+00:00'
+  FIND-gateway-error-boundary-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-18T21:02:16+00:00'
+    created_at: '2026-04-18T21:02:16+00:00'
+    updated_at: '2026-04-18T21:02:16+00:00'
+  FIND-gateway-error-boundary-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-18T21:02:16+00:00'
+    created_at: '2026-04-18T21:02:16+00:00'
+    updated_at: '2026-04-18T21:02:16+00:00'
+  FIND-gateway-memory-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-18T21:02:16+00:00'
+    created_at: '2026-04-18T21:02:16+00:00'
+    updated_at: '2026-04-18T21:02:16+00:00'
+  FIND-gateway-memory-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-18T21:02:16+00:00'
+    created_at: '2026-04-18T21:02:16+00:00'
+    updated_at: '2026-04-18T21:02:16+00:00'
+  FIND-gateway-memory-003:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-18T21:02:16+00:00'
+    created_at: '2026-04-18T21:02:16+00:00'
+    updated_at: '2026-04-18T21:02:16+00:00'
+  CAND-012:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer output (single: auto-reply drain finally identity race)'
+      at: '2026-04-18T21:06:59+00:00'
+    created_at: '2026-04-18T21:06:59+00:00'
+    updated_at: '2026-04-18T21:06:59+00:00'
+  CAND-013:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer output (single: auto-reply isCrossChannel stale + chimera
+        routing)'
+      at: '2026-04-18T21:07:00+00:00'
+    created_at: '2026-04-18T21:07:00+00:00'
+    updated_at: '2026-04-18T21:07:00+00:00'
+  CAND-014:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer output (single: gateway costUsageCache no-cleanup)'
+      at: '2026-04-18T21:07:01+00:00'
+    created_at: '2026-04-18T21:07:01+00:00'
+    updated_at: '2026-04-18T21:07:01+00:00'
+  CAND-015:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer output (single: gateway nodeWakeById set-before-validation)'
+      at: '2026-04-18T21:07:02+00:00'
+    created_at: '2026-04-18T21:07:02+00:00'
+    updated_at: '2026-04-18T21:07:02+00:00'
+  CAND-016:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer output (single: gateway agentRunStarts no TTL safety belt)'
+      at: '2026-04-18T21:07:04+00:00'
+    created_at: '2026-04-18T21:07:04+00:00'
+    updated_at: '2026-04-18T21:07:04+00:00'
+  CAND-017:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer output (single: gateway node-events silent JSON.parse drop)'
+      at: '2026-04-18T21:07:05+00:00'
+    created_at: '2026-04-18T21:07:05+00:00'
+    updated_at: '2026-04-18T21:07:05+00:00'
+  CAND-018:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer output (single: gateway ws post-handshake outer catch hang)'
+      at: '2026-04-18T21:07:06+00:00'
+    created_at: '2026-04-18T21:07:06+00:00'
+    updated_at: '2026-04-18T21:07:06+00:00'

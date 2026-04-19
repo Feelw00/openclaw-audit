@@ -153,9 +153,25 @@ echo "next: {한 줄}" >> orchestrator-log.md
 
 상세: `skills/cross-review/SKILL.md`. 역할 카탈로그: `skills/cross-review/ROLES.md`. 모드 프리셋: `skills/cross-review/modes/*.yaml`.
 
-### 7.1 Post-harness cross-review (사용자 허락 게이트, 기본 5 agent)
+### 7.1 Post-harness cross-review (severity gate + 사용자 허락)
 
-gatekeeper verdict (approve / uncertain) 직후, **사용자 허락을 받고** 병렬 실행. mode: `post-harness`.
+**트리거 조건** (CAL-008 이후, Option C 하이브리드):
+
+| severity | gatekeeper verdict | 행동 |
+|---|---|---|
+| P0 / P1 / P2 | approve / uncertain | **사용자 허락 후 cross-review 필수** — 메인테이너 visibility 높음, false positive 비용 큼 |
+| P3 | approve | **skip cross-review** — gatekeeper 의 upstream-dup + primary-path inversion 만으로 커버. SOL 작성 가치는 사용자 판단 |
+| P3 | uncertain | 과거 패턴 (CAND-007/008) 대로 기본 abandon. cross-review 는 사용자 요청 시만 |
+| 전체 | reject_suspected | skip cross-review — 이미 reject |
+
+이 gate 의 근거:
+- CAL-008: gatekeeper 에 upstream-dup check 가 추가되면 P3 단순 leak 은 단독 판단으로 충분
+- cross-review 비용 = 5 agent × CAND. P3 에 5-agent 투입은 오버엔지니어링
+- P2+ 는 false positive 리스크가 실제 PR/메인테이너 관계 비용으로 이어져 추가 필터 가치 있음
+
+**사용자 허락** 은 P2+ 에서 여전히 필수 (5 agent 병렬 리소스).
+
+mode: `post-harness`.
 
 기본 역할 세트 (5개 기본, 3 최소):
 
