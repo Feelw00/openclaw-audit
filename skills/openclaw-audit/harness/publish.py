@@ -44,25 +44,102 @@ DEFAULT_LABELS = ["bug"]
 ANCHOR_PREFIX = "<!-- openclaw-audit:"
 ANCHOR_SUFFIX = "-->"
 
+# ────────────────────────────────────────────────────────────
+# 기여규칙 상수 (openclaw-contribution.md §2, §5 반영)
+# ────────────────────────────────────────────────────────────
+RESTRICTED_CODEOWNERS = {"@openclaw/secops"}   # 소유자 명시 동의 없으면 수정 금지
+PR_WARN_THRESHOLD = 7                          # 열린 PR 수 7 이상 경고
+PR_BLOCK_THRESHOLD = 10                        # 10 이상 hard block (openclaw 자동 close)
+
 
 # ────────────────────────────────────────────────────────────
 # 유틸
 # ────────────────────────────────────────────────────────────
 def detect_openclaw_repo() -> str | None:
-    """openclaw/ origin 에서 owner/name 추출."""
+    """openclaw/ remote 에서 owner/name 추출. upstream 우선 (PR/issue 는 upstream 에 발행)."""
+    for remote in ("upstream", "origin"):
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(OPENCLAW_ROOT), "remote", "get-url", remote],
+                capture_output=True, text=True, check=False,
+            )
+            if out.returncode != 0:
+                continue
+            url = out.stdout.strip()
+            # git@github.com:owner/name.git | https://github.com/owner/name(.git)?
+            m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", url)
+            if m:
+                return m.group(1)
+        except Exception:
+            continue
+    return None
+
+
+def parse_codeowners(codeowners_path: Path) -> list[tuple[str, list[str]]]:
+    """CODEOWNERS 파일 파싱. [(pattern, [owners])] 순서 유지."""
+    rules: list[tuple[str, list[str]]] = []
+    if not codeowners_path.exists():
+        return rules
+    for line in codeowners_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        rules.append((parts[0], parts[1:]))
+    return rules
+
+
+def codeowners_match(pattern: str, path: str) -> bool:
+    """
+    GitHub CODEOWNERS glob 간소화 매칭.
+    - '/' 선두는 repo root 앵커
+    - '/' 후미는 디렉터리 prefix 매치
+    - '*' 는 슬래시 미포함 임의, '**' 는 임의
+    """
+    import fnmatch
+    pat = pattern[1:] if pattern.startswith("/") else pattern
+    if pat.endswith("/"):
+        return path.startswith(pat) or path == pat.rstrip("/")
+    if "**" in pat:
+        regex = fnmatch.translate(pat).replace(r"\*\*", ".*")
+        import re as _re
+        return bool(_re.match(regex, path))
+    return fnmatch.fnmatch(path, pat) or path.startswith(pat + "/")
+
+
+def check_codeowners(repo_root: Path, files: list[str]) -> list[tuple[str, list[str]]]:
+    """각 file 에 대해 마지막으로 매치된 owner 조회. RESTRICTED 포함 시 반환."""
+    codeowners_path = repo_root / ".github" / "CODEOWNERS"
+    rules = parse_codeowners(codeowners_path)
+    if not rules:
+        return []
+    out: list[tuple[str, list[str]]] = []
+    for f in files:
+        last_owners: list[str] | None = None
+        for pattern, owners in rules:
+            if codeowners_match(pattern, f):
+                last_owners = owners
+        if last_owners:
+            restricted = [o for o in last_owners if o in RESTRICTED_CODEOWNERS]
+            if restricted:
+                out.append((f, restricted))
+    return out
+
+
+def check_open_pr_count(repo: str) -> tuple[int, list[str]]:
+    """gh pr list --author @me --state open. (-1, []) if gh 실패."""
+    cmd = ["gh", "pr", "list", "--repo", repo, "--author", "@me",
+           "--state", "open", "--json", "number,title"]
+    out = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if out.returncode != 0:
+        return (-1, [])
     try:
-        out = subprocess.run(
-            ["git", "-C", str(OPENCLAW_ROOT), "remote", "get-url", "origin"],
-            capture_output=True, text=True, check=False,
-        )
-        if out.returncode != 0:
-            return None
-        url = out.stdout.strip()
-        # git@github.com:owner/name.git | https://github.com/owner/name(.git)?
-        m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", url)
-        return m.group(1) if m else None
+        items = json.loads(out.stdout)
+        return (len(items), [f"#{i['number']} {i.get('title','')}" for i in items])
     except Exception:
-        return None
+        return (-1, [])
 
 
 def fingerprint_for_find(fm: dict) -> str:
@@ -196,11 +273,54 @@ def run_dedup_check(cand_id: str, repo: str) -> bool:
 
 
 def process(cand_id: str, apply_mode: bool, repo: str, force: bool, labels: list[str],
-            acknowledge_dedup: bool = False) -> bool:
+            acknowledge_dedup: bool = False, acknowledge_codeowners: bool = False) -> bool:
     cand_path = CANDIDATES_DIR / f"{cand_id}.md"
     if not cand_path.exists():
         print(f"[ERROR] CAND not found: {cand_path}", file=sys.stderr)
         return False
+
+    # 기여규칙 Gate 1: 저자당 열린 PR 수 (openclaw-contribution.md §2 — 10 넘으면 자동 close)
+    print(f"\n─ open PR count gate ({repo})")
+    pr_count, titles = check_open_pr_count(repo)
+    if pr_count < 0:
+        print("  [WARN] gh pr list 실패 (auth?). skip")
+    else:
+        print(f"  열린 PR {pr_count} 건 (block={PR_BLOCK_THRESHOLD}, warn={PR_WARN_THRESHOLD}):")
+        for t in titles:
+            print(f"    - {t}")
+        if pr_count >= PR_BLOCK_THRESHOLD and not force:
+            print(f"\n[STOP] 열린 PR {pr_count} 건 ≥ {PR_BLOCK_THRESHOLD}. openclaw 가 자동 close.", file=sys.stderr)
+            return False
+        if pr_count >= PR_WARN_THRESHOLD:
+            print(f"  [WARN] 열린 PR 7+ — 새 PR 전 기존 close/merge 권장")
+
+    # CAND 먼저 로드 (CODEOWNERS 체크에 FIND 파일 경로 필요)
+    cand_fm, cand_body = parse_frontmatter(cand_path.read_text(encoding="utf-8"))
+    if cand_fm is None:
+        print("[ERROR] CAND frontmatter parse failed", file=sys.stderr)
+        return False
+
+    find_ids = cand_fm.get("finding_ids") or cand_fm.get("perf_refs") or []
+    finds = load_finds(find_ids)
+    if not finds:
+        print("[ERROR] no FIND files loaded", file=sys.stderr)
+        return False
+
+    # 기여규칙 Gate 2: CODEOWNERS restricted 파일 차단 (openclaw-contribution.md §5)
+    print(f"\n─ CODEOWNERS restricted check ({OPENCLAW_ROOT})")
+    find_files = [fm.get("file", "") for fm, _ in finds if fm.get("file")]
+    restricted = check_codeowners(OPENCLAW_ROOT, find_files)
+    if restricted:
+        print(f"  [RESTRICTED] {len(restricted)} 파일이 secops 오소유:")
+        for f, owners in restricted:
+            print(f"    {f}  ←  {', '.join(owners)}")
+        if not (acknowledge_codeowners or force):
+            print(f"\n[STOP] CODEOWNERS restricted. 소유자 명시 동의 있으면 --acknowledge-codeowners.", file=sys.stderr)
+            return False
+        if acknowledge_codeowners:
+            print("  [INFO] --acknowledge-codeowners 로 진행 (소유자 동의 확인)")
+    else:
+        print(f"  OK ({len(find_files)} 파일 모두 non-restricted)")
 
     # Pre-publish dedup check on upstream. Retrofit after CAND-004 — we should
     # never file without at least a keyword/function search against the repo.
@@ -212,22 +332,11 @@ def process(cand_id: str, apply_mode: bool, repo: str, force: bool, labels: list
     if not dedup_ok and acknowledge_dedup:
         print("[INFO] --acknowledge-dedup 로 진행 (사람이 중복 아님을 확인)")
 
-    cand_fm, cand_body = parse_frontmatter(cand_path.read_text(encoding="utf-8"))
-    if cand_fm is None:
-        print("[ERROR] CAND frontmatter parse failed", file=sys.stderr)
-        return False
-
     # 상태 확인
     item = get_item(cand_id) or {}
     if item.get("state") != "gatekeeper-approved" and not force:
         print(f"[ERROR] {cand_id} state = {item.get('state')} (expected gatekeeper-approved). "
               f"Use --force to override.", file=sys.stderr)
-        return False
-
-    find_ids = cand_fm.get("finding_ids") or cand_fm.get("perf_refs") or []
-    finds = load_finds(find_ids)
-    if not finds:
-        print("[ERROR] no FIND files loaded", file=sys.stderr)
         return False
 
     title = cand_fm.get("proposed_title", cand_id)
@@ -294,6 +403,8 @@ def main() -> None:
     p.add_argument("--force", action="store_true", help="state 불일치/dedup 무시")
     p.add_argument("--acknowledge-dedup", action="store_true",
                    help="dedup 매치 확인 후 중복 아님을 확인했을 때만 진행")
+    p.add_argument("--acknowledge-codeowners", action="store_true",
+                   help="CODEOWNERS restricted 파일 수정 — 소유자 명시 동의 있을 때만 진행")
     p.add_argument("--label", action="append", default=None, help="추가 라벨 (기본: bug)")
     args = p.parse_args()
 
@@ -306,7 +417,8 @@ def main() -> None:
 
     print(f"모드: {'APPLY' if args.apply else 'DRY-RUN'}")
     ok = process(args.cand_id, args.apply, repo, args.force, labels,
-                 acknowledge_dedup=args.acknowledge_dedup)
+                 acknowledge_dedup=args.acknowledge_dedup,
+                 acknowledge_codeowners=args.acknowledge_codeowners)
     sys.exit(0 if ok else 1)
 
 
