@@ -678,7 +678,7 @@ items:
     updated_at: '2026-04-18T21:02:16+00:00'
   CAND-012:
     kind: candidate
-    state: published
+    state: pr-opened
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -705,8 +705,13 @@ items:
       actor: human
       reason: 'issue #68838 + PR #68839 created'
       at: '2026-04-19T06:24:14+00:00'
+    - from: published
+      to: pr-opened
+      actor: human
+      reason: 'PR #68839 opened (auto-reply drain identity guard)'
+      at: '2026-04-19T07:09:57+00:00'
     created_at: '2026-04-18T21:06:59+00:00'
-    updated_at: '2026-04-19T06:24:14+00:00'
+    updated_at: '2026-04-19T07:09:57+00:00'
     extras:
       openclaw_repo: openclaw/openclaw
       openclaw_issue_number: 68838
@@ -714,7 +719,7 @@ items:
       published_at: '2026-04-19T06:23:29+00:00'
   CAND-013:
     kind: candidate
-    state: pending_gatekeeper
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -722,11 +727,18 @@ items:
       reason: 'clusterer output (single: auto-reply isCrossChannel stale + chimera
         routing)'
       at: '2026-04-18T21:07:00+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: 'scope_down: 3 subcause (isCrossChannel stale / auth key channel 누락
+        / resolveOriginRoutingMetadata chimera) 각각 별개 fix 필요. drain-identity (CAND-012)
+        와 root cause axis 독립하나 P2 fix surface 가 multi-file 로 과대 → XS 분할 불가로 abandon.'
+      at: '2026-04-19T07:09:57+00:00'
     created_at: '2026-04-18T21:07:00+00:00'
-    updated_at: '2026-04-18T21:07:00+00:00'
+    updated_at: '2026-04-19T07:09:57+00:00'
   CAND-014:
     kind: candidate
-    state: published
+    state: pr-opened
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -753,8 +765,13 @@ items:
       actor: human
       reason: 'issue #68841 + PR #68842 created'
       at: '2026-04-19T06:31:26+00:00'
+    - from: published
+      to: pr-opened
+      actor: human
+      reason: 'PR #68842 opened (costUsageCache FIFO cap)'
+      at: '2026-04-19T07:09:57+00:00'
     created_at: '2026-04-18T21:07:01+00:00'
-    updated_at: '2026-04-19T06:31:26+00:00'
+    updated_at: '2026-04-19T07:09:57+00:00'
     extras:
       openclaw_repo: openclaw/openclaw
       openclaw_issue_number: 68841
@@ -762,7 +779,7 @@ items:
       published_at: '2026-04-19T06:30:42+00:00'
   CAND-015:
     kind: candidate
-    state: published
+    state: pr-opened
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -789,8 +806,13 @@ items:
       actor: human
       reason: 'issue #68847 + PR #68848 created'
       at: '2026-04-19T06:37:13+00:00'
+    - from: published
+      to: pr-opened
+      actor: human
+      reason: 'PR #68848 opened (nodeWakeById cleanup)'
+      at: '2026-04-19T07:09:57+00:00'
     created_at: '2026-04-18T21:07:02+00:00'
-    updated_at: '2026-04-19T06:37:13+00:00'
+    updated_at: '2026-04-19T07:09:57+00:00'
     extras:
       openclaw_repo: openclaw/openclaw
       openclaw_issue_number: 68847
@@ -798,37 +820,56 @@ items:
       published_at: '2026-04-19T06:36:31+00:00'
   CAND-016:
     kind: candidate
-    state: pending_gatekeeper
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: human
       reason: 'clusterer output (single: gateway agentRunStarts no TTL safety belt)'
       at: '2026-04-18T21:07:04+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: 'CAL-008 upstream-competing PR #68801 (Gateway: prune orphaned agentRunStarts
+        entries) 동일 파일/동일 Map fix. OPEN 상태지만 동일 문제 선제 PR 있어 duplicate 회피.'
+      at: '2026-04-19T07:09:57+00:00'
     created_at: '2026-04-18T21:07:04+00:00'
-    updated_at: '2026-04-18T21:07:04+00:00'
+    updated_at: '2026-04-19T07:09:57+00:00'
   CAND-017:
     kind: candidate
-    state: pending_gatekeeper
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: human
       reason: 'clusterer output (single: gateway node-events silent JSON.parse drop)'
       at: '2026-04-18T21:07:05+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: observability gap (silent JSON.parse drop) 성격이 강해 reliability 스코프 밖.
+        CONTRIBUTING.md feature-freeze 감안 merge 가능성 낮음. P3.
+      at: '2026-04-19T07:09:57+00:00'
     created_at: '2026-04-18T21:07:05+00:00'
-    updated_at: '2026-04-18T21:07:05+00:00'
+    updated_at: '2026-04-19T07:09:57+00:00'
   CAND-018:
     kind: candidate
-    state: pending_gatekeeper
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: human
       reason: 'clusterer output (single: gateway ws post-handshake outer catch hang)'
       at: '2026-04-18T21:07:06+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: hot-path 증거 self-check 에서 부재 + CAL-003 synthetic-only 위험. post-handshake
+        outer catch close 결정은 OpenClaw 유지보수 철학(client-tolerant)과 trade-off 충돌 소지.
+        P3 hardening.
+      at: '2026-04-19T07:09:58+00:00'
     created_at: '2026-04-18T21:07:06+00:00'
-    updated_at: '2026-04-18T21:07:06+00:00'
+    updated_at: '2026-04-19T07:09:58+00:00'
   SOL-0003:
     kind: find
     state: pr-opened

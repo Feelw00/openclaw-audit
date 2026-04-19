@@ -107,50 +107,64 @@ candidates:
 - id: CAND-012
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: pr-opened
   note: FIND-auto-reply-concurrency-001 — drain finally 의 FOLLOWUP_QUEUES.delete 가
     identity 검증 없어 `/stop` 직후 enqueue 된 Q2 를 orphan. severity P2.
+  openclaw_issue: 68838
+  openclaw_pr: 68839
 - id: CAND-013
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-auto-reply-concurrency-002 — collect-mode drain 의 isCrossChannel stale
     + auth key channel 미포함 + resolveOriginRoutingMetadata chimera 세 subcause 가 결합한
     cross-channel batch misrouting. severity P2.
+  retracted_reason: 'scope_down: 3 subcause 각각 독립 fix 필요. drain-identity(CAND-012)와 root
+    cause axis 독립하나 P2 fix surface 가 multi-file 로 과대 → XS 분할 불가로 abandon.'
 - id: CAND-014
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: pr-opened
   note: FIND-gateway-memory-001 — costUsageCache (server-methods/usage.ts:65) 에 cap/prune
     부재. TTL on-read 만 존재. daily sliding window 로 distinct key 무한 누적. severity P3.
+  openclaw_issue: 68841
+  openclaw_pr: 68842
 - id: CAND-015
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: pr-opened
   note: FIND-gateway-memory-002 — maybeWakeNodeWithApns 가 loadApnsRegistration 체크
     전에 nodeWakeById.set 수행. no-registration 분기에 cleanup 부재 → 미등록 nodeId 호출
     시 누수. severity P3.
+  openclaw_issue: 68847
+  openclaw_pr: 68848
 - id: CAND-016
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-gateway-memory-003 — agentRunStarts 가 lifecycle end/error 이벤트에만 의존.
     같은 파일 pendingAgentRunErrors (CAL-001 반례) 와 달리 TTL/cap safety belt 부재. severity
     P3.
+  retracted_reason: 'CAL-008 upstream-competing: PR #68801 (Gateway: prune orphaned agentRunStarts
+    entries, OPEN) 이 동일 파일/동일 Map fix 선제 → duplicate 회피.'
 - id: CAND-017
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-gateway-error-boundary-001 — server-node-events.ts:403-408 의 agent.request
     payloadJSON JSON.parse 실패 catch 가 log/metric/response 모두 없이 return. observability
     gap. severity P3.
+  retracted_reason: 'observability gap (silent JSON.parse drop) 성격이라 reliability scope 밖.
+    CONTRIBUTING.md feature-freeze 고려 시 merge 가능성 낮음. P3.'
 - id: CAND-018
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-gateway-error-boundary-002 — message-handler.ts:1459-1465 outer catch
     가 post-handshake 에서 close/respond 없이 log-only → pre-dispatch sync throw 시 client
     hang 가능. hot-path 증거 부재, P3 hardening.
+  retracted_reason: 'hot-path 증거 self-check 에서 부재 + CAL-003 synthetic-only 위험. post-handshake
+    close 결정은 client-tolerant 철학과 trade-off. P3 hardening.'
 published:
 - cand_id: CAND-004
   issue: 68487
@@ -171,4 +185,16 @@ published:
 - cand_id: CAND-011
   issue: 68668
   pr: 68669
+  at: 2026-04-19
+- cand_id: CAND-012
+  issue: 68838
+  pr: 68839
+  at: 2026-04-19
+- cand_id: CAND-014
+  issue: 68841
+  pr: 68842
+  at: 2026-04-19
+- cand_id: CAND-015
+  issue: 68847
+  pr: 68848
   at: 2026-04-19
