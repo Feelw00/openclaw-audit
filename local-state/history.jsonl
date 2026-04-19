@@ -76,3 +76,12 @@
 {"item_id": "CAND-016", "from": null, "to": "pending_gatekeeper", "actor": "human", "reason": "clusterer output (single: gateway agentRunStarts no TTL safety belt)", "at": "2026-04-18T21:07:04+00:00", "extras": {}}
 {"item_id": "CAND-017", "from": null, "to": "pending_gatekeeper", "actor": "human", "reason": "clusterer output (single: gateway node-events silent JSON.parse drop)", "at": "2026-04-18T21:07:05+00:00", "extras": {}}
 {"item_id": "CAND-018", "from": null, "to": "pending_gatekeeper", "actor": "human", "reason": "clusterer output (single: gateway ws post-handshake outer catch hang)", "at": "2026-04-18T21:07:06+00:00", "extras": {}}
+{"item_id": "CAND-012", "from": "pending_gatekeeper", "to": "gatekeeper-approved", "actor": "human", "reason": "cross-review 5/5 real-problem-real-fix → proceed (post-harness)", "at": "2026-04-19T05:23:45+00:00", "extras": {}}
+{"item_id": "CAND-014", "from": "pending_gatekeeper", "to": "gatekeeper-approved", "actor": "human", "reason": "cross-review 5/5 real-problem-real-fix → proceed (post-harness)", "at": "2026-04-19T05:23:45+00:00", "extras": {}}
+{"item_id": "CAND-015", "from": "pending_gatekeeper", "to": "gatekeeper-approved", "actor": "human", "reason": "cross-review 5/5 real-problem-real-fix → proceed (post-harness)", "at": "2026-04-19T05:23:45+00:00", "extras": {}}
+{"item_id": "SOL-0003", "from": null, "to": "drafted", "actor": "human", "reason": "solution-drafter (cross-review proceed 5/5): CAND-012 → SOL-0003", "at": "2026-04-19T05:30:04+00:00", "extras": {}}
+{"item_id": "CAND-012", "from": "gatekeeper-approved", "to": "solution-drafted", "actor": "human", "reason": "SOL-0003 drafted", "at": "2026-04-19T05:30:08+00:00", "extras": {}}
+{"item_id": "SOL-0004", "from": null, "to": "drafted", "actor": "human", "reason": "solution-drafter (cross-review proceed 5/5): CAND-014 → SOL-0004. prior art PR #36682 (CLOSED) / #56318 (OPEN) 분석 포함.", "at": "2026-04-19T05:34:10+00:00", "extras": {}}
+{"item_id": "CAND-014", "from": "gatekeeper-approved", "to": "solution-drafted", "actor": "human", "reason": "SOL-0004 drafted", "at": "2026-04-19T05:34:12+00:00", "extras": {}}
+{"item_id": "SOL-0005", "from": null, "to": "drafted", "actor": "human", "reason": "solution-drafter (cross-review proceed 5/5): CAND-015 → SOL-0005. PR #63709 different scope 명시.", "at": "2026-04-19T05:38:20+00:00", "extras": {}}
+{"item_id": "CAND-015", "from": "gatekeeper-approved", "to": "solution-drafted", "actor": "human", "reason": "SOL-0005 drafted", "at": "2026-04-19T05:38:22+00:00", "extras": {}}

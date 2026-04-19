@@ -678,15 +678,25 @@ items:
     updated_at: '2026-04-18T21:02:16+00:00'
   CAND-012:
     kind: candidate
-    state: pending_gatekeeper
+    state: solution-drafted
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: human
       reason: 'clusterer output (single: auto-reply drain finally identity race)'
       at: '2026-04-18T21:06:59+00:00'
+    - from: pending_gatekeeper
+      to: gatekeeper-approved
+      actor: human
+      reason: cross-review 5/5 real-problem-real-fix → proceed (post-harness)
+      at: '2026-04-19T05:23:45+00:00'
+    - from: gatekeeper-approved
+      to: solution-drafted
+      actor: human
+      reason: SOL-0003 drafted
+      at: '2026-04-19T05:30:08+00:00'
     created_at: '2026-04-18T21:06:59+00:00'
-    updated_at: '2026-04-18T21:06:59+00:00'
+    updated_at: '2026-04-19T05:30:08+00:00'
   CAND-013:
     kind: candidate
     state: pending_gatekeeper
@@ -701,26 +711,46 @@ items:
     updated_at: '2026-04-18T21:07:00+00:00'
   CAND-014:
     kind: candidate
-    state: pending_gatekeeper
+    state: solution-drafted
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: human
       reason: 'clusterer output (single: gateway costUsageCache no-cleanup)'
       at: '2026-04-18T21:07:01+00:00'
+    - from: pending_gatekeeper
+      to: gatekeeper-approved
+      actor: human
+      reason: cross-review 5/5 real-problem-real-fix → proceed (post-harness)
+      at: '2026-04-19T05:23:45+00:00'
+    - from: gatekeeper-approved
+      to: solution-drafted
+      actor: human
+      reason: SOL-0004 drafted
+      at: '2026-04-19T05:34:12+00:00'
     created_at: '2026-04-18T21:07:01+00:00'
-    updated_at: '2026-04-18T21:07:01+00:00'
+    updated_at: '2026-04-19T05:34:12+00:00'
   CAND-015:
     kind: candidate
-    state: pending_gatekeeper
+    state: solution-drafted
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: human
       reason: 'clusterer output (single: gateway nodeWakeById set-before-validation)'
       at: '2026-04-18T21:07:02+00:00'
+    - from: pending_gatekeeper
+      to: gatekeeper-approved
+      actor: human
+      reason: cross-review 5/5 real-problem-real-fix → proceed (post-harness)
+      at: '2026-04-19T05:23:45+00:00'
+    - from: gatekeeper-approved
+      to: solution-drafted
+      actor: human
+      reason: SOL-0005 drafted
+      at: '2026-04-19T05:38:22+00:00'
     created_at: '2026-04-18T21:07:02+00:00'
-    updated_at: '2026-04-18T21:07:02+00:00'
+    updated_at: '2026-04-19T05:38:22+00:00'
   CAND-016:
     kind: candidate
     state: pending_gatekeeper
@@ -754,3 +784,38 @@ items:
       at: '2026-04-18T21:07:06+00:00'
     created_at: '2026-04-18T21:07:06+00:00'
     updated_at: '2026-04-18T21:07:06+00:00'
+  SOL-0003:
+    kind: find
+    state: drafted
+    transitions:
+    - from: null
+      to: drafted
+      actor: human
+      reason: 'solution-drafter (cross-review proceed 5/5): CAND-012 → SOL-0003'
+      at: '2026-04-19T05:30:04+00:00'
+    created_at: '2026-04-19T05:30:04+00:00'
+    updated_at: '2026-04-19T05:30:04+00:00'
+  SOL-0004:
+    kind: find
+    state: drafted
+    transitions:
+    - from: null
+      to: drafted
+      actor: human
+      reason: 'solution-drafter (cross-review proceed 5/5): CAND-014 → SOL-0004. prior
+        art PR #36682 (CLOSED) / #56318 (OPEN) 분석 포함.'
+      at: '2026-04-19T05:34:10+00:00'
+    created_at: '2026-04-19T05:34:10+00:00'
+    updated_at: '2026-04-19T05:34:10+00:00'
+  SOL-0005:
+    kind: find
+    state: drafted
+    transitions:
+    - from: null
+      to: drafted
+      actor: human
+      reason: 'solution-drafter (cross-review proceed 5/5): CAND-015 → SOL-0005. PR
+        #63709 different scope 명시.'
+      at: '2026-04-19T05:38:20+00:00'
+    created_at: '2026-04-19T05:38:20+00:00'
+    updated_at: '2026-04-19T05:38:20+00:00'
