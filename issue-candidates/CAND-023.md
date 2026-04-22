@@ -94,3 +94,53 @@ run 을 spawn → **동일 runId 로 LLM 호출 2회 + lifecycle event 충돌**.
 - cross-ref 로 CAND-023 fix 가 FIND-gateway-memory-003 (agentRunStarts
   drift) 의 발현 조건에도 영향. CAND-016 이 upstream PR #68801 로 abandon
   됐음에도 중복 spawn 자체가 줄어 indirect 효과 있음.
+
+---
+
+## Scope Revision (2026-04-22, pre-SOL 5-agent confirmation pass)
+
+### 발견 (원래 주장)
+
+`chat.ts:1920-1968` attachment branch 에서 `chatAbortControllers.get` (L1920) 과 `.set` (L1960) 사이에 `await resolveGatewayModelSupportsImages` (L1930) + `await parseMessageWithAttachments` (L1936) 의 real I/O 가 끼어 있다. 동일 `clientRunId` 두 호출이 이 window 에 도달하면 둘 다 check 를 통과 → 주장했던 원래 피해: **동일 runId 로 LLM 호출 2회 + session transcript corruption**.
+
+### 방어 로직 확인 (pre-SOL critical-devil hidden-guard pass)
+
+5-agent confirmation pass 에서 숨은 방어 로직 전수조사 결과 **`claimInboundDedupe`** 발견 (`src/auto-reply/reply/inbound-dedupe.ts:94-112`, `src/auto-reply/reply/dispatch-from-config.ts:269-273`):
+
+- `chat.ts:2028` 에서 `MessageSid: clientRunId` 로 바인딩되어 inbound dedupe key 조합 (`provider|accountId|agent|peerId|threadId|clientRunId`) 에 `clientRunId` 포함
+- race 된 두 dispatch 중 두 번째는 `claimInboundDedupe` 에서 `inflight` 판정 → `dispatch-from-config.ts:272` 에서 `{queuedFinal: false}` 로 조기 반환
+- 결과: **두 번째 agent pipeline invoke 는 실제로 차단됨**
+
+→ 원래 주장 "LLM 호출 2회" 는 **무효**. agent run 은 1회만 실행된다.
+
+### 일부 방어되나 여전히 문제 (scope 재정의)
+
+`chatAbortControllers.set` (`chat.ts:1960`) 은 `claimInboundDedupe` 보다 **상류** (gateway layer) 에서 발생. race window 에서 일어나는 **잔재 피해**:
+
+1. **🔴 `chatAbortControllers` map overwrite → user abort 기능 파손** (가장 심각)
+   - T1 run 은 T1 controller 로 실행 중이지만 map 의 해당 `runId` 엔트리는 T2 orphan controller 를 가리킴
+   - 사용자의 abort 요청 → T2 의 빈 controller 만 abort → 실제 run T1 은 중단 안 됨
+   - **user-visible reliability regression**: 사용자가 chat 중단을 눌러도 작동하지 않는 경로
+2. duplicate `{status: "started"}` ack 전송 (client 가 동일 runId 에 대해 ack 2개 수신)
+3. duplicate `persistChatSendImages` / `saveMediaBuffer` fs.writeFile — offloadedRefs 중복 생성
+4. `context.dedupe` double-write — T1/T2 의 `.then`/`.catch` 둘 다 같은 키에 기록
+
+### Severity 재조정
+
+- P1 (기존) → **P2**
+- user abort misdirection 은 reliability 축이며 user-visible 이나, `claimInboundDedupe` 덕에 LLM 비용 2배 / transcript corruption 은 발현 안 함
+- production trigger: Control UI retry storm (#56485), webchat 재전송 (#46005), macOS `GatewayConnection.swift:186-247` 의 최대 6회 retry 등
+
+### Fix 방향
+
+code 자체는 기존 옵션 B (post-parse re-check) 유지. 다만 의미 변경:
+- 기존 목적: "LLM 중복 spawn 방지"
+- 새 목적: "chatAbortControllers map overwrite 방지 → user abort 경로 보호"
+
+### Cross_refs
+
+- `SOL-0006` (연결): post-parse re-check 구현
+- `CAND-016` / `PR #68801` (agentRunStarts TTL): complementary, 별개 layer
+- `PR #69208` umbrella issue (duplicate transcript/replay): related context, 다른 axis
+- 공개 API 계약: `docs/concepts/architecture.md:95-96`, `docs/web/control-ui.md:131-132` (`{status: "in_flight"}` 명시)
+
