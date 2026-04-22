@@ -216,15 +216,21 @@ items:
     updated_at: '2026-04-18T10:02:49+00:00'
   FIND-plugins-lifecycle-001:
     kind: find
-    state: discovered
+    state: rejected
     transitions:
     - from: null
       to: discovered
       actor: validate
       reason: validate passed
       at: '2026-04-18T10:02:49+00:00'
+    - from: discovered
+      to: rejected
+      actor: human
+      reason: upstream resolved 2026-04-17 (e8fd148437 + 2a283e87a7 + c95507978f);
+        snapshot/restore/rollback 3중 방어 도입. re-audit 2026-04-22 stay-abandoned 확정
+      at: '2026-04-22T09:46:12+00:00'
     created_at: '2026-04-18T10:02:49+00:00'
-    updated_at: '2026-04-18T10:02:49+00:00'
+    updated_at: '2026-04-22T09:46:12+00:00'
   CAND-006:
     kind: candidate
     state: abandoned
