@@ -95,12 +95,13 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ☐ channels-error-boundary      — error-boundary-auditor
 #   ☐ channels-lifecycle           — plugin-lifecycle-auditor
 #
-# 살아있는 PR 4건 (2026-04-22 전부 upstream/main rebase + force-push 완료):
-#   • #68543 (CAND-009, infra-retry, head 24a541da3b) — steipete invariant 이미 반영됨 (032532ecae+71c24d731a 확인), 재리뷰 / R-10 답변 대기
-#   • #68669 (CAND-011, agents-registry, head 6410bfaeec) — Codex P2 CAL-009 병렬 검증 후 반박 + thread resolved (2026-04-22). 메인테이너 리뷰 대기
+# 살아있는 PR 4건 (2026-04-22, 모두 최신 upstream/main rebase + parity green):
+#   • #68543 (CAND-009, infra-retry, head acc85fe0ff) — steipete invariant 이미 반영됨 (032532ecae+71c24d731a, steipete 가 리뷰한 60ad4714c0 에 포함). 리뷰 오독 정황. R-10 답변/리마인드 발송 예정
+#   • #68669 (CAND-011, agents-registry, head 00cab4264f) — Codex P2 2라운드 (lazy import pre-wrapper reject) 5-agent cross-review 결과 production bundle 에 lazy import 부재 확인 (`dist/subagent-registry-Zhtu8A2W.js` line 835/2183 에 inline) → 번들 증거로 공손 반박 + thread resolved. 코드 변경 없음. 메인테이너 리뷰 대기
 #   • #68839 (CAND-012, auto-reply drain identity guard, head 1236d56668) — 리뷰 대기
-#   • #68848 (CAND-015, nodeWakeById cleanup, head 5fe51e1967) — 리뷰 대기
+#   • #68848 (CAND-015, nodeWakeById cleanup, head 5b9103c7e0) — 리뷰 대기
 #
+# upstream 동기화: 2026-04-22 하루에 188 + 14 + 12 + 153 = 367 commits fast-forward. parity gate 의 subagent-fanout-synthesis Opus 4.6 lane main-side regression 은 153 commits 추가분에서 해소 확인.
 # merged: #68842 (CAND-014). warn=7 / block=10 기준 active 4 → 여유 충분. 신규 PR 2~3 개 가능.
 #
 # 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.

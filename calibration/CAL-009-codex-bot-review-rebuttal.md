@@ -58,3 +58,44 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<ID>"
 ## CAL-003 재발 방지 확인
 
 Codex 지적을 그대로 반영했다면 "synthetic race 방어 추가" → CAL-003 패턴 재발. 병렬 에이전트로 trigger 경로 실재성 확인 후 반박 결정은 CAL-003 교훈과 일치.
+
+## 추가 사례 (2026-04-22, PR #68669 browser cleanup dedup)
+
+**Codex 재반박 → 번들 실측으로 재반박 성공**. 1라운드 반박 후 Codex 가 `src/agents/subagent-registry.ts:114-115` 의 production wiring 을 fresh evidence 로 제시하며 "dynamic `import()` reject 가 `runBestEffortCleanup` 실행 전에 throw 가능" 이라고 재지적. 5-agent post-harness cross-review 결과:
+
+| agent | 판정 | 핵심 |
+|---|---|---|
+| positive-advocate | proceed (option c) | sibling 동형 수정 권고 |
+| critical-devil | scope-down-to-option-a | Set 중복, 1줄 이동 충분 |
+| reproduction-realist | reject-as-synthetic (test ii) | dist 번들에 lazy import 부재, CAL-003 parallel |
+| hot-path-tracer | low-impact-abandon | `dist/subagent-registry-Zhtu8A2W.js` inline 확인 |
+| upstream-dup-checker | proceed | upstream 중복 없음 |
+
+**결정적 증거**: repro-realist + hot-path-tracer 가 **독립적으로** `dist/subagent-registry-Zhtu8A2W.js` 를 열어 확인 — tsdown/rollup 이 `browser-lifecycle-cleanup.ts` 를 동일 청크에 inline. line 835 에 wrapper 함수 직접 정의, line 2183/2495/2666 에 정적 참조. `browserCleanupPromise` / `loadCleanupBrowserSessionsForLifecycleEnd` / `await import()` identifier 전부 번들에 부재. Codex 지적한 reject 경로가 production runtime 에 존재하지 않음.
+
+**판단**: 코드 변경 없이 반박. reply 에 dist 파일 경로 + 번들 line 번호 인용 → thread resolved.
+
+## 프로토콜 확장 (2라운드 대응)
+
+1. **1라운드 반박 후 bot 재반박** 이 오면 CAL-009 프로토콜 **다시** 실행 (role 확장):
+   - 기본 2-agent (positive + critical) 대신 5-agent post-harness 권장
+   - **reproduction-realist + hot-path-tracer 를 필수 포함** — bot 이 지적한 경로가 번들/build 이후에도 실재하는지 실측
+2. **dist / build artifact 검증**을 증거 축으로 추가:
+   - 소스 레벨 경로만 믿지 말고 실제 배포 번들에 해당 코드가 남아있는지 `grep` 으로 확인
+   - bundler (tsdown, rollup, webpack, esbuild) 가 inline / tree-shake 할 가능성 상시 고려
+   - dist 증거는 source 증거보다 훨씬 강력 — bot 이 source 만 보고 작성한 경우 대부분 무력화됨
+3. **내부 판단 편향 경계**:
+   - "sibling consistency" 같은 명분은 scope 확장을 정당화하기 쉬움 — 사용자가 편향 경고 보내도 무시하지 말 것
+   - 사용자가 "왜 로직을 변경하는지" 물으면 production 효용 0 라면 솔직히 코드 변경 없음으로 회귀
+   - 3번째 라운드까지 가지 않도록 2라운드 반박은 반드시 객관 증거 (번들 실측, Grep 결과, 전체 시나리오 통과 로그) 로만 구성
+
+## 재사용 명령 (확장)
+
+```bash
+# bundle inline 증거 수집
+grep -n "<symbol>" dist/*.js | head -10
+grep -c "await import\|browserCleanupPromise" dist/<chunk>.js  # 0 이면 tree-shake 확인
+
+# tsdown / rollup config 확인 (chunk split 변경 시 재검증 필요)
+cat tsdown.config.ts 2>/dev/null || cat rollup.config.mjs 2>/dev/null
+```
