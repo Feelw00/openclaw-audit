@@ -1114,7 +1114,7 @@ items:
     updated_at: '2026-04-22T10:26:00+00:00'
   CAND-023:
     kind: candidate
-    state: solution-drafted
+    state: pr-opened
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -1133,11 +1133,27 @@ items:
       actor: human
       reason: SOL-0006 drafted with post-parse re-check (option A XS)
       at: '2026-04-22T11:00:12+00:00'
+    - from: solution-drafted
+      to: published
+      actor: publish
+      reason: 'issue #70139 created on openclaw/openclaw'
+      at: '2026-04-22T11:23:18+00:00'
+    - from: published
+      to: pr-opened
+      actor: human
+      reason: 'issue #70139 + PR #70142 opened (fix/chat-send-attachment-race-recheck,
+        head 45ca656630)'
+      at: '2026-04-22T11:24:37+00:00'
     created_at: '2026-04-22T10:25:45+00:00'
-    updated_at: '2026-04-22T11:00:12+00:00'
+    updated_at: '2026-04-22T11:24:37+00:00'
+    extras:
+      openclaw_repo: openclaw/openclaw
+      openclaw_issue_number: 70139
+      openclaw_issue_url: https://github.com/openclaw/openclaw/issues/70139
+      published_at: '2026-04-22T11:23:18+00:00'
   SOL-0006:
     kind: find
-    state: drafted
+    state: pr-opened
     transitions:
     - from: null
       to: drafted
@@ -1146,5 +1162,10 @@ items:
         → SOL-0006 post-parse re-check (option A XS). Scope revision 포함 (LLM 2회 서사
         폐기, chatAbortControllers overwrite/abort misdirection 으로 재정의)'
       at: '2026-04-22T11:00:12+00:00'
+    - from: drafted
+      to: pr-opened
+      actor: human
+      reason: 'PR #70142 opened'
+      at: '2026-04-22T11:24:31+00:00'
     created_at: '2026-04-22T11:00:12+00:00'
-    updated_at: '2026-04-22T11:00:12+00:00'
+    updated_at: '2026-04-22T11:24:31+00:00'

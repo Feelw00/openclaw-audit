@@ -43,6 +43,19 @@
 - **관련**: issue #68838
 - **특이사항**: pre-pr v1 에서 repro import 경로 + assertion 버그 발견 → repro v2 재작성 (restartIfIdle=false 패턴으로 D2 kick 억제 → D1 finally 만 유일 mutator 로 격리)
 
+### #70142 — fix(gateway): re-check chatAbortControllers after attachment parse
+
+- **유형**: 파이프라인 CAND-023, pre-SOL 5-agent confirmation + post-harness 5-agent + pre-pr 5-agent = 총 15 agent 검증
+- **상태**: OPEN, 2026-04-22 발행, 체크 pending (bot/CI 대기)
+- **대기**: Greptile/Codex 리뷰 + 메인테이너 리뷰
+- **관련**: issue #70139, PR #69208 (umbrella), PR #68801 (complementary), PR #69747 (adjacent)
+- **특이사항**:
+  - 원래 주장 "LLM 호출 2회 + transcript corruption" 은 `claimInboundDedupe` (inbound-dedupe.ts:94-112) 가 이미 차단 — pre-SOL 5-agent 에서 **발견된 숨은 방어**로 인해 scope 수정
+  - 재정의된 harm: `chatAbortControllers` map overwrite → **user abort 기능 파손** (+ duplicate ack/media writes/dedupe double-write)
+  - severity P1 → **P2** 하향
+  - Option A (post-parse re-check) 선택 — XS, no-attachment sibling 무변경
+  - test 파일명 mismatch (chat.directive-tags.test.ts 에 추가) commit msg + PR body 에서 자진 인정, follow-up split 제안
+
 ### #68848 — fix(gateway): clear nodeWakeById on no-registration early-return
 
 - **유형**: 파이프라인 CAND-015, post-harness 5/5 + pre-pr 3/3 real
