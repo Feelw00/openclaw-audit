@@ -150,3 +150,7 @@ Anti-pattern (금지):
 - code 변경 없이 comment 만
 
 메인테이너 목록: CONTRIBUTING.md §Maintainers (steipete, obviyus, tyler6204, gumadeiras 등).
+
+### 파이프라인 주의사항 (2026-04-22 추가)
+
+- **issue/PR 본문은 반드시 영어** (`openclaw-contribution.md §8`). publish.py 는 CAND 본문 (한국어) 을 그대로 issue 에 사용하므로, **publish 전에 영어 본문을 별도 준비해서 `gh issue edit --body-file` 로 덮어쓰거나**, CAND body 를 영어로 작성할 것. #70139 발행 직후 한국어 남은 것을 사용자 지적으로 재작성.
