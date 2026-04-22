@@ -20,7 +20,7 @@
 - **유형**: 파이프라인 CAND-009, cross-review 3/3 real
 - **상태**: OPEN, 체크 green, 2026-04-22 upstream rebase (head `24a541da3b`)
 - **Greptile**: **5/5 safe-to-merge** (초기), 이후 Math.round → Math.ceil follow-up fix `11430f641c`
-- **steipete 재점검 (2026-04-22)**: 요구 invariant (`retryAfterMs <= maxDelayMs` → delay 절대 undercut 금지, boundary test `>= 1_000`) 는 이미 `032532ecae` + `71c24d731a` 에서 모두 반영됨. steipete 리뷰 시점 2시간 전 커밋에 해당 변경 존재 → stale review 가능성. 답변은 R-10 cross-review 경로로 별도 준비
+- **steipete 재점검 (2026-04-22)**: steipete 가 리뷰한 commit_id `60ad4714c0` = (rebase 전) `032532ecae` = "Retry-After 경계(===)에서 contract 우선, symmetric 은 >만 (codex override)" **= 이미 steipete 지적이 반영된 수정 commit**. 시퀀스: `3429270354` 에서 `===` 를 symmetric 으로 확장 (문제 발생, 14:41 UTC) → `032532ecae`/60ad4714 에서 `<=` 로 되돌림 + boundary test `toBe(1_000)` (수정, 14:53 UTC) → steipete review (16:02 UTC) → `71c24d731a` Math.ceil 추가 (16:21 UTC). steipete 텍스트 "deliberately falls back to symmetric jitter" 는 `60ad4714` 실제 코드 (`canHonorRetryAfter = ... && retryAfterMs <= maxDelayMs`) 와 불일치 → **메인테이너가 수정 후 diff 를 수정 전으로 오독한 정황**. 답변은 R-10 cross-review 경로로 별도 준비 (`60ad4714` 실제 diff 인용)
 - **대기**: 메인테이너 @steipete 답변
 - **관련**: issue #68541
 
