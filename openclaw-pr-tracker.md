@@ -45,9 +45,11 @@
 
 ### #70142 — fix(gateway): re-check chatAbortControllers after attachment parse
 
-- **유형**: 파이프라인 CAND-023, pre-SOL 5-agent confirmation + post-harness 5-agent + pre-pr 5-agent = 총 15 agent 검증
-- **상태**: OPEN, 2026-04-22 발행, 체크 pending (bot/CI 대기)
-- **대기**: Greptile/Codex 리뷰 + 메인테이너 리뷰
+- **유형**: 파이프라인 CAND-023, pre-SOL 5-agent confirmation + post-harness 5-agent + pre-pr 5-agent + CAL-009 2-agent (Codex P2) = 총 17 agent 검증
+- **상태**: OPEN, 2026-04-22 발행, head `091b4f0fbd` (rebase 1회 + amend 1회 post Codex fix)
+- **Greptile**: summary 완료 (real race condition 인정)
+- **Codex (2026-04-22)**: P2 "Clean up offloaded media before early in_flight return" — early-return 경로에서 parseMessageWithAttachments 가 offload 한 >2MB disk file 이 cleanup 없이 남음 지적. CAL-009 병렬 2-agent (positive + critical) 검증 → **반박 불가, accept-and-fix 합의**. `deleteMediaBuffer` import + loop 추가 (server-node-events.ts:448-458 선례 미러) + test payload 2MB+ 확장 + deletedMediaIds assertion 추가. reply + thread resolved
+- **대기**: 메인테이너 리뷰
 - **관련**: issue #70139, PR #69208 (umbrella), PR #68801 (complementary), PR #69747 (adjacent)
 - **특이사항**:
   - 원래 주장 "LLM 호출 2회 + transcript corruption" 은 `claimInboundDedupe` (inbound-dedupe.ts:94-112) 가 이미 차단 — pre-SOL 5-agent 에서 **발견된 숨은 방어**로 인해 scope 수정
@@ -55,6 +57,7 @@
   - severity P1 → **P2** 하향
   - Option A (post-parse re-check) 선택 — XS, no-attachment sibling 무변경
   - test 파일명 mismatch (chat.directive-tags.test.ts 에 추가) commit msg + PR body 에서 자진 인정, follow-up split 제안
+  - CAL-009 Codex P2 accept 정당화 근거: `server-node-events.ts:448-458` 동일 구조 precedent 존재, `mediaCleanup` sweep 은 `cfg.media.ttlHours` opt-in 만 작동 (default 미동작), 내 PR body 스스로 duplicate media writes 를 race harm 으로 나열했는데 첫 커밋은 해결 안 함 (자기모순)
 
 ### #68848 — fix(gateway): clear nodeWakeById on no-registration early-return
 
