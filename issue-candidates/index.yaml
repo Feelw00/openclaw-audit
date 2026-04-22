@@ -165,6 +165,43 @@ candidates:
     hang 가능. hot-path 증거 부재, P3 hardening.
   retracted_reason: 'hot-path 증거 self-check 에서 부재 + CAL-003 synthetic-only 위험. post-handshake
     close 결정은 client-tolerant 철학과 trade-off. P3 hardening.'
+- id: CAND-019
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-channels-error-boundary-001 — draft-stream-loop.ts:60,75 의 `void flush()`
+    가 `.catch` 부재로 adapter throw 시 pendingText 유실 + unhandledRejection propagate.
+    severity P2 (streaming reply hot-path).
+- id: CAND-020
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-channels-error-boundary-002 — ack-reactions.ts:97-102 의 `.then(onFulfilled)`
+    에 onRejected 부재 → ack-add reject 시 stale emoji + unhandledRejection. onError
+    가 remove() 전용으로 오배선. severity P3.
+- id: CAND-021
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-gateway-concurrency-001 — send/message.action RPC idempotencyKey check-then-act
+    race. `resolveGatewayInflightMap` 과 `runGatewayInflightWork.set` 사이 real I/O
+    await (resolveRequestedChannel 등) 로 동일 idem 2회 dispatch → outbound duplicate.
+    severity P1.
+- id: CAND-022
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-gateway-concurrency-002 — poll RPC 핸들러에 inflight map 자체 부재 (upstream
+    60ec7ca0f1 refactor 미적용). 완료-dedupe cache 만 존재 → concurrent retry 시 거의 100%
+    duplicate poll spawn. severity P1.
+- id: CAND-023
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-gateway-concurrency-003 — chat.send attachment branch 에서 chatAbortControllers
+    check(L1920) 과 set(L1960) 사이 resolveGatewayModelSupportsImages + parseMessageWithAttachments
+    real I/O await. 동일 clientRunId 로 중복 agent run spawn. no-attachment branch
+    는 race 없음 (CAL-001 올바른 guard). severity P1.
 published:
 - cand_id: CAND-004
   issue: 68487

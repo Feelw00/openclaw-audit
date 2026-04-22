@@ -269,3 +269,117 @@ rg -n 'setInterval\(|setTimeout\(' src/gateway/  (production only)
 - `nodePresenceTimers` dead code 제거 또는 용도 복구 필요.
 - `costUsageCache` 에 TTL prune + size cap 도입 필요 (해결책은 SOL 단계에서).
 
+---
+
+### concurrency-auditor (2026-04-22, 셀 `gateway-concurrency`)
+
+HEAD: `abf940db61` (upstream/main fresh at audit time, CAL-007 staleness gate 통과).
+
+#### R-8 Upstream race-related commits 확인
+
+최근 3주 `src/gateway/` race/concurrent/lock/serialize 키워드 commit 10건:
+1. `dfe0e49c8a fix(qmd): Dedup in-flight manager creation` — `extensions/memory-core` scope (gateway 밖).
+2. `3243c9b5b0 fix(gateway): handle early connect challenge race` — `client.ts` (client-side, 이 셀 scope 아님).
+3. `d519f39c6e fix(gateway): eliminate SSE history double-read race` — `sessions-history-http.ts` (다른 파일).
+4. `032dbf0ec6 fix: serialize async auth rate-limit attempts` — `rate-limit-attempt-serialization.ts` 헬퍼 도입, auth 전용.
+5. `7b5527a74e fix(gateway): prevent 1006 errors from race condition in WebSocket upgrade (#43392)` — `server-runtime-state.ts` WS upgrade handler 순서 fix.
+6. `60ec7ca0f1 refactor: share gateway send inflight handling` — send helper 추출만, race 는 그대로.
+
+**중복 fix 없음**: send/poll/chat.send 의 idempotency check-then-set race 는 이번 감사가 첫 발굴.
+
+#### R-3 Grep 전역 인벤토리 (gateway-concurrency 관점)
+
+```
+rg -n 'Mutex|Semaphore|AsyncLock|withSerialized|lock\.acquire' src/gateway/ --exclude='*.test.ts'
+  → withSerializedRateLimitAttempt (auth.ts:381 단 1회)
+  → 이외 lock/mutex match 없음. acquire/release 는 preauthConnectionBudget / pluginChannelRegistry 라이프사이클 용도.
+
+rg -n 'Promise\.race\(|Promise\.all\(|Promise\.allSettled\(' src/gateway/ --exclude='*.test.ts'
+  → Promise.race: server-close.ts (4건, graceful shutdown), session-reset-service.ts, agent.ts:1075, client.ts:365
+  → agent.ts:1075 는 AbortController 로 loser 취소, 깨끗.
+  → Promise.all: startup-auth.ts:160, server-channels.ts (3), server-startup-post-attach.ts (다수), nodes.ts (2), usage.ts:311, probe.ts:310, chat-attachments.ts, exec-approval-ios-push.ts, server-startup-plugins.ts, agents.ts:658 — 모두 시작/종료 단계 또는 본질적으로 병렬 집계.
+
+rg -n 'if\s*\(!.*\.has\(' src/gateway/ --exclude='*.test.ts'
+  → 20 matches. 대부분 Set/Map 조회 + 분기 (전부 async 경로 X 또는 sync-only).
+  → 주목: usage.ts:80 (costUsageCache.has) 는 `loadCostUsageSummaryCached` 의 in-flight dedupe — **sync critical section** 이고 await 전에 set 완료하므로 race 없음.
+  → model-pricing-cache.ts:545-651 의 `inFlightRefresh` 도 dedupe 의도, 분석 결과 race 없음.
+```
+
+#### 핵심 관찰
+
+1. **`send`/`message.action`/`poll` 의 idempotency race (FIND-001/002)**: check-then-set 패턴이 multiple await 으로 분리됨. inflight map (send/message.action 에만 존재) 은 `runGatewayInflightWork` 내부에서만 populate 되며, 그 사이에 `resolveRequestedChannel` 등 real I/O await 이 있음. poll 은 inflight map 자체가 없음 (upstream 60ec7ca0f1 refactor 가 send/message.action 만 커버).
+
+2. **`chat.send` attachment path race (FIND-003)**: `chatAbortControllers.get` (L1920) 와 `.set` (L1960) 사이에 `resolveGatewayModelSupportsImages` + `parseMessageWithAttachments` 의 real I/O. no-attachment branch 는 race 없음 (CAL-001 의 올바른 guard 사례).
+
+3. **`agent.request` (server-methods/agent.ts:386)**: 동일 check-then-set 패턴. L386 → L866 `setGatewayDedupeEntry` 사이에 attachment parsing + channel resolution + subagent bootstrap 다수 await. 영향은 concurrent spawn of duplicate agent runs. FIND 후보였으나 FIND-003 (chat.send) 과 동일 카테고리라 별도 분리 안 함 — cross_refs 로 가정.
+
+#### 탐색했으나 FIND 포기 (unconditional 방어 존재)
+
+- **`auth-rate-limit.ts` entries Map**: 모든 공개 API (`check`/`recordFailure`/`reset`/`prune`) 가 sync. await 없음 → 단일 thread race 없음. `rate-limit-attempt-serialization.ts` 가 상위 직렬화 래퍼.
+- **`rate-limit-attempt-serialization.ts` `pendingAttempts`**: chain 의 tail identity check (`pendingAttempts.get(key) === tail`) 로 cleanup 경합 방어. unconditional guard.
+- **`control-plane-rate-limit.ts` `controlPlaneBuckets`**: 모든 경로 sync (`consumeControlPlaneWriteBudget`, `pruneStaleControlPlaneBuckets`). race 없음.
+- **`agent-job.ts` `agentRunStarts`/`pendingAgentRunErrors`**: top-level `onAgentEvent` 리스너가 single-threaded event ordering. `start` branch 에서 `clearPendingAgentRunError` → `agentRunCache.delete` → (이후 emit) 순서. 여러 `waitForAgentJob` 의 per-waiter subscriber 는 top-level 리스너 뒤에 등록되므로 notifyListeners 순회 시 항상 top-level 먼저 실행 (`shared/listeners.ts` Set 순회). race 없음.
+- **`model-pricing-cache.ts` `inFlightRefresh`**: T1 이 IIFE sync 설치 후 await. T2 는 `if (inFlightRefresh)` 로 같은 Promise 재사용. T1 의 finally 에서 null 로 리셋. T1/T2 모두 동일 결과 수신. race 없음.
+- **`exec-approval-manager.ts` pending Map**: 기존 entry 있으면 throw (id 재사용 금지). unconditional guard. race 없음.
+- **`agent.ts:1075` `Promise.race([lifecyclePromise, dedupePromise])`**: loser 는 AbortController 로 즉시 취소 (L1084/L1086). `snapshot === null` 인 winner 는 loser 를 다시 await 하여 fallback. race 올바르게 처리됨.
+- **`server-runtime-state.ts:222-260` `startListening`**: 재진입 dedupe 용 promise 캐싱. 단일 호출 (server.impl.ts:803) 이라 race 없음.
+- **`server-channels.ts:306-319`**: `store.tasks.has(id)` + `store.starting.get(id)` + 즉시 sync set. channels-lifecycle 셀 scope (이 셀 아님).
+
+#### R-5 Execution condition 분류 (FIND 대상)
+
+| 경로 | 조건 | 위치 | 비고 |
+|---|---|---|---|
+| `resolveGatewayInflightMap` 호출 | unconditional | send.ts:402 | inflight 체크는 매 호출 |
+| `runGatewayInflightWork.set` | unconditional | send.ts:92 | set 자체는 unconditional 이나 호출 시점이 await 뒤 |
+| 그 사이 `await resolveRequestedChannel` 등 | unconditional | send.ts:422, 460, 480, 514, 527 | check 와 set 분리의 주범 |
+| poll dedupe check | unconditional | send.ts:590 | sync check 이후 모든 await 이 race window |
+| chat.send `chatAbortControllers.get` | unconditional | chat.ts:1920 | attachment branch 에서 I/O 로 race window 확장 |
+| chat.send attachment await | conditional-on-attachment | chat.ts:1930, 1936 | no-attachment path 는 race 없음 (올바른 guard) |
+| chat.send `.set` | unconditional | chat.ts:1960 | — |
+
+#### 산출물
+
+- FIND-gateway-concurrency-001 (P1): `send` / `message.action` RPC idempotencyKey check-then-set race — inflight map 이 real I/O await 뒤에 set.
+- FIND-gateway-concurrency-002 (P1): `poll` RPC 에 inflight map 자체 부재 — 완료-dedupe 만 있어 concurrent spawn 이 거의 100% 재현.
+- FIND-gateway-concurrency-003 (P1): `chat.send` attachment path 에서 `chatAbortControllers` check/set 이 `resolveGatewayModelSupportsImages` + `parseMessageWithAttachments` 로 분리.
+
+#### Self-critique (미확인 영역)
+
+- outbound 플러그인 자체 idempotency: Slack/WhatsApp/Telegram 의 자체 messageId uniqueness 보장 여부 미조사. 있다면 FIND-001/002 의 실피해가 플랫폼별로 감소할 수 있음.
+- `agent.request` (server-methods/agent.ts:386) 의 dedupe 패턴은 FIND-003 과 유사. agent runner (`src/agents/`) 내부 runId dedupe 존재 여부 미조사 — 이 셀 밖. agents-* 셀에서 follow-up 가치.
+- 재시도 주기 metrics: 클라이언트가 동일 idempotencyKey 로 재시도하는 평균 delay 미측정. race window (수십~수백 ms) 와 중첩 확률 정량 부재.
+- `server-maintenance.ts` 의 주기적 prune 루프가 race 에 새로 기여하는지는 이 셀 밖 (cron-reliability-auditor).
+
+#### 다음 페르소나를 위한 힌트 (concurrency 이후)
+
+- **gatekeeper/clusterer**: 세 FIND 는 "gateway RPC idempotency" 라는 테마를 공유하지만 파일·라인·guard 설계가 세 갈래라 epic 보다 개별 CAND 가 적절 (memory 셀의 FIND-001/002/003 과 같은 구조). fix 축도 다르다: FIND-001 은 inflight set 을 check 바로 뒤로 이동, FIND-002 는 helper 를 poll 에 확장, FIND-003 은 attachment 파싱 이후 재체크 혹은 set 이동.
+- **lifecycle/error-boundary-auditor**: FIND-003 의 중복 spawn 이 발생하면 agent run lifecycle 이벤트가 동일 runId 로 2개 fire → `agentRunStarts`/`agentRunCache` 에 drift 가능. memory FIND-003 (agentRunStarts safety belt 부재) 와 상호작용 조사 가치.
+- **security-adjacent**: idempotencyKey 가 race 로 우회되면 rate-limit 회피 여부 재검토 필요 (예: 과금/쿼터 우회). 현재 scope 밖이지만 도메인 note.
+
+
+### clusterer (2026-04-22, concurrency 후속)
+
+- CAND-021 (single): FIND-gateway-concurrency-001 (send/message.action) —
+  R-5 분류 "unconditional race in primary dispatch" (`resolveGatewayInflightMap`
+  과 `runGatewayInflightWork.set` 사이 real I/O await 다수).
+- CAND-022 (single): FIND-gateway-concurrency-002 (poll) —
+  R-5 분류 "no inflight infrastructure" (upstream 60ec7ca0f1 refactor 미적용,
+  완료-dedupe cache 만 존재).
+- CAND-023 (single): FIND-gateway-concurrency-003 (chat.send attachment) —
+  R-5 분류 "conditional race in attachment branch"
+  (`resolveGatewayModelSupportsImages` + `parseMessageWithAttachments` real I/O
+  가 check/set 분리의 주범; no-attachment branch 는 race 없음 — CAL-001 올바른
+  guard 예시).
+
+**Epic 지양 근거**: 세 FIND 는 "gateway RPC idempotency check-then-act race"
+라는 상위 테마를 공유하지만 fix 축이 세 갈래 (set 이동 / helper 확장 /
+attachment parsing 재구조) 이고 파일도 send.ts vs chat.ts 두 갈래.
+concurrency-auditor 섹션의 "다음 페르소나를 위한 힌트" 에서도 epic 보다
+개별 CAND 가 적절하다고 명시. memory 셀의 CAND-014/015/016 과 같은 패턴.
+CONTRIBUTING.md "one thing per PR" 관점에서도 분리 우선.
+
+**upstream 중복 검사 (CAL-008)**: `git log upstream/main --since="3 weeks ago"
+-- src/gateway/server-methods/send.ts src/gateway/server-methods/chat.ts`
+→ refactor `60ec7ca0f1` (helper 추출) 만 race 관련. 실 fix 없음. CAL-004
+상황 아님.
+
