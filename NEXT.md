@@ -35,7 +35,16 @@ git log upstream/main --since="2 weeks ago" --oneline -- src/plugins/ src/cron/ 
 
 ### C. PR 작업 중 worktree 는 별도
 
-open PR worktree (`openclaw-pr-*`) 는 `fix/*` 브랜치라 main 업데이트와 독립. rebase 필요 시 `git rebase upstream/main` 로 개별 처리.
+**worktree 위치 규칙**: 모든 PR worktree 는 `/Users/lucas/Project/openclaw-worktrees/pr-NNN/` 에 생성.
+`Project/` 루트 직접 생성 금지 (지저분함).
+
+```bash
+# 신규 worktree 생성 예
+cd /Users/lucas/Project/openclaw
+git worktree add /Users/lucas/Project/openclaw-worktrees/pr-NNN -b fix/<branch-name> upstream/main
+```
+
+open PR worktree 는 `fix/*` 브랜치라 main 업데이트와 독립. rebase 필요 시 `git rebase upstream/main` 로 개별 처리.
 
 (venv 없으면: `python3 -m venv /tmp/openclaw-audit-venv && /tmp/openclaw-audit-venv/bin/pip install pyyaml`)
 
@@ -62,7 +71,7 @@ open PR worktree (`openclaw-pr-*`) 는 `fix/*` 브랜치라 main 업데이트와
 # 아직 안 돌린 Phase 1 셀 확인
 grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 
-# 현재 Phase 1+2+3 상태 (2026-04-19 기준, 10 + 진행 3 = 13 셀)
+# 현재 Phase 1+2+3 상태 (2026-04-22 기준, 10 + 진행 3 = 13 셀)
 #
 # Phase 1 (5/5 done):
 #   ✓ plugins-memory               — CAND-001 abandoned
@@ -79,21 +88,20 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ agents-registry-concurrency  — adjacent: CAND-010 abandoned + CAND-011 open PR #68669
 #
 # Phase 3 (3/6 done, 3 남음):
-#   ✓ auto-reply-concurrency       — CAND-012 → PR #68839 ★NEW (proceed) + CAND-013 scope_down
-#   ✓ gateway-memory               — CAND-014 → PR #68842 ★NEW (proceed) + CAND-015 → PR #68848 ★NEW + CAND-016 abandoned (CAL-008 upstream-dup PR #68801)
+#   ✓ auto-reply-concurrency       — CAND-012 → PR #68839 (proceed) + CAND-013 scope_down
+#   ✓ gateway-memory               — CAND-014 → PR #68842 ✅ MERGED 2026-04-22 (파이프라인 첫 merged) + CAND-015 → PR #68848 + CAND-016 abandoned (CAL-008 upstream-dup PR #68801)
 #   ✓ gateway-error-boundary       — CAND-017/018 abandoned (synthetic + observability scope 밖)
 #   ☐ gateway-concurrency          — concurrency-auditor
 #   ☐ channels-error-boundary      — error-boundary-auditor
 #   ☐ channels-lifecycle           — plugin-lifecycle-auditor
 #
-# 살아있는 PR 5건 (내 repo, 열린 PR 카운트):
-#   • #68543 (CAND-009, infra-retry) — steipete CHANGES_REQUESTED → 11430f641c 대응, 재리뷰 대기
-#   • #68669 (CAND-011, agents-registry) — Greptile 5/5, 메인테이너 리뷰 대기
-#   • #68839 (CAND-012, auto-reply drain identity guard) ★NEW — 리뷰 대기
-#   • #68842 (CAND-014, costUsageCache FIFO) ★NEW — Codex P2 반박 완료 (CAL-009), thread resolved. 메인테이너 리뷰 대기
-#   • #68848 (CAND-015, nodeWakeById cleanup) ★NEW — 리뷰 대기
+# 살아있는 PR 4건 (2026-04-22 전부 upstream/main rebase + force-push 완료):
+#   • #68543 (CAND-009, infra-retry, head 24a541da3b) — steipete invariant 이미 반영됨 (032532ecae+71c24d731a 확인), 재리뷰 / R-10 답변 대기
+#   • #68669 (CAND-011, agents-registry, head 6410bfaeec) — Codex P2 CAL-009 병렬 검증 후 반박 + thread resolved (2026-04-22). 메인테이너 리뷰 대기
+#   • #68839 (CAND-012, auto-reply drain identity guard, head 1236d56668) — 리뷰 대기
+#   • #68848 (CAND-015, nodeWakeById cleanup, head 5fe51e1967) — 리뷰 대기
 #
-# warn=7 / block=10, 여유 있음. 신규 PR 은 2~3 개 까지 여유.
+# merged: #68842 (CAND-014). warn=7 / block=10 기준 active 4 → 여유 충분. 신규 PR 2~3 개 가능.
 #
 # 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 ```

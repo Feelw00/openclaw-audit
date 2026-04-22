@@ -737,8 +737,8 @@ items:
     created_at: '2026-04-18T21:07:00+00:00'
     updated_at: '2026-04-19T07:09:57+00:00'
   CAND-014:
-    kind: candidate
-    state: pr-opened
+    kind: find
+    state: merged
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -770,8 +770,13 @@ items:
       actor: human
       reason: 'PR #68842 opened (costUsageCache FIFO cap)'
       at: '2026-04-19T07:09:57+00:00'
+    - from: pr-opened
+      to: merged
+      actor: github
+      reason: 'PR #68842 merged by maintainer 2026-04-19..2026-04-22 window'
+      at: '2026-04-22T00:13:37+00:00'
     created_at: '2026-04-18T21:07:01+00:00'
-    updated_at: '2026-04-19T07:09:57+00:00'
+    updated_at: '2026-04-22T00:13:37+00:00'
     extras:
       openclaw_repo: openclaw/openclaw
       openclaw_issue_number: 68841
@@ -888,7 +893,7 @@ items:
     updated_at: '2026-04-19T06:24:14+00:00'
   SOL-0004:
     kind: find
-    state: pr-opened
+    state: merged
     transitions:
     - from: null
       to: drafted
@@ -901,8 +906,13 @@ items:
       actor: human
       reason: 'PR #68842 opened'
       at: '2026-04-19T06:31:26+00:00'
+    - from: pr-opened
+      to: merged
+      actor: github
+      reason: 'PR #68842 merged'
+      at: '2026-04-22T00:13:37+00:00'
     created_at: '2026-04-19T05:34:10+00:00'
-    updated_at: '2026-04-19T06:31:26+00:00'
+    updated_at: '2026-04-22T00:13:37+00:00'
   SOL-0005:
     kind: find
     state: pr-opened
