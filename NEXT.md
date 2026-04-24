@@ -101,7 +101,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ cron-error-boundary          — 0 FIND (resolveStorePath throw 불가, onEvent 타입 sync 라 async injection compile-time 차단, onTimer try/finally self-healing. upstream 6주 cron fix 중 error-boundary 축 없음)
 #   ✓ cron-lifecycle               — 2 FIND (P2) → CAND-024 epic (activeJobIds partial merge gap: upstream 7d1575b5df (#60310) 가 runDueJob/executeJob 만 수정하고 startup catchup + manual run 간과. related issue #68157 OPEN 2026-04-23 증상 보고 중)
 #
-# 살아있는 PR 5건 (2026-04-24 기준, upstream/main 최신 동기화 HEAD 22f23fa5ab — 본 세션에 131 commits fast-forward 완료):
+# 살아있는 PR 5건 (2026-04-24 기준, upstream/main 최신 동기화 HEAD 5f702b464b — 본 세션 38 commits fast-forward 완료):
 #   • #68543 (CAND-009, infra-retry, head acc85fe0ff) — steipete invariant 이미 반영됨 (032532ecae+71c24d731a, steipete 가 리뷰한 60ad4714c0 에 포함). 2026-04-22 R-10 답변 후 메인테이너 재리뷰 대기
 #   • #68669 (CAND-011, agents-registry, head 00cab4264f) — Codex P2 2라운드 번들 증거로 공손 반박 + thread resolved. 메인테이너 리뷰 대기
 #   • #68839 (CAND-012, auto-reply drain identity guard, head 1236d56668) — 리뷰 대기
@@ -111,7 +111,12 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # merged: #68842 (CAND-014, 파이프라인 첫 merge), #63105 (파이프라인 외 cron-store split, 2026-04-20 merged). warn=7 / block=10 기준 active 5 → 여유 유지.
 #
 # 잔여 미처리 (다음 세션 우선순위 순):
-#   1. CAND-024 (cron-lifecycle epic, activeJobIds mark/clear 누락) — state: pending_gatekeeper. **gatekeeper 3-step 먼저**
+#   1. **SOL-0007 (CAND-024 cron-lifecycle epic) — drafted 2026-04-24, worktree 작업 대기**.
+#      gatekeeper approve@high + post-harness cross-review 5/5 real-problem-real-fix 통과 (decision=proceed,
+#      metrics/cross-review-CAND-024-20260424-144344.jsonl). chosen_fix=A (direct-injection-try-finally, XS).
+#      파일: src/cron/service/timer.ts (~6) + src/cron/service/ops.ts (~10+import) + src/cron/active-jobs-symmetry.test.ts (신규).
+#      메인테이너 architecture caveat: PR #69313 hook 방향 가설 — PR description 에 §C 검토 명시 헤지.
+#      Issue #68157 close 후보. 다음: worktree → drafter-gate → 재현 테스트 작성 → fix → pre-PR cross-review 3-agent → PR.
 #   2. CAND-021 (gateway/send idempotencyKey race) — approve@high, hot-path=5, P1 → post-harness 5-agent cross-review 대기 (사용자 허락 필요)
 #   3. PR #70142 Greptile 수동 재트리거 (`@greptile review and provide confidence score` 코멘트)
 #
