@@ -233,3 +233,168 @@ allocation — GC 대상.
 
 **결론**: fresh upstream (8879ed153d) 에서 재검증한 결과 **FIND 0건**. 이전 두 세션의 0 판정 유지.
 최근 2주 변경은 메모리 의미에 영향 없음 (test/perf/lazy-load 리팩터, delivery idempotency guard 추가).
+
+### error-boundary-auditor (2026-04-24, upstream @ 22f23fa5ab)
+
+셀: `cron-error-boundary` (allowed_paths: `src/cron/**`). upstream/main fast-forward 확인 (HEAD == upstream/main == `22f23fa5ab`, behind=0). 결론: **FIND 0건** (정직한 0 판정).
+
+#### 적용 카테고리 (agents/error-boundary-auditor.md R-5 축)
+
+- [x] unhandled-rejection-in-timer-callback — applied
+- [x] throw-in-primary-handler-without-catch — applied
+- [x] floating-promise-no-error-propagation — applied
+- [x] process.exit-pre-cleanup-skipped — skip (cron/ 내부 process.exit 0건)
+- [x] JSON.parse 미보호 — skip (run-log.ts:267 try 로 방어)
+
+#### R-3 방어 경로 Grep (결과)
+
+1) `rg -n "process\.on\(|process\.once\(" src/cron/` → **0건**. cron/ 은 process-level handler 미설치 (책임 경계는 src/infra/).
+2) `rg -n "\.catch\(" src/cron/` → 14건. 모두 실제 방어 (store.ts chmod/unlink, timer.ts timer callback, ops.ts enqueue, run-log.ts fs read/stat).
+3) `rg -n "try\s*\{" src/cron/` → production 파일 기준 18건. 주요 방어 포인트 전수 맵핑됨.
+4) `rg -n "void\s+\w+" src/cron/` → production 에서 3건: `timer.ts:362 sendCronFailureAlert...catch`, `timer.ts:666/681 onTimer...catch`, `ops.ts:704 enqueueCommandInLane...catch`. 모두 `.catch` 체이닝 有.
+5) `rg -n "setImmediate|process\.nextTick|process\.exit" src/cron/` → **0건**.
+6) `rg -n "JSON\.parse" src/cron/` production 1건 (`run-log.ts:268`) — try 블록 내.
+
+#### R-5 execution condition 분류 (error-boundary 축 후보)
+
+| 후보 | 위치 | primary-path throw 조건 | 방어 상태 |
+|---|---|---|---|
+| `onTimer` 내 `await persist/ensureLoaded` throw | timer.ts:706-814 | disk EACCES/ENOSPC/EBUSY | try/finally → finally 가 `armTimer` 재호출. setTimeout 콜백 `.catch` 가 재throw 흡수. **self-healing** |
+| `onTimer` finally 블록 내 `resolveSessionStorePath(agentId)` throw | timer.ts:820-834 | callback 은 `resolveStorePath` wrapper (paths.ts:280) — 순수 string 처리. throw 조건 사실상 없음 (resolveRequiredHomeDir 은 cwd fallback) | **production path 에서 throw 불가** — R-1 위반 FIND 금지 |
+| `emit` 내 `onEvent` async throw | timer.ts:1431-1437 | 주입된 onEvent 가 async function 이고 내부 throw | **try/catch 는 sync throw 만 잡음**. async rejection 은 unhandled. 단 gateway/server-cron.ts (L275) 의 onEvent 는 sync 함수임 — production caller 에서 async onEvent 없음. FIND 불성립 |
+| `executeJob` (L1332-1375) 의 `applyJobResult` throw → `clearCronJobActive` 누락 | timer.ts:1360 | applyJobResult 내부 `emitFailureAlert → enqueueSystemEvent` throw | cron-memory 재감사 (2026-04-19) 에서 R-5 conditional-edge 로 이미 분류. primary-path throw 가능성 없음 — 중복 abandon |
+| timer callback `state.timer = setTimeout(() => { void onTimer(state).catch(...) })` 의 catch 후 rearm 부재 | timer.ts:665-669 | onTimer 의 throw 가 finally 전에 발생하는 경로 필요. 하지만 try 는 L706 부터, finally 는 L815 — **throw 경로는 모두 try 안** → finally 실행 → armTimer | **방어됨** |
+| `emitFailureAlert` 의 `state.deps.enqueueSystemEvent` throw (L380) | timer.ts:380-383 | enqueueSystemEvent 가 throw 하면 applyJobResult 상위로 전파 | enqueueSystemEvent (infra/system-events.ts:90) 는 module-level queue.push — throw 조건 없음 |
+
+#### primary-path inversion (CAL-001) 결과
+
+각 후보별로 "이 error-boundary gap 이 trigger 되려면 어떤 주입된 callback/의존성이 production 에서 throw 해야 하는가?" 질문:
+
+- `resolveSessionStorePath`: `path.resolve + path.join` 수준 (paths.ts:280-312) — throw 조건 `process.cwd()` 실패뿐인데 fallback 으로 guard. **production throw 조건 없음**.
+- `enqueueSystemEvent`: `system-events.ts:90` 의 in-memory queue push — throw 조건 없음.
+- `onEvent` async rejection: gateway 구현 (server-cron.ts:275) 이 **sync function** 이라 async rejection 생성 불가.
+
+R-1 (production hot-path caller 증명) 미충족 → 모든 후보 FIND 불생성.
+
+#### upstream 최근 cron fix (6 주 기준)
+
+`git log upstream/main --since="6 weeks ago" -- src/cron/` (60+ 커밋). error-boundary 의미상 관련된 commit:
+
+| commit | 요약 |
+|---|---|
+| `9501656a8e` (#67807) | `cleanupDirectCronSessionIfNeeded` idempotency guard (directCronSessionDeleted Set). 본 셀 영역 밖 (delivery-dispatch). |
+| `190a4b4869` (#66113) / `c602824215` (#66083) | `nextRunAtMs` truthiness 가드 — logic fix. 에러 경계 무관. |
+| `905e56d191` (#63507) | zero `nextRunAtMs` validator — logic fix. 에러 경계 무관. |
+| `4be6ff9d5f` (#63105) | jobs.json split into config + state file — store.ts 구조 변화. 에러 경계 의미 변화 없음 (saveCronStore / loadCronStore 에러 handling 유지). |
+| `cb16d22780` | retire bundled mcp runtimes — runtime 제거 리팩터. 에러 경계 무관. |
+| `9db67e79a5` / `851bef9c25` | accountId spoof guard — 인증 로직. 에러 경계 무관. |
+
+**error-boundary 축으로 upstream 최근에 merge 된 fix 없음**. 본 셀 결과에 영향 주는 선행 fix 부재.
+
+#### 중복 축 회피 (cron-memory / cron-concurrency 와 분리)
+
+| 축 | 이전 셀 결과 | 본 셀 재평가 |
+|---|---|---|
+| Map/Set growth (activeJobIds, writesByPath, …) | cron-memory 재감사 (2026-04-19) FIND 0 | 본 셀 재탐지 금지 (overlap) |
+| runningAtMs claim race | cron-concurrency FIND 001/003 → CAND-002 (파이프라인 이동 중) | 본 셀 재탐지 금지 |
+| setTimeout/setInterval leak | cron-memory 재감사 FIND 0 (모두 unconditional clear) | 본 셀 재탐지 금지 |
+| throw propagation in timer callback | 이전 셀 축 밖 | **본 셀 고유** — 위에 R-5 적용, 0건 |
+| unhandledRejection / process-level handler | allowed_paths 밖 (src/infra/) | 본 셀에선 skip |
+
+#### 확인 못 한 영역 (self-critique)
+
+- `state.deps.onEvent` 의 async variant 가 미래에 도입될 가능성 — 현재 gateway 구현은 sync 이나 cron 본체 타입 시그니처는 `(evt: CronEvent) => void` 로 명시되어 있음 (state.ts:117). 따라서 async 주입은 타입 에러 → 사실상 compile-time 방어.
+- `src/cron/isolated-agent/**` 하위 모듈 (delivery-dispatch 등): 본 셀 priority_files 밖. 이 서브디렉터리는 이전 cron-memory 재감사에서 일부 확인 (COMPLETED_DIRECT_CRON_DELIVERIES TTL 방어). error-boundary 축으로 미탐색 — 별도 셀 (`cron-isolated-agent-error-boundary`) 정당화 가능하나 우선순위 낮음.
+- `src/gateway/server-cron.ts` 의 `void (async () => await postCronWebhook(...))()` 패턴 (L455, L490): IIFE 에 try/catch 없음. 하지만 `postCronWebhook` 자체가 자체 catch 내장 여부 미확인 — **allowed_paths 밖** (gateway/). 별도 셀 `gateway-cron-error-boundary` 에서 다뤄야 함.
+- `persist()` throw 후 in-memory store 와 disk 상태 divergence: error-boundary 가 아닌 data-consistency 축. 본 페르소나 scope 밖.
+
+#### 결론
+
+cron/ 내부는 error-boundary 축에서 정합한 방어를 갖춤:
+- 모든 timer callback 은 `.catch` 로 감쌈
+- onTimer 의 try/finally 가 armTimer rearm 을 보장
+- emit 의 sync try/catch 가 onEvent throw 삼킴 (타입상 async 주입 불가)
+- JSON.parse 는 try 블록 내
+- process-level handler 는 책임 경계상 cron/ 외부 (infra/)
+
+**FIND 0건**. 메인테이너 우선순위 (cron + reliability) 에 중요한 모듈이라 이미 hardening 완료된 상태. false-positive 비용 고려하여 정직한 0 판정.
+
+### clusterer (2026-04-24)
+
+- **CAND-024 (epic)**: FIND-cron-lifecycle-001 + FIND-cron-lifecycle-002 을 공통 원인 "upstream
+  commit `7d1575b5df` (#60310, 2026-04-04) 가 activeJobIds 싱글톤 도입 시 timer.ts 의 runDueJob /
+  executeJob 2개 경로에만 mark/clear 주입하고 runStartupCatchupCandidate (timer.ts:1043-1081) 와
+  prepareManualRun / finishPreparedManualRun (ops.ts:548-686) 두 경로를 간과한 partial merge
+  gap" 으로 묶음. 두 FIND 모두 root_cause_chain[0] 에서 동일 commit 을 evidence_ref 로 지목하며,
+  FIND-002 가 이미 `cross_refs: [FIND-cron-lifecycle-001]` 로 연결 선언. fix surface 공통
+  (mark/clear 호출 주입), regression test axis 공통 (real activeJobIds Set + tryCreate*TaskRun
+  통합), 메인테이너 커뮤니케이션 공통 (#68157 이 양쪽 증상 manifestation). CAND-002 epic 선례
+  (단일 CAS 축으로 두 동시성 경계 묶음) 패턴 대응. Severity P2 (양쪽 동일). related_issue
+  #68157 (OPEN 2026-04-23) 기록.
+- 인접 lifecycle 축 (async-stop-not-awaited / partial-rollback-on-failure / storeLocks 재사용) 은
+  plugin-lifecycle-auditor 세션에서 upstream-dup (PR #43832, #68112) 또는 이전 cron-memory 셀
+  결과 (growth rate 0) 로 이미 abandon 된 상태 — epic scope 확장 금지.
+
+### plugin-lifecycle-auditor (2026-04-24, upstream @ 22f23fa5ab)
+
+셀: `cron-lifecycle` (allowed_paths: `src/cron/**`). upstream HEAD == local HEAD == `22f23fa5ab` (behind=0 확인). 결론: **FIND 2건 (P2/P2)**.
+
+#### 적용 카테고리 (lifecycle 축 분류 — R-5)
+
+- [x] **init-without-init (cross-module contract gap)**: `activeJobIds` singleton → task-registry 의 `hasBackingSession` 이 신뢰하는 유일한 cron liveness signal. mark 경로가 실행 경로 3개 중 1개 (runDueJob, timer.ts:746) + executeJob (timer.ts:1344) 만 커버. runStartupCatchupCandidate (timer.ts:1043) 와 manual run (prepareManualRun/finishPreparedManualRun, ops.ts:548-686) 두 경로에서 mark 부재 → FIND-001/002.
+- [x] **async-stop-not-awaited**: `stopTimer` (timer.ts:1424-1429) 이 in-flight onTimer 를 await 하지 않음. onTimer.finally → armTimer (853) 가 stop 후 timer 재장착. **PR #43832 (OPEN, 2026-03-12)** `stopGraceful()` 이 동일 root 를 fixing 중 → CAL-008 per upstream-dup-check reject (FIND 생성 금지).
+- [x] **partial-rollback-on-failure (start path)**: `runMissedJobs` 가 throw 시 `armTimer` 호출 안 됨 (ops.ts:119). **PR #68112 (OPEN, 2026-04-17)** 가 fixing 중 → CAL-008 reject.
+- [x] **duplicate-register-on-reentry**: `start()` 재호출 시 `armTimer` 가 내부적으로 `if(state.timer) clearTimeout` 선행(619-622) 후 재장착. 대칭 확보됨 → FIND 없음.
+- [x] **storeLocks 재사용**: 모듈-scope Map, delete 없음. 키 도메인 constant (storePath) → growth rate 0 → cron-memory 에서 이미 abandon 한 축. 새 FIND 없음.
+
+#### R-3 대응 경로 Grep 결과
+
+- `rg -n "markCronJobActive" src/` → production 2건 (timer.ts:746, 1344). runStartupCatchupCandidate·prepareManualRun 에 부재 확인.
+- `rg -n "clearCronJobActive" src/` → production 1건 (timer.ts:586, applyOutcomeToStoredJob) + 1건 (timer.ts:1374, executeJob). **manual run 경로에 부재** 확인.
+- `rg -n "isCronJobActive" src/` → `src/tasks/task-registry.maintenance.ts:127` (caller, allowed_paths 밖이라 참조만), cron 본체에서 호출 없음.
+- `git log upstream/main -- src/cron/active-jobs.ts` → 1건 (`7d1575b5df`, #60310, 2026-04-04). `git show 7d1575b5df -- src/cron/service/ops.ts` → 해당 파일 수정 없음 → manual run gap 이 의도된 공백이 아니라 scope 부족.
+
+#### Upstream open PRs 관련 영역 (CAL-008 gate 통과 후보)
+
+| PR | 주제 | lifecycle 축 | 본 세션 FIND 와 관계 |
+|---|---|---|---|
+| #43832 (OPEN 2026-03-12) | stopGraceful drain in-flight ops on hot reload | async-stop-not-awaited | 본 셀의 동일 root → FIND 억제 |
+| #68112 (OPEN 2026-04-17) | guard runMissedJobs throw → armTimer | partial-rollback-on-failure (start) | 본 셀의 동일 root → FIND 억제 |
+| #68168 (CLOSED 2026-04-17) | active-jobs singleton unit test 커버리지 | 단순 test, asymmetry 수정 아님 | 영향 없음 |
+| #60566 (CLOSED 2026-04-03) | cron/cli no-childSessionKey → missing reconcile | 증상 기반 patch (symptom over cause) | 본 FIND 의 gap 을 덮으려다 미채택. FIND 의 근본 원인 유효성 역설적 지지 |
+
+#### Related open issue
+
+- **#68157 (OPEN 2026-04-23)** — "Cron isolated agentTurn: already-running survives restart, run history always empty": 사용자가 heartbeat-dispatch (isolated, 30분 주기) 의 `openclaw cron runs` history 가 empty 인데 실제 script 는 로그 확인되는 증상 보고. 본 FIND-001 (startup) + FIND-002 (manual) 의 정확한 manifestation. upstream 에 아직 fix 없음.
+
+#### R-5 집계 (cleanup 경로 분류표)
+
+| 경로 | mark | clear | execution condition |
+|---|---|---|---|
+| `runDueJob` (timer.ts:746) | YES (746) | via applyOutcomeToStoredJob (586) | unconditional |
+| `executeJob` (timer.ts:1344) | YES (1344) | YES (1374) | unconditional |
+| `runStartupCatchupCandidate` (timer.ts:1048) | **부재** | via applyOutcomeToStoredJob (586, no-op) | — (FIND-001) |
+| `prepareManualRun`/`finishPreparedManualRun` (ops.ts:577/611) | **부재** | **부재** | — (FIND-002) |
+
+#### 확인 못 한 영역 (self-critique)
+
+- `src/tasks/task-registry.maintenance.ts` 의 `TASK_RECONCILE_GRACE_MS` 실제 값, sweep 주기, `lost` 전이 조건: allowed_paths 밖 → R-2 로 파일 Read 안 함. 재현 시 필수 확인 항목.
+- `enqueueRun` (ops.ts:697-732) 의 command lane queue 처리 내 별도 mark 로직 존재 여부: `enqueueCommandInLane` 은 `src/process/command-queue.ts` 로 R-2 외부.
+- CronService 가 gateway reload 시 단일 인스턴스인지 매번 재생성인지: `src/gateway/server-reload-handlers.ts` 일부 라인만 식별 (cronState.cron.stop at 137) — 상세 flow 는 R-2 로 미확인.
+- Stagger (src/cron/stagger.ts) 의 생애주기 영향: missed job catch-up 의 deferred 경로 (applyStartupCatchupOutcomes 1101-1112) 에서 mark/clear 부재 여부. deferred 는 재장착만 되고 실행은 이후 timer tick 이 담당 → runDueJob 경로로 재합류하므로 mark 확보. gap 없음.
+
+#### upstream 최근 cron fix (R-8, `git log upstream/main --since="6 weeks ago" -- src/cron/` 중 lifecycle 축 관련)
+
+| commit | 요약 |
+|---|---|
+| `7d1575b5df` (#60310, 2026-04-04) | activeJobIds singleton 도입. mark 를 runDueJob/executeJob 두 경로에 추가. startup catchup / manual run 경로는 **누락** (본 셀 FIND 의 직접 원인) |
+| `7a16e14301` (#60495, 2026-04-04) | interrupted recurring jobs 의 restart 복귀 (start()의 skipJobIds 에서 kind==="at" 만 제외로 분기 세분화) |
+| `0787266637` (#68886) | detached task lifecycle runtime 분리 — createRunningTaskRun 의 export path 변경 (본 셀 grep 경로에 직접 영향 없음) |
+| `c602824215` (#66083) / `190a4b4869` (#66113) | unresolved nextRunAtMs refire loop 방지 (lifecycle 이 아니라 scheduling correctness) |
+| `905e56d191` (#63507) | zero nextRunAtMs invalid 처리 (동일) |
+
+이들 upstream fix 중 **markCronJobActive asymmetry 를 직접 해소하는 커밋은 없음**.
+
+#### 결론
+
+cron-lifecycle 셀 2 FIND (P2/P2, 둘 다 `lifecycle-gap`). 핵심은 upstream 의 부분 구현된 activeJobIds 대칭 계약의 보완. cron-concurrency (CAS race) / cron-memory (Map 성장) / cron-error-boundary (예외 격리) 가 **같은 파일들을** 이미 감사했음에도 이 축은 lifecycle 페르소나의 "init-without-init" 렌즈로만 보이는 cross-module 계약 gap. false-positive 비용 고려해 upstream open PR (#43832, #68112) 영역은 의도적으로 abandon.

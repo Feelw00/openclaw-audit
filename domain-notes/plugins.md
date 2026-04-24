@@ -314,3 +314,97 @@
 **자체 한계**:
 - 본 세션도 `src/infra/unhandled-rejections.ts` 와 `src/index.ts` entrypoint install 경로는 scope 외. FIND-003 에 대해 node 22 의 dynamic import 재시도 semantic 을 empirical 로 확인하지 못함.
 - `captured-registration.ts:184` 의 `capturePluginRegistration` 이 향후 production 경로로 승격될지 여부 미확인. 현 시점 test-only.
+
+### concurrency-auditor (2026-04-24, fresh upstream 22f23fa5ab)
+
+**배경**: plugins-concurrency 셀 Phase 4. fresh upstream (131 commits fast-forward, CAL-007 risk 해소 상태). priority_files: loader.ts, registry.ts, manifest-registry.ts, discovery.ts. grid hint: loader 중복 load race, registry mutation race, jiti-loader-cache 동시 import, discovery filesystem watch.
+
+**적용 카테고리**:
+- [x] A. Shared mutable state async 갱신 race — 조사 (inFlightPluginRegistryLoads, registryCache, openAllowlistWarningCache, HELD_LOCKS)
+- [x] B. Promise.race loser — grep 결과 priority_files 내 0 hit
+- [x] C. Listener register-unregister race — process.on("exit") 1곳 (file-lock.ts:65), 쌍 필요 없음 (exit handler)
+- [x] D. AbortController 전파 — priority_files 직접 사용 0 hit
+- [x] E. Microtask/setImmediate ordering — priority_files 0 hit
+- [x] F. Map/Set operation atomicity — loader/registry/jiti-loader-cache 전수 확인
+- [x] G. Double-dispatch / re-entrance — file-lock.ts 에서 탐지됨, 하지만 upstream wontfix 정황 확인
+- [x] H. Race with cleanup/disposal — clearPluginLoaderCache() / HELD_LOCKS.delete 경로 확인
+- [x] primary-path inversion — 각 의심 경로의 실행 조건 분류
+- [x] hot-path vs test-path — loader.ts 내부 async/await 경로 전수 확인
+
+**priority_files 동시성 구조 요약**:
+
+| 파일 | async 경로 | race 축 | 판정 |
+|---|---|---|---|
+| `loader.ts` | `loadOpenClawPlugins` sync (1821), `loadOpenClawPluginCliRegistry` async signature 이지만 **내부 `await` 0회** (grep 결과 line 2822 signature 만 match) | single-thread sync — race 불가 | clean |
+| `registry.ts` | `await factory(pi)` (L250), `await factory(codex)` (L313) 은 safeFactory wrapper 안 catch 로 격리 | async 는 사용자 factory 안이고 etc. registry 자체 mutation 은 sync | clean |
+| `manifest-registry.ts` | `await`/`async` 0 hit (grep) | 완전 sync | clean |
+| `discovery.ts` | `await`/`async` 0 hit (grep) | 완전 sync (fs.*Sync 사용) | clean |
+| `jiti-loader-cache.ts` | 완전 sync Map.get/set | cache.get → cache.set 사이 await 없음 | clean |
+
+**주요 관찰**:
+
+1. **plugin 등록 영역의 async race 는 이미 upstream 이 rigor 확립**: 2a283e87a7 "enforce synchronous registration" + 59d07f0ab4 "roll back failed register globals" + e8fd148437 "roll back failed register side effects" (전부 2026-04-17 merged). `runPluginRegisterSync` (loader.ts:399-413) 가 async register 를 감지해 `void Promise.resolve(result).catch(() => {})` 로 swallow 후 sync `throw new Error("plugin register must be synchronous")` 로 outer catch 의 rollback 트리거. register API 는 **강제 sync 설계**가 되어 async/await interleaving 자체가 불가능.
+
+2. **`inFlightPluginRegistryLoads` (loader.ts:221) 는 sync single-thread 경로에서만 mutate**: L1875 `has()` → L1878 `add()` → for-loop sync → L2818 `delete()`. `loadOpenClawPlugins` 자체가 sync (L1821) 이고 모든 mutation 이 같은 sync frame 에서 완결. 재진입은 동기 콜백 내 재호출 (예: register 함수가 loadOpenClawPlugins 재호출) 뿐이고, 이 경우 L1876 `PluginLoadReentryError` throw 로 방어됨 — "unconditional re-entrance guard" 존재.
+
+3. **`registryCache` LRU mutation (loader.ts:746-769) 도 전 sync**: Map.get / delete / set 이 모두 동기. eviction 도 sync while-loop. single-thread race 불가.
+
+4. **`HELD_LOCKS` re-entrant race (file-lock.ts:174-181)**: plugin-sdk/file-lock.ts 의 `acquireFileLock` 은 line 172 `await resolveNormalizedFilePath` yield 후 line 174 에서 HELD_LOCKS.get check. 두 concurrent caller 가 동일 path 로 들어오면 둘 다 undefined 보고 line 185 `fs.open("wx")` 시도 → 한 쪽 EEXIST, retry 시 HELD_LOCKS 재확인 없음 (retry loop 183-208 은 fs.open 만 반복) → false timeout 가능. **실제 race. 하지만 upstream 이 알고 있음** — PR #67876 "fix(auth): serialize OAuth refresh across agents" (2026-04-17 merged) 의 본문 point 3 에 "re-entrant `withFileLock` cannot let two concurrent callers slip through in the same process (HELD_LOCKS short-circuits on PID match)" 명시, bandaid (외부 in-process refresh queue Map<provider, Promise>) 로 회피. file-lock.ts 자체는 의도적 미수정. CAL-008 upstream-dup check 에 따라 FIND 제출 금지.
+
+5. **persistent-dedupe.ts (plugin-sdk, line 157-167) 는 동일 race 를 명시적 `fileWriteQueues` 로 방어**. 주석에 race 메커니즘과 serialization 목적 기술. 즉 file-lock.ts re-entrance 의 "알려진 문제 + consumer 책임" 정책이 plugin-sdk 내 reference 로 정착됨.
+
+6. **jiti-loader-cache.ts 동시 import race 없음**: `getCachedPluginJitiLoader` 는 sync, cache.get → createJiti(sync) → cache.set 모두 동일 frame. grid hint "dynamic import 병렬 호출 race" 는 Node ESM import registry 가 spec-level 로 dedup 하므로 spurious concern.
+
+7. **discovery.ts filesystem race**: fs.*Sync 만 사용 → filesystem watch 메커니즘 없음. "scan 중 plugin 추가/제거" 는 process 1회 scan 이 원자적으로 끝나므로 race 축 미형성. 단, line 985 `fs.existsSync` → line 994 `fs.statSync` TOCTOU 는 error-boundary 축 (파일 삭제 시 stat throw) 이며 concurrency-race 아님. domain-notes 이전 세션에도 언급됨.
+
+**R-3 반증 Grep 결과 (priority_files + plugin-sdk)**:
+
+| 의심 경로 | Grep 명령 | 결과 | R-5 분류 |
+|---|---|---|---|
+| Mutex/Semaphore/AsyncLock | `rg -n "Mutex\|Semaphore\|AsyncLock" src/plugins/ src/plugin-sdk/` | match 0 (priority_files) / plugin-sdk file-lock 만 | 해당 영역에 범용 lock 추상 없음. sync 로 충분 |
+| Promise.race | `rg -n "Promise\.race\(" src/plugins/ src/plugin-sdk/keyed-async-queue.ts src/plugin-sdk/file-lock.ts src/plugin-sdk/persistent-dedupe.ts` | priority_files 0 hit | N/A |
+| AbortController | 동일 scope | priority_files 0 hit | N/A |
+| listener on/once | 동일 scope | file-lock.ts:65 `process.on("exit")` 1건, 쌍 없음 (exit handler 는 pair 불필요) | unconditional |
+| setImmediate/queueMicrotask | 동일 scope | priority_files 0 hit | N/A |
+| inFlight guard | `rg -n "inFlightPluginRegistryLoads" src/plugins/loader.ts` | L221 선언, L241 clear, L1875 has, L1878 add, L2818 delete | unconditional (single-thread sync frame) |
+| re-entrance guard | 동일 | PluginLoadReentryError (L194, L1876) | unconditional throw on re-entrance |
+| register rollback | `rg -n "snapshotPluginRegistry\|restorePluginRegistry\|rollbackPluginGlobalSideEffects" src/plugins/` | loader.ts L298, L337, L1977, L399 runPluginRegisterSync + catch 블록 | unconditional (outer try/catch in load loop) |
+
+**upstream 최근 fix (R-8 CAL-004)**:
+- 2a283e87a7 `fix(plugins): enforce synchronous registration` (2026-04-17) — register sync 강제, async escape 차단
+- 59d07f0ab4 `fix(plugins): roll back failed register globals` (2026-04-17) — context-engine rollback
+- e8fd148437 `fix(plugins): roll back failed register side effects` (2026-04-17) — registry 배열 rollback
+- c95507978f `fix(plugins): tighten register rollback` (2026-04-17)
+- d1e3ed3743 `fix(plugins): serialize interactive callback dedupe` (2026-04-13) — interactive 경로 dedupe serialization
+- cc343febfb `fix: tolerate runtime deps temp cleanup races` (2026-04-23) — runtime deps temp cleanup (scope: bundled-runtime-deps, concurrency-race 대응)
+- 13821fd54b `fix(plugins): make service registration idempotent` (2026-04-10) — duplicate registerService 허용
+- 9da4d5f5df `fix(plugins): reuse shared discovery cache` (2026-04-17)
+- 3ceba442b7 `perf(plugins): isolate manifest registry cache state` (2026-04-13)
+- 3d19f018ab `fix(plugins): prefer higher-precedence manifests for duplicate plugin ids` (2026-04-21)
+- 8595e6c872 `fix(plugins): preserve memory capability across snapshot plugin loads` (2026-04-20)
+- f45bc09206 `[codex] fix(auth): harden OAuth refresh` (2026-04-18) — **file-lock retry behavior tightening + PR body 에 in-process refresh queue 설명** (HELD_LOCKS race 인지 + bandaid 선택 증거)
+
+**결론**:
+- plugins priority_files (loader/registry/manifest-registry/discovery) + plugin-sdk concurrency 모듈 (file-lock/keyed-async-queue/persistent-dedupe/jiti-loader-cache) 를 전수 조사한 결과, R-1~R-9 통과하는 plugins-concurrency 셀 FIND **0건**.
+- 이미 upstream 이 plugins 영역 race 를 대거 정리 (2026-04-10 ~ 23 사이 10+ 관련 commit).
+- file-lock.ts HELD_LOCKS re-entrance race 는 실존하지만 upstream 이 PR #67876 에서 인지 + bandaid 선택 → CAL-008 에 의거 upstream-dup check 통과 불가.
+- CAL-007 (stale fetch) 재발 없음 (fresh main at 22f23fa5ab).
+
+**abandon 한 후보 목록**:
+
+| 후보 | 위치 | abandon 사유 |
+|---|---|---|
+| loader.ts inFlightPluginRegistryLoads Set race | L221, L1875-1878, L2818 | sync single-thread. 모든 mutation 동일 frame. re-entrance 는 PluginLoadReentryError 로 unconditional guard. R-5 "unconditional guard 존재" |
+| registry.ts register 배열 push race | L351, L941, L971, L213 | 모든 register 함수 sync. loader 의 for-loop 내 순차 호출. 동시 호출 불가 (single load session) |
+| registryCache LRU eviction race | loader.ts L746-769 | sync Map ops. eviction 도 sync while. 동시 접근 프레임 없음 |
+| jiti-loader-cache 동시 import | jiti-loader-cache.ts L13-83 | 완전 sync. createJiti 도 sync. race 축 미형성 |
+| discovery.ts filesystem watch race | 해당 없음 | discovery.ts 는 fs.*Sync 전용, filesystem watch 메커니즘 없음 |
+| discovery.ts fs.existsSync → fs.statSync TOCTOU (L985-994) | edge-case | concurrency-race 가 아닌 error-boundary 축. 이전 세션 notes 에도 언급됨 |
+| manifest-registry 동시 parse race | manifest-registry.ts | `await`/`async` 0 hit, 완전 sync |
+| file-lock.ts HELD_LOCKS re-entrance race | file-lock.ts L172-208 | **진짜 race 이지만 upstream (PR #67876) 이 인지 + bandaid 회피 선택**. CAL-008 upstream-dup check 에 따라 FIND 생성 금지 |
+| openAllowlistWarningCache 동시 접근 | loader.ts L222 | clearPluginLoaderCache 만 mutate, sync |
+
+**다음 페르소나를 위한 힌트**:
+- plugins 도메인의 concurrency 축은 당분간 saturated. 재방문 의미 있으려면 (a) file-lock.ts HELD_LOCKS race 에 대해 maintainer 의도 재확인 (issue 으로 질의) 또는 (b) install.ts / update.ts 같은 I/O-heavy async 모듈의 새 셀 (plugins-install-concurrency) 개설.
+- install-security-scan.ts `??= import(...)` 패턴은 error-boundary 축 FIND-003 가 이미 다룸 (tech debt 유지). concurrency 축 추가 가치 없음.
+- gateway consumer 의 registry.httpRoutes snapshot vs live read 는 scope 외. 확인 필요 시 gateway 셀에서 다룰 것.

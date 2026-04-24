@@ -202,6 +202,17 @@ candidates:
     check(L1920) 과 set(L1960) 사이 resolveGatewayModelSupportsImages + parseMessageWithAttachments
     real I/O await. 동일 clientRunId 로 중복 agent run spawn. no-attachment branch
     는 race 없음 (CAL-001 올바른 guard). severity P1.
+- id: CAND-024
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: FIND-cron-lifecycle-001/002 — upstream 7d1575b5df (#60310, 2026-04-04) activeJobIds
+    도입 시 timer.ts 의 runDueJob/executeJob 2개 경로에만 mark/clear 주입하고 runStartupCatchupCandidate
+    (timer.ts:1043) 와 prepareManualRun/finishPreparedManualRun (ops.ts:548-686) 경로 간과한
+    partial merge gap. task-registry maintenance 의 hasBackingSession 이 isCronJobActive
+    단일 신호 의존 → 해당 경로 실행 중 cron task 가 lost/missing 으로 오분류. related
+    issue #68157 이 정확한 증상 보고 (OPEN 2026-04-23). severity P2.
+  related_issue: 68157
 published:
 - cand_id: CAND-004
   issue: 68487

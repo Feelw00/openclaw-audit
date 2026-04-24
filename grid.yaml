@@ -124,6 +124,16 @@ domains:
       - src/auto-reply/reply/queue/drain.ts  # upstream 최근 fix(queue) 영역
       - src/auto-reply/command-detection.ts
 
+  - id: context-engine
+    name: 컨텍스트 엔진 (세션 컨텍스트·레거시 registry)
+    allowed_paths:
+      - 'src/context-engine/**'
+    priority_files:
+      - src/context-engine/registry.ts
+      - src/context-engine/delegate.ts
+      - src/context-engine/init.ts
+      - src/context-engine/legacy.ts
+
 # ────────────────────────────────────────────────────────────
 # 셀 (domain × type 교차)
 # ────────────────────────────────────────────────────────────
@@ -268,6 +278,58 @@ cells:
       - 'queue drain 중 새 item 추가 race (upstream 712644f0d9 fix 관련 추가 검증)'
       - 'chunk.ts 의 동시 chunk 생성 race'
       - 'command-detection 의 in-flight dedup'
+
+  # ─── Phase 4 (Phase 3 완료 후 확장, 2026-04-24 추가) ───
+  # 메인테이너 공개 우선순위 "memory, plugin loading, cron, reliability" 정면.
+  # 기존 13셀 모두 done 상태에서 선정. D(agents-registry-lifecycle) 는 PR #68669
+  # 인접으로 scope 혼란 위험 → 보류. MCP 는 외부 프로세스 의존 재현 난도 → 보류.
+  - id: plugins-concurrency
+    domain: plugins
+    type: concurrency
+    state: done
+    phase: 4
+    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 0 FIND. priority_files 전부 sync — manifest-registry/discovery/jiti-loader-cache 완전 sync, loader async signature 도 body 내 await 0회. inFlightPluginRegistryLoads / registryCache unconditional guard. file-lock.ts HELD_LOCKS race 는 upstream PR #67876 + f45bc09206 bandaid 로 이미 인지 (CAL-008 dup). 2026-04 중순 7 fix 커밋(2a283e87a7, 59d07f0ab4, e8fd148437, c95507978f, d1e3ed3743, 13821fd54b, cc343febfb) 로 sync 강제 + rollback 확립.'
+    hints:
+      - 'loader.ts 중복 load race — 동일 plugin id 병렬 load 시 registryCache/manifest 일관성'
+      - 'registry.ts mutation race — register/unregister 중 enumerate 동시 접근'
+      - 'jiti-loader-cache 동시 import resolution (dynamic import 병렬 호출)'
+      - 'discovery.ts 스캔 중 플러그인 추가/제거 (filesystem watch vs re-scan)'
+      - 'CAL-004 교훈: fresh upstream fetch 필수 — refactor 이미 반영된 영역 재탐지 주의'
+  - id: cron-lifecycle
+    domain: cron
+    type: lifecycle
+    state: done
+    phase: 4
+    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 2 FIND (P2). upstream 7d1575b5df (#60310, 2026-04-04) 의 activeJobIds 리팩터가 runDueJob/executeJob 2 경로만 수정하고 startup catch-up + manual run 경로 간과 — partial merge gap. 관련 issue #68157 (2026-04-23 OPEN) 이 증상 보고 중. Abandon 후보 (async-stop, partial-rollback-on-start) 는 PR #43832/#68112 OPEN 으로 CAL-008 dup. FIND validate PASS → ready 승격.'
+    hints:
+      - 'scheduler stop 중 in-flight job 의 runningAtMs marker 정리 경로'
+      - 'store close/reopen 시 timer.ts 의 in-memory locked() set 과 DB 상태 재동기화'
+      - 'schedule.ts 재등록 중 기존 trigger 해제 누락 (duplicate listener)'
+      - 'stagger 중단 시 부분 catch-up 상태 잔존 (timer.ts:1084-1115 인접)'
+  - id: cron-error-boundary
+    domain: cron
+    type: error-boundary
+    state: done
+    phase: 4
+    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 0 FIND. resolveStorePath throw 조건 production 부재, onEvent 타입 sync (state.ts:117) 라 async injection compile-time 차단, onTimer try/finally 가 armTimer 보장 (self-healing), enqueueSystemEvent 는 module queue push 라 throw 불가. cron-memory 재감사(2026-04-19) 와 중복 축 분리 증거 명확 (memory-leak 축은 이미 처리). upstream 6주 cron fix 중 error-boundary 축 관련 없음.'
+    hints:
+      - 'timer callback 내 unhandled rejection (setInterval 콜백 throw)'
+      - 'job handler throw 시 runningAtMs marker / locked() cleanup 보장'
+      - 'backoff.ts 계산 시 음수/NaN throw 가 호출자 chain 에 전파되는지'
+      - 'store read/write 실패 시 scheduler 전체 stall 여부'
+      - 'cron-memory 재감사(2026-04-19) 와 코드 접점 있음 — 신선도 확인 후 scope 조정'
+  - id: context-engine-memory
+    domain: context-engine
+    type: memory
+    state: done
+    phase: 4
+    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 0 FIND. primary cleanup clearContextEnginesForOwner (59d07f0ab4, 2026-04-17) 이미 upstream 반영. rejectedKeys Set 은 literal type bounded(≤2). 타이머/리스너 매치 0건. domain-notes/context-engine.md 신규 작성.'
+    hints:
+      - 'registry.ts:325 engines Map unbounded 여부 (register 경로만 있고 unregister 가 있는지)'
+      - 'rejectedKeys Set 들 (registry.ts:192/211/260) 의 수명 — 세션 지속 누적 가능성'
+      - 'delegate.ts 의 per-session 상태 (있다면) cleanup'
+      - 'legacy.ts compat 경로에서 한번 등록된 engine 이 해제되는 경로 존재 여부'
+      - '신규 도메인 — domain-notes/context-engine.md 신규 작성 필요'
 
 # ────────────────────────────────────────────────────────────
 # 상태 전이 (셀 단위, grid.yaml 내 관리)

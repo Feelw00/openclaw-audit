@@ -126,3 +126,5 @@
 {"item_id": "CAND-023", "from": "solution-drafted", "to": "published", "actor": "publish", "reason": "issue #70139 created on openclaw/openclaw", "at": "2026-04-22T11:23:18+00:00", "extras": {"openclaw_repo": "openclaw/openclaw", "openclaw_issue_number": 70139, "openclaw_issue_url": "https://github.com/openclaw/openclaw/issues/70139", "published_at": "2026-04-22T11:23:18+00:00"}}
 {"item_id": "SOL-0006", "from": "drafted", "to": "pr-opened", "actor": "human", "reason": "PR #70142 opened", "at": "2026-04-22T11:24:31+00:00", "extras": {}}
 {"item_id": "CAND-023", "from": "published", "to": "pr-opened", "actor": "human", "reason": "issue #70139 + PR #70142 opened (fix/chat-send-attachment-race-recheck, head 45ca656630)", "at": "2026-04-22T11:24:37+00:00", "extras": {}}
+{"item_id": "FIND-cron-lifecycle-001", "from": null, "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-04-24T05:05:05+00:00", "extras": {}}
+{"item_id": "FIND-cron-lifecycle-002", "from": null, "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-04-24T05:05:06+00:00", "extras": {}}
