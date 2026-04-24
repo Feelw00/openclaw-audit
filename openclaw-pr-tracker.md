@@ -56,6 +56,15 @@
 - **관련**: issue #68847
 - **특이사항**: PR #63709 (clearNodeWakeState on WS close) 과 scope 구분 명시 — 이 PR 은 unregistered-nodeId early-return path 처리 (complementary). 최소한의 `__testing` seam 추가 (agent-wait-dedupe.ts:223 / agents.ts:78 house style 미러)
 
+### #71040 — fix(cron): mirror active-jobs mark/clear on startup catchup and manual run
+
+- **유형**: 파이프라인 CAND-024 epic → SOL-0007, pre-pr 3-agent cross-review (real=2 / fix-insufficient=1 → **scope_down 반영**)
+- **상태**: OPEN, 2026-04-24 발행, head `c2cf00742e` (fix/cron-active-jobs-symmetry), +219/-73, 3 files, MERGEABLE
+- **fix**: `runStartupCatchupCandidate` (timer.ts:1043-1081) 과 `prepareManualRun`/`finishPreparedManualRun` (ops.ts:548-686) 에 `markCronJobActive` + `try/finally` `clearCronJobActive` 주입. upstream 7d1575b5df (#60310) 의 4 callsite 중 누락된 2 개 완성
+- **관련**: Related #68157 (partial — task-registry misclassification 축만 해결, runningAtMs persistence 축은 별도 state machine), Related #68191 (hclsys 의 broader 제안), Related #69313 (tryRecoverTaskBeforeMarkLost hook, 본 PR 과 complementary)
+- **pre-PR cross-review 결과 반영**: critical-devil 이 `ops.ts:100-106` 의 startup 무조건 `runningAtMs` clear 발견 → #68157 의 "already-running survives restart" 증상은 gateway restart 로 self-heal 됨을 지적. 이에 `Fixes #68157` → `Related #68157 (partial)` 로 scope-down. mechanism + fix 정합성은 3/3 인정
+- **특이사항**: 첫 시도 `pnpm build` 가 runtime-postbuild (bundled-plugin staging) ENOENT 로 실패 (환경 race), 재시도 green. 본 fix 와 무관
+
 ## 종결된 PR
 
 ### #63105 (파이프라인 외 본인 feature PR, **MERGED 2026-04-20**)
