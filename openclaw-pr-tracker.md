@@ -4,17 +4,6 @@
 
 ## 내 active PR (Feelw00)
 
-### #63105 — feat(cron): split jobs.json into config and runtime state files
-
-- **유형**: 파이프라인 이전 본인 feature PR
-- **상태**: OPEN, mergeable CLEAN, 체크 43/43 green
-- **Greptile**: **5/5 safe-to-merge** (2026-04-15 재리뷰 기준, P1/P2 모두 해결)
-- **커뮤니티**: @Daanvdplas (기능 필요 사용자) + @gumadeiras 메인테이너 리뷰 요청
-- **마지막 활동**: 2026-04-15 — 내가 직접 `@greptile review` 수동 트리거
-- **대기**: 메인테이너 수동 리뷰
-- **브랜치**: `feat/split-cron-store-state` (내 로컬 기본 작업 브랜치이기도 함)
-- **관련 이슈**: Closes #53581
-
 ### #68543 — fix(infra): keep retryAsync delays above server-supplied Retry-After
 
 - **유형**: 파이프라인 CAND-009, cross-review 3/3 real
@@ -68,6 +57,12 @@
 - **특이사항**: PR #63709 (clearNodeWakeState on WS close) 과 scope 구분 명시 — 이 PR 은 unregistered-nodeId early-return path 처리 (complementary). 최소한의 `__testing` seam 추가 (agent-wait-dedupe.ts:223 / agents.ts:78 house style 미러)
 
 ## 종결된 PR
+
+### #63105 (파이프라인 외 본인 feature PR, **MERGED 2026-04-20**)
+- **결과**: merged — feat(cron): split jobs.json into config and runtime state files
+- **경로**: 파이프라인 이전 작업 → Greptile 5/5 (2026-04-15) → @gumadeiras 메인테이너 merge
+- **fix**: cron jobs.json 을 config (사람 편집) + runtime state (앱 기록) 로 분리
+- **관련 이슈**: Closes #53581 (@Daanvdplas 요청)
 
 ### #68842 (CAND-014, **MERGED 2026-04-22**)
 - **결과**: merged — 파이프라인 **첫 merged PR**
