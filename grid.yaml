@@ -134,6 +134,28 @@ domains:
       - src/context-engine/init.ts
       - src/context-engine/legacy.ts
 
+  - id: mcp
+    name: MCP (Model Context Protocol) — server + client transport
+    allowed_paths:
+      - 'src/mcp/**'
+      - 'src/agents/mcp-stdio.ts'
+      - 'src/agents/mcp-stdio-transport.ts'
+      - 'src/agents/mcp-http.ts'
+      - 'src/agents/mcp-transport.ts'
+      - 'src/agents/mcp-transport-config.ts'
+      - 'src/agents/mcp-config-shared.ts'
+      - 'src/config/mcp-config.ts'
+      - 'src/cli/mcp-cli.ts'
+    priority_files:
+      - src/mcp/channel-server.ts
+      - src/mcp/channel-bridge.ts
+      - src/mcp/tools-stdio-server.ts
+      - src/mcp/plugin-tools-handlers.ts
+      - src/mcp/plugin-tools-serve.ts
+      - src/mcp/openclaw-tools-serve.ts
+      - src/agents/mcp-stdio-transport.ts
+      - src/agents/mcp-config-shared.ts
+
 # ────────────────────────────────────────────────────────────
 # 셀 (domain × type 교차)
 # ────────────────────────────────────────────────────────────
@@ -330,6 +352,22 @@ cells:
       - 'delegate.ts 의 per-session 상태 (있다면) cleanup'
       - 'legacy.ts compat 경로에서 한번 등록된 engine 이 해제되는 경로 존재 여부'
       - '신규 도메인 — domain-notes/context-engine.md 신규 작성 필요'
+  - id: mcp-memory
+    domain: mcp
+    type: memory
+    state: integrated
+    phase: 5
+    note: '2026-04-25 신규 도메인 정의 + 첫 셀 감사. memory-leak-hunter → 2 FIND (P2 둘다, OpenClawChannelBridge pendingClaudePermissions/pendingApprovals 두 Map TTL/close-clear/cap 동시 결여). validate 2/2 PASS. clusterer epic CAND-025 발행. domain-notes/mcp.md 신규 작성 (transport 경계, state 인벤토리, 향후 셀 후보).'
+    hints:
+      - 'src/mcp/channel-server.ts: 세션/연결 Map (sessionId → handler) 의 TTL/cap, dispose 경로'
+      - 'src/mcp/channel-bridge.ts: bridge state (channel ↔ tool registration) 누적 여부, restart/reload 시 cleanup'
+      - 'src/mcp/tools-stdio-server.ts: stdio 자식 프로세스 handle, stdin/stdout listener, exit cleanup'
+      - 'src/mcp/plugin-tools-serve.ts / plugin-tools-handlers.ts: plugin proxy 캐시 (plugin ID → tool list) 누적, plugin reload/uninstall 시 stale entry'
+      - 'src/mcp/openclaw-tools-serve.ts: openclaw tool registry singleton 의 lifetime'
+      - 'src/agents/mcp-stdio-transport.ts: AbortSignal/timer/child_process handle 정리 (transport close 경로)'
+      - 'src/agents/mcp-config-shared.ts: server descriptor map 의 lifetime — config reload 시 stale entry'
+      - '신규 도메인 — domain-notes/mcp.md 신규 작성 필요'
+      - 'gateway/mcp-http.* 는 gateway 도메인 소관 → 본 셀에서는 client/server core 만 다루고 transport boundary 만 인용'
 
 # ────────────────────────────────────────────────────────────
 # 상태 전이 (셀 단위, grid.yaml 내 관리)

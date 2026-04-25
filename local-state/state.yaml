@@ -1282,3 +1282,37 @@ items:
           line_range: 564-592
           sha: sha256:139fd9ae9f8af0ee
         computed_at: '2026-04-24T05:36:38+00:00'
+  FIND-mcp-memory-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-25T14:07:18+00:00'
+    created_at: '2026-04-25T14:07:18+00:00'
+    updated_at: '2026-04-25T14:07:18+00:00'
+  FIND-mcp-memory-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-04-25T14:07:18+00:00'
+    created_at: '2026-04-25T14:07:18+00:00'
+    updated_at: '2026-04-25T14:07:18+00:00'
+  CAND-025:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: human
+      reason: 'clusterer epic output: mcp-memory FIND-001/002 — OpenClawChannelBridge
+        두 pending Map 의 TTL/close-clear/cap 결여 비대칭 결함'
+      at: '2026-04-25T14:10:24+00:00'
+    created_at: '2026-04-25T14:10:24+00:00'
+    updated_at: '2026-04-25T14:10:24+00:00'

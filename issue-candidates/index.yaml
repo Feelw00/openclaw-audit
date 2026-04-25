@@ -230,6 +230,18 @@ candidates:
   solution_refs:
     - SOL-0007
   openclaw_pr: 71040
+- id: CAND-025
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: FIND-mcp-memory-001/002 — OpenClawChannelBridge 의 두 pending Map (pendingClaudePermissions
+    L50, pendingApprovals L51) 이 동일 3종 가드 (TTL/sweeper, close-clear, cap) 를 동시 결여.
+    같은 클래스의 queue (QUEUE_LIMIT 1000, L355) 와 pendingWaiters (close-clear L148 +
+    setTimeout fallback L265) 는 모두 bounded 인데 두 pending Map 만 누락. close() (L136-152)
+    가 두 Map clear 를 동시 누락 — 같은 한 줄 패턴. fix surface 단일 클래스 내 close-clear
+    + 공통 sweeper + 선택적 cap 으로 자연 공유 → epic 정당. CAL-008 검사 — 6주 channel-bridge
+    커밋 모두 refactor (leak 축 0건), PR #56420 sessionKey binding 보안축 직교. severity P2.
+  upstream_head_checked: c070509b7f
 published:
 - cand_id: CAND-004
   issue: 68487
