@@ -10,7 +10,10 @@ proposed_severity: P2
 existing_issue: null
 related_issue: 68157
 created_at: 2026-04-24
-state: pending_gatekeeper
+state: published
+solution_refs:
+  - SOL-0007
+openclaw_pr: 71040
 ---
 
 # cron: activeJobIds mark/clear 가 startup catchup 과 manual run 경로에서 누락

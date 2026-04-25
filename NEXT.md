@@ -112,8 +112,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # merged: #68842 (CAND-014, 파이프라인 첫 merge), #63105 (파이프라인 외 cron-store split, 2026-04-20 merged). warn=7 / block=10 기준 active 6 → warn 경계 근접.
 #
 # 잔여 미처리 (다음 세션 우선순위 순):
-#   1. CAND-021 (gateway/send idempotencyKey race) — approve@high, hot-path=5, P1 → post-harness 5-agent cross-review 대기 (사용자 허락 필요)
-#   2. PR #71040 본문 갱신 검토 — "Related #68157" 이 closed-as-dedupe 라 stale. 메인테이너 visibility 우려로 코드 변경 없는 본문-only 편집은 노이즈 0 (Greptile/메인테이너 알림 안 감). 선택사항
+#   1. PR #68341 모니터 (CAL-008 upstream-competing) — thesomewhatyou 가 grab-bag PR 로 send/message.action/poll race 동일 fix 축으로 제거 중. CAND-021 abandoned 의 근거. PR close-without-merge 시 CAND-021 재오픈 검토. 1-2주 내 close/merge 결판.
+#   2. CAND-022 (poll RPC inflight 부재) — 아직 gatekeeper 미평가. PR #68341 이 poll 도 함께 수정 → CAND-021 과 같은 abandon 후보. 별도 cross-review 불요 (CAL-008 dup 직접 확인 가능).
+#   3. PR #71040 본문 갱신 검토 — "Related #68157" 이 closed-as-dedupe 라 stale. 메인테이너 visibility 우려로 코드 변경 없는 본문-only 편집은 노이즈 0 (Greptile/메인테이너 알림 안 감). 선택사항
+#
+# CAND-021 종결 (2026-04-25): 5-agent post-harness cross-review (metrics/cross-review-CAND-021-20260425-224410.jsonl) primary_decision=upstream_wait. real_count=3 (positive/critical/reproduction-realist) + 1 fix-insufficient (hot-path-tracer score=3/5) + 1 upstream-duplicate (PR #68341, Greptile 5/5). FIND-001 자체는 valid race 였으나 PR #68341 이 동일 fix 축 선제 → CAND-016 (PR #68801 dup) 패턴.
 #
 # 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 # 다음 Phase 5 후보 (보류 중): agents-registry-lifecycle (PR #68669 리뷰 완료 후 착수), mcp-memory / mcp-lifecycle (신규 도메인 경계 조사 필요), cron-concurrency 신축 (이미 audit 된 영역이라 우선순위 낮음).

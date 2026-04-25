@@ -38,6 +38,27 @@ proposed_title: "gateway/send: idempotencyKey check-then-act race — inflight m
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-04-22
+state: abandoned
+retracted_reason: |
+  CAL-008 upstream-competing: PR #68341 (thesomewhatyou, OPEN 2026-04-18) 가 src/gateway/server-methods/send.ts
+  의 send/message.action/poll 핸들러에서 동일 race 를 같은 fix 축으로 제거.
+  resolveGatewayInflightMap 을 async→sync 로 전환 (discriminated union 반환), 모든 real I/O await
+  (resolveRequestedChannel/resolveOutboundChannelPlugin 등) 을 work IIFE 내부로 이동시켜 handler
+  진입 후 첫 await 까지 sync path → runGatewayInflightWork.set 이 check 직후 즉시 실행.
+  Greptile 5/5 confidence + concurrent poll dedupe 회귀 테스트 추가.
+  CAND-016 abandoned (PR #68801 OPEN-competing) 선례와 동일 패턴.
+
+  단, PR #68341 은 grab-bag (5 unrelated fixes) 라 procedural rejection 가능성 있음. 1-2주 모니터.
+  close-without-merge 시 CAND-021 재오픈 검토 (FIND-001 자체는 valid 하므로).
+post_harness_cross_review: |
+  2026-04-25 5-agent post-harness 결과 (metrics/cross-review-CAND-021-20260425-224410.jsonl):
+    positive-advocate     : real-problem-real-fix (high)
+    critical-devil        : real-problem-real-fix (medium, proceed-with-caveat)
+    reproduction-realist  : real-problem-real-fix (high, low synthetic risk)
+    hot-path-tracer       : real-problem-fix-insufficient (medium, score=3/5, scope-down)
+    upstream-dup-checker  : upstream-duplicate (high, PR #68341 dispatch)
+  primary_decision: upstream_wait (CAL-004 reference 달고 abandon)
+  real_count=3 으로 proceed 조건은 충족했으나 upstream_dup 1건이 abandon 우선 적용.
 ---
 
 # gateway/send: idempotencyKey check-then-act race — inflight map set 이 real I/O await 뒤에 있어 outbound 중복 전송

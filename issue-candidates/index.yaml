@@ -182,11 +182,19 @@ candidates:
 - id: CAND-021
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-gateway-concurrency-001 — send/message.action RPC idempotencyKey check-then-act
     race. `resolveGatewayInflightMap` 과 `runGatewayInflightWork.set` 사이 real I/O
     await (resolveRequestedChannel 등) 로 동일 idem 2회 dispatch → outbound duplicate.
     severity P1.
+  retracted_reason: 'CAL-008 upstream-competing: PR #68341 (thesomewhatyou, OPEN 2026-04-18,
+    head 82a60a84f2) 가 send/message.action/poll 세 핸들러 모두에서 동일 race 를 동일 fix 축
+    (resolveGatewayInflightMap async→sync, real I/O await 을 work IIFE 내부로 이동) 으로
+    제거. Greptile 5/5 + concurrent poll dedupe 회귀 테스트 추가. 5-agent post-harness
+    cross-review (2026-04-25) primary_decision=upstream_wait (real_count=3 이지만 upstream_dup
+    1건 우선 적용). PR #68341 은 grab-bag (5 unrelated fixes) PR 이라 1-2주 모니터; close-without-merge
+    시 재오픈 검토.'
+  cross_review_metric: metrics/cross-review-CAND-021-20260425-224410.jsonl
 - id: CAND-022
   type: single
   finding_count: 1
@@ -205,7 +213,7 @@ candidates:
 - id: CAND-024
   type: epic
   finding_count: 2
-  state: pending_gatekeeper
+  state: published
   note: FIND-cron-lifecycle-001/002 — upstream 7d1575b5df (#60310, 2026-04-04) activeJobIds
     도입 시 timer.ts 의 runDueJob/executeJob 2개 경로에만 mark/clear 주입하고 runStartupCatchupCandidate
     (timer.ts:1043) 와 prepareManualRun/finishPreparedManualRun (ops.ts:548-686) 경로 간과한
@@ -213,6 +221,9 @@ candidates:
     단일 신호 의존 → 해당 경로 실행 중 cron task 가 lost/missing 으로 오분류. related
     issue #68157 이 정확한 증상 보고 (OPEN 2026-04-23). severity P2.
   related_issue: 68157
+  solution_refs:
+    - SOL-0007
+  openclaw_pr: 71040
 published:
 - cand_id: CAND-004
   issue: 68487

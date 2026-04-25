@@ -1193,7 +1193,7 @@ items:
     updated_at: '2026-04-24T05:05:06+00:00'
   CAND-024:
     kind: candidate
-    state: gatekeeper-approved
+    state: published
     transitions:
     - from: null
       to: gatekeeper-approved
@@ -1202,8 +1202,21 @@ items:
         는 tryCreateCronTaskRun 으로 runtime=cron task 레코드를 생성하지만 markCronJobActive 호출이
         없음 (Read 직접 확인). 대조군 timer.ts:746 (runDueJob) 과 timer.ts:1'
       at: '2026-04-24T05:36:38+00:00'
+    - from: gatekeeper-approved
+      to: solution-drafted
+      actor: human
+      reason: 'SOL-0007 작성 완료 (cron-active-jobs-symmetry, 2026-04-24). pre-pr 3-agent
+        cross-review 2/3 real + 1/3 fix-insufficient → scope-down 반영 (Fixes #68157
+        → Related #68157)'
+      at: '2026-04-25T13:47:23+00:00'
+    - from: solution-drafted
+      to: published
+      actor: human
+      reason: 'PR #71040 발행 (head c2cf00742e, 2026-04-24). Greptile 5/5 자동 통과. 메인테이너
+        리뷰 대기'
+      at: '2026-04-25T13:47:29+00:00'
     created_at: '2026-04-24T05:36:38+00:00'
-    updated_at: '2026-04-24T05:36:38+00:00'
+    updated_at: '2026-04-25T13:47:29+00:00'
     extras:
       gatekeeper:
         verdict: approve
