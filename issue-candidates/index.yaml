@@ -233,7 +233,7 @@ candidates:
 - id: CAND-025
   type: epic
   finding_count: 2
-  state: pending_gatekeeper
+  state: published
   note: FIND-mcp-memory-001/002 — OpenClawChannelBridge 의 두 pending Map (pendingClaudePermissions
     L50, pendingApprovals L51) 이 동일 3종 가드 (TTL/sweeper, close-clear, cap) 를 동시 결여.
     같은 클래스의 queue (QUEUE_LIMIT 1000, L355) 와 pendingWaiters (close-clear L148 +
@@ -242,6 +242,13 @@ candidates:
     + 공통 sweeper + 선택적 cap 으로 자연 공유 → epic 정당. CAL-008 검사 — 6주 channel-bridge
     커밋 모두 refactor (leak 축 0건), PR #56420 sessionKey binding 보안축 직교. severity P2.
   upstream_head_checked: c070509b7f
+  solution_refs:
+    - SOL-0008
+  openclaw_issue: 71646
+  openclaw_pr: 71648
+  openclaw_branch: fix/mcp-channel-bridge-pending-leak
+  openclaw_commit: 61eb79c67a
+  cross_review_pre_pr_metric: metrics/cross-review-SOL-0008-20260426-005346.jsonl
 published:
 - cand_id: CAND-004
   issue: 68487
