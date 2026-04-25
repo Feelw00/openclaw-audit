@@ -101,20 +101,19 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ cron-error-boundary          — 0 FIND (resolveStorePath throw 불가, onEvent 타입 sync 라 async injection compile-time 차단, onTimer try/finally self-healing. upstream 6주 cron fix 중 error-boundary 축 없음)
 #   ✓ cron-lifecycle               — 2 FIND (P2) → CAND-024 epic (activeJobIds partial merge gap: upstream 7d1575b5df (#60310) 가 runDueJob/executeJob 만 수정하고 startup catchup + manual run 간과. related issue #68157 OPEN 2026-04-23 증상 보고 중)
 #
-# 살아있는 PR 6건 (2026-04-24 기준, upstream/main 최신 동기화 HEAD b7fba2100f — 본 세션 27 commits fast-forward + SOL-0007 PR 발행 완료):
+# 살아있는 PR 6건 (2026-04-25 기준, upstream/main 최신 동기화 HEAD dd78b7f773 — 직전 세션 b7fba2100f 에서 884 commits fast-forward):
 #   • #68543 (CAND-009, infra-retry, head acc85fe0ff) — steipete invariant 이미 반영됨. 메인테이너 재리뷰 대기
 #   • #68669 (CAND-011, agents-registry, head 00cab4264f) — Codex P2 2라운드 resolved. 메인테이너 리뷰 대기
 #   • #68839 (CAND-012, auto-reply drain identity guard, head 1236d56668) — 리뷰 대기
 #   • #68848 (CAND-015, nodeWakeById cleanup, head 5b9103c7e0) — 리뷰 대기
-#   • #70142 (CAND-023, gateway chat.send attachment race) — Codex P2 accept-and-fix resolved. 메인테이너 리뷰 대기 (Greptile 수동 재트리거는 백로그)
-#   • **#71040 (CAND-024→SOL-0007, cron active-jobs symmetry, head c2cf00742e, 2026-04-24 발행)** — pre-pr cross-review 2/3 real + 1/3 fix-insufficient → **scope-down 반영: Fixes #68157 → Related #68157 (partial)**. critical-devil 지적: ops.ts:100-106 의 startup 무조건 runningAtMs clear 가 #68157 "already-running survives restart" 증상을 restart 로 self-heal. mechanism + fix 자체는 3/3 real 인정. 리뷰 대기
+#   • **#70142 (CAND-023, gateway chat.send attachment race, head 39ccb9c4a2, 2026-04-25 rebase)** — upstream chat.ts 충돌 (assistant display + scheduleChatHistoryManagedImageCleanup 추가) 해결 후 force-push. 우리 patch 영역 (L2238-2277 in_flight re-check + offloadedRefs cleanup) 위치 컨텍스트 정확. gateway/server-methods 43 files / 496 tests + check + build green. Greptile 수동 재트리거 완료. 리뷰 대기
+#   • **#71040 (CAND-024→SOL-0007, cron active-jobs symmetry, head c2cf00742e, 2026-04-24 발행)** — Greptile 5/5 자동 통과. pre-pr cross-review 2/3 real + 1/3 fix-insufficient → **scope-down 반영: Fixes #68157 → Related #68157 (partial)**. critical-devil 지적: ops.ts:100-106 의 startup 무조건 runningAtMs clear 가 #68157 "already-running survives restart" 증상을 restart 로 self-heal. mechanism + fix 자체는 3/3 real 인정. **상태 변화 (2026-04-25)**: #68157 vincentkoc 이 #40868 cron-lifecycle cluster dedupe 로 closed (#40868 도 closed). upstream PR #71547 (924271385b) 가 ops.ts start() 의 runningAtMs 처리 강화 — **다른 필드 (runningAtMs vs activeJobIds), 직교**. 로컬 rebase textually clean (push 안 함). 메인테이너 리뷰 대기
 #
 # merged: #68842 (CAND-014, 파이프라인 첫 merge), #63105 (파이프라인 외 cron-store split, 2026-04-20 merged). warn=7 / block=10 기준 active 6 → warn 경계 근접.
 #
 # 잔여 미처리 (다음 세션 우선순위 순):
 #   1. CAND-021 (gateway/send idempotencyKey race) — approve@high, hot-path=5, P1 → post-harness 5-agent cross-review 대기 (사용자 허락 필요)
-#   2. PR #70142 Greptile 수동 재트리거 (`@greptile review and provide confidence score` 코멘트)
-#   3. PR #71040 Greptile 자동 summary 대기 (보통 발행 후 수 분 내 생성)
+#   2. PR #71040 본문 갱신 검토 — "Related #68157" 이 closed-as-dedupe 라 stale. 메인테이너 visibility 우려로 코드 변경 없는 본문-only 편집은 노이즈 0 (Greptile/메인테이너 알림 안 감). 선택사항
 #
 # 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 # 다음 Phase 5 후보 (보류 중): agents-registry-lifecycle (PR #68669 리뷰 완료 후 착수), mcp-memory / mcp-lifecycle (신규 도메인 경계 조사 필요), cron-concurrency 신축 (이미 audit 된 영역이라 우선순위 낮음).
