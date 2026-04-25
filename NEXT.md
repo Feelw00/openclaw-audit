@@ -101,6 +101,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ cron-error-boundary          — 0 FIND (resolveStorePath throw 불가, onEvent 타입 sync 라 async injection compile-time 차단, onTimer try/finally self-healing. upstream 6주 cron fix 중 error-boundary 축 없음)
 #   ✓ cron-lifecycle               — 2 FIND (P2) → CAND-024 epic (activeJobIds partial merge gap: upstream 7d1575b5df (#60310) 가 runDueJob/executeJob 만 수정하고 startup catchup + manual run 간과. related issue #68157 OPEN 2026-04-23 증상 보고 중)
 #
+# Phase 5 (1/N — 본 세션 2026-04-25 — 메인테이너 우선순위 "plugin loading" 영역 진입):
+#   ✓ mcp-memory                   — 2 FIND (P2) → CAND-025 epic → SOL-0008 drafted. OpenClawChannelBridge (src/mcp/channel-bridge.ts) 의 두 pending Map (pendingClaudePermissions L50, pendingApprovals L51) 이 TTL/sweeper/close-clear/cap 동시 결여, 같은 클래스 queue (cap=1000) + pendingWaiters (close-clear) 와 비대칭. gatekeeper approve@high. 5-agent post-harness cross-review primary_decision=proceed (4 real + 1 fix-insufficient). hot-path-tracer scope: sweeper+TTL > close-clear > cap. SOL-0008 chosen_fix=null (사용자 검토 — A sweeper+ttl-only XS / C full-epic S 사이). domain-notes/mcp.md 신규 작성. upstream-dup check 통과 (PR #56420 sessionKey binding 직교).
+#
 # 살아있는 PR 6건 (2026-04-25 기준, upstream/main 최신 동기화 HEAD dd78b7f773 — 직전 세션 b7fba2100f 에서 884 commits fast-forward):
 #   • #68543 (CAND-009, infra-retry, head acc85fe0ff) — steipete invariant 이미 반영됨. 메인테이너 재리뷰 대기
 #   • #68669 (CAND-011, agents-registry, head 00cab4264f) — Codex P2 2라운드 resolved. 메인테이너 리뷰 대기
@@ -112,12 +115,14 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # merged: #68842 (CAND-014, 파이프라인 첫 merge), #63105 (파이프라인 외 cron-store split, 2026-04-20 merged). warn=7 / block=10 기준 active 6 → warn 경계 근접.
 #
 # 잔여 미처리 (다음 세션 우선순위 순):
-#   1. PR #68341 모니터 (CAL-008 upstream-competing) — thesomewhatyou 가 grab-bag PR (5 unrelated fixes) 로 send/message.action/poll race 동일 fix 축으로 제거 중. CAND-021 + CAND-022 abandoned 양쪽의 근거. PR close-without-merge 시 두 CAND 재오픈 검토. 1-2주 내 close/merge 결판.
-#   2. PR #71040 본문 갱신 검토 — "Related #68157" 이 closed-as-dedupe 라 stale. 메인테이너 visibility 우려로 코드 변경 없는 본문-only 편집은 노이즈 0 (Greptile/메인테이너 알림 안 감). 선택사항.
-#   3. 새 셀 (Phase 5 후보) 착수 — gateway-concurrency 모든 FIND 처리 완료. agents-registry-lifecycle (PR #68669 리뷰 완료 후) / mcp-memory / mcp-lifecycle 후보.
+#   1. SOL-0008 chosen_fix 결정 + worktree → PR — 사용자 검토 후보 A (sweeper+ttl-only XS) vs C (full-epic S). 결정 후 fix/mcp-channel-bridge-pending-leak 브랜치에서 fix 구현 + 재현 테스트 + pre-pr cross-review → PR 발행. PR #56420 close() 라인 충돌 가능성 사전 점검.
+#   2. PR #68341 모니터 (CAL-008 upstream-competing) — thesomewhatyou 가 grab-bag PR (5 unrelated fixes) 로 send/message.action/poll race 동일 fix 축으로 제거 중. CAND-021 + CAND-022 abandoned 양쪽의 근거. PR close-without-merge 시 두 CAND 재오픈 검토. 1-2주 내 close/merge 결판.
+#   3. PR #71040 본문 갱신 검토 — "Related #68157" 이 closed-as-dedupe 라 stale. 메인테이너 visibility 우려로 코드 변경 없는 본문-only 편집은 노이즈 0 (Greptile/메인테이너 알림 안 감). 선택사항.
+#   4. Phase 5 후속 셀 — mcp-lifecycle (channel-bridge close path / channel-server lifetime / transport teardown) / mcp-concurrency / agents-registry-lifecycle (PR #68669 리뷰 완료 후) 중 택일.
 #
 # CAND-021 종결 (2026-04-25): 5-agent post-harness cross-review (metrics/cross-review-CAND-021-20260425-224410.jsonl) primary_decision=upstream_wait. real_count=3 (positive/critical/reproduction-realist) + 1 fix-insufficient (hot-path-tracer score=3/5) + 1 upstream-duplicate (PR #68341, Greptile 5/5). FIND-001 자체는 valid race 였으나 PR #68341 이 동일 fix 축 선제 → CAND-016 (PR #68801 dup) 패턴.
 # CAND-022 종결 (2026-04-25): cross-review 생략 (CAL-008 dup 직접 확인). PR #68341 의 poll 핸들러 inflight extend + 'dedupes concurrent poll sends' 테스트가 본 FIND-002 의 fix 축과 일치 → state.yaml/CAND-022.md/index.yaml 동기화만 수행.
+# CAND-025 진행 (2026-04-25): mcp-memory 첫 셀 — gatekeeper approve@high → 5-agent post-harness cross-review primary_decision=proceed (metrics/cross-review-CAND-025-20260425-233553.jsonl, 4 real + 1 fix-insufficient) → SOL-0008 drafted. critical-devil/reproduction-realist/hot-path-tracer/upstream-dup-checker 4명이 verdict enum 미준수 (proceed-with-caveat / real-real / edge-leaning / proceed) → role_specific.recommendation 기반 정규화 (_normalized_from 보존). hot-path-tracer 의 score=3/5 (close 가 process exit only, sweeper/TTL 가 fix 의 실제 가치) 권고로 후보 A (sweeper+TTL-only) 우선.
 #
 # 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 # 다음 Phase 5 후보 (보류 중): agents-registry-lifecycle (PR #68669 리뷰 완료 후 착수), mcp-memory / mcp-lifecycle (신규 도메인 경계 조사 필요), cron-concurrency 신축 (이미 audit 된 영역이라 우선순위 낮음).
