@@ -198,10 +198,16 @@ candidates:
 - id: CAND-022
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-gateway-concurrency-002 — poll RPC 핸들러에 inflight map 자체 부재 (upstream
     60ec7ca0f1 refactor 미적용). 완료-dedupe cache 만 존재 → concurrent retry 시 거의 100%
     duplicate poll spawn. severity P1.
+  retracted_reason: 'CAL-008 upstream-competing: PR #68341 (thesomewhatyou, OPEN 2026-04-18,
+    head 82a60a84f2) 가 send.ts 의 poll 핸들러에 inflight helper 를 extend (resolveGatewayInflightMap
+    + runGatewayInflightWork 적용). ''dedupes concurrent poll sends before channel
+    resolution resumes'' 테스트도 신규 추가. CAND-021 과 공동 dispatch — 본 CAND 의 fix 축
+    (mechanical helper extend) 과 정확히 일치. 이전 PR #68292 도 CLOSED 라 중복 노이즈
+    회피. PR #68341 close-without-merge 시 재오픈 검토.'
 - id: CAND-023
   type: single
   finding_count: 1

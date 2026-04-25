@@ -22,6 +22,14 @@ proposed_title: "gateway/poll: inflight map absent — idempotencyKey retries sp
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-04-22
+state: abandoned
+retracted_reason: |
+  CAL-008 upstream-competing: PR #68341 (thesomewhatyou, OPEN 2026-04-18, head 82a60a84f2)
+  가 send.ts 의 poll 핸들러에 inflight helper 를 extend — resolveGatewayInflightMap
+  (async→sync, discriminated union) + runGatewayInflightWork 적용으로 본 FIND 의
+  "inflight map 자체 부재" 결함 직접 해소. 'dedupes concurrent poll sends before
+  channel resolution resumes' 회귀 테스트 신규 추가. CAND-021 과 공동 dispatch.
+  이전 PR #68292 도 CLOSED. PR #68341 close-without-merge 시 재오픈 검토.
 ---
 
 # gateway/poll: inflight map 부재로 idempotencyKey 재시도 시 poll 중복 생성
