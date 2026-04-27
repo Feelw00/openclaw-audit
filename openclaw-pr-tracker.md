@@ -32,21 +32,6 @@
 - **관련**: issue #68838
 - **특이사항**: pre-pr v1 에서 repro import 경로 + assertion 버그 발견 → repro v2 재작성 (restartIfIdle=false 패턴으로 D2 kick 억제 → D1 finally 만 유일 mutator 로 격리)
 
-### #70142 — fix(gateway): re-check chatAbortControllers after attachment parse
-
-- **유형**: 파이프라인 CAND-023, pre-SOL 5-agent confirmation + post-harness 5-agent + pre-pr 5-agent + CAL-009 2-agent (Codex P2) = 총 17 agent 검증
-- **상태**: OPEN, 2026-04-22 발행, head `091b4f0fbd` (rebase 1회 + amend 1회 post Codex fix)
-- **Greptile**: summary 완료 (real race condition 인정)
-- **Codex (2026-04-22)**: P2 "Clean up offloaded media before early in_flight return" — early-return 경로에서 parseMessageWithAttachments 가 offload 한 >2MB disk file 이 cleanup 없이 남음 지적. CAL-009 병렬 2-agent (positive + critical) 검증 → **반박 불가, accept-and-fix 합의**. `deleteMediaBuffer` import + loop 추가 (server-node-events.ts:448-458 선례 미러) + test payload 2MB+ 확장 + deletedMediaIds assertion 추가. reply + thread resolved
-- **대기**: 메인테이너 리뷰
-- **관련**: issue #70139, PR #69208 (umbrella), PR #68801 (complementary), PR #69747 (adjacent)
-- **특이사항**:
-  - 원래 주장 "LLM 호출 2회 + transcript corruption" 은 `claimInboundDedupe` (inbound-dedupe.ts:94-112) 가 이미 차단 — pre-SOL 5-agent 에서 **발견된 숨은 방어**로 인해 scope 수정
-  - 재정의된 harm: `chatAbortControllers` map overwrite → **user abort 기능 파손** (+ duplicate ack/media writes/dedupe double-write)
-  - severity P1 → **P2** 하향
-  - Option A (post-parse re-check) 선택 — XS, no-attachment sibling 무변경
-  - test 파일명 mismatch (chat.directive-tags.test.ts 에 추가) commit msg + PR body 에서 자진 인정, follow-up split 제안
-  - CAL-009 Codex P2 accept 정당화 근거: `server-node-events.ts:448-458` 동일 구조 precedent 존재, `mediaCleanup` sweep 은 `cfg.media.ttlHours` opt-in 만 작동 (default 미동작), 내 PR body 스스로 duplicate media writes 를 race harm 으로 나열했는데 첫 커밋은 해결 안 함 (자기모순)
 
 ### #68848 — fix(gateway): clear nodeWakeById on no-registration early-return
 
@@ -78,6 +63,16 @@
 - **경로**: post-harness 5/5 real → SOL-0004 → issue #68841 + PR #68842 → Greptile 5/5 → Codex P2 CAL-009 반박 + thread resolved → 메인테이너 merge
 - **fix**: gateway costUsageCache MAX=256 + FIFO eviction (`src/gateway/server-methods/usage.ts`)
 - **교훈**: CAL-009 (bot review 병렬 검증 후 sibling consistency 반박) 가 merged-track 으로 실증됨. prior art (PR #36682 CLOSED) 있어도 차별화 (LRU+MAX=64 vs FIFO+MAX=256) + 명확한 scope 이면 merge 가능
+
+### #70142 (CAND-023, **CLOSED 2026-04-26 — indirect-merge with credit, CAL-010**)
+- **결과**: **사실상 win** — 직접 merge 아님, 그러나 메인테이너가 commit `8bc4d4bcd4` 로 우월한 fix 를 main 에 직접 반영 + changelog credit (`Thanks @Feelw00`) + clawsweeper 자동 close
+- **경로**: pre-SOL 5-agent + post-harness 5-agent + pre-pr 5-agent + CAL-009 2-agent (Codex P2) = 총 17 agent 검증 → 2026-04-22 발행 → 2026-04-25 chat.ts upstream 충돌 rebase (head `39ccb9c4a2`) → 2026-04-26 메인테이너 직접 fix → clawsweeper close
+- **fix (우리)**: post-attachment-parse 시점 `chatAbortControllers.get` 재호출 + offloaded media cleanup 루프 (174 prod / 173 test)
+- **fix (main, 우월)**: pre-parse 시점 `registerChatAbortController.registered` 플래그 활용 — race window 자체 제거 (7 prod / 136 test)
+- **차이의 본질**: 우리는 atomic helper 의 `.registered` 반환 contract 를 활용 못 하고 post-await 보정형으로 우회. 메인테이너는 helper 가 이미 atomic 이라는 사실을 활용해 attachment parse 를 아예 건너뜀
+- **changelog**: `Gateway/chat: keep duplicate attachment-backed chat.send retries with the same idempotency key on the documented in-flight path so aborts still target the real active run. Fixes #70139. Thanks @Feelw00.`
+- **잔여 follow-up**: clawsweeper 가 "offloaded-media cleanup narrow follow-up" 가능성 언급, 그러나 main 의 새 흐름에서는 media 가 만들어지지도 않음 → 우선순위 낮음
+- **교훈 (CAL-010)**: race fix 설계 전 관련 helper 의 반환 contract (`.registered`, `.added` 등) 먼저 확인. cross-review 프롬프트에 "기존 helper 반환 contract 활용 가능성" 카테고리 추가 검토. indirect-merge 는 abandon 이 아닌 별도 outcome 으로 분류
 
 ### #68489 (CAND-004, maintainer closed)
 - **결과**: false positive — CAL-001 참조

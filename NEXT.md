@@ -104,22 +104,23 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # Phase 5 (1/N — 본 세션 2026-04-25/26 — 메인테이너 우선순위 "plugin loading" 영역 진입):
 #   ✓ mcp-memory                   — 2 FIND (P2) → CAND-025 epic → SOL-0008 → issue #71646 + PR #71648 (head 61eb79c67a). OpenClawChannelBridge (src/mcp/channel-bridge.ts) 의 두 pending Map (pendingClaudePermissions L50, pendingApprovals L51) 이 TTL/sweeper/close-clear/cap 동시 결여 → fix scope A (sweeper+ttl-only): lazy-start 5min sweepPendingExpired interval (.unref()) + 1h TTL (Claude perm) / expiresAtMs?? trackedAtMs+30min (approvals) + close-clear + closed-guard. Pre-PR round 1 critical-devil 가 fallback 버그 (createdAtMs?? now 가 매 sweep 마다 expiry 재계산) 잡음 → PendingApprovalEntry wrapper + trackedAtMs instance bookkeeping 으로 수정 + 3 추가 fix → round 2 3/3 real → proceed_to_pr. PR diff 174 prod + 173 test (7 it). 1575/1575 unit + check + build green. domain-notes/mcp.md 신규 작성.
 #
-# 살아있는 PR 7건 (2026-04-26 기준, upstream/main 최신 동기화 HEAD 95b7a85f06 — warn=7 경계 도달):
+# 살아있는 PR 6건 (2026-04-27 기준, upstream/main 최신 동기화 HEAD 2dba9e6a76 — warn=7 미만 회복):
 #   • #68543 (CAND-009, infra-retry, head acc85fe0ff) — steipete invariant 이미 반영됨. 메인테이너 재리뷰 대기
-#   • #68669 (CAND-011, agents-registry, head 00cab4264f) — Codex P2 2라운드 resolved. 메인테이너 리뷰 대기
+#   • #68669 (CAND-011, agents-registry, head 00cab4264f) — Codex P2 2라운드 resolved. **2026-04-25 steipete COMMENT (사실상 LGTM)**: "Codex deep review: this looks correct and worth landing. … No blocking findings from me." reviewDecision 빈 칸 (정식 APPROVE 아님). R-10 결정 트리상 cross-review 트리거 가능, 본문이 lgtm-only 라 thank-you 답글이면 cross-review 생략 검토 (사용자 판단)
 #   • #68839 (CAND-012, auto-reply drain identity guard, head 1236d56668) — 리뷰 대기
 #   • #68848 (CAND-015, nodeWakeById cleanup, head 5b9103c7e0) — 리뷰 대기
-#   • **#70142 (CAND-023, gateway chat.send attachment race, head 39ccb9c4a2, 2026-04-25 rebase)** — upstream chat.ts 충돌 (assistant display + scheduleChatHistoryManagedImageCleanup 추가) 해결 후 force-push. 우리 patch 영역 (L2238-2277 in_flight re-check + offloadedRefs cleanup) 위치 컨텍스트 정확. gateway/server-methods 43 files / 496 tests + check + build green. Greptile 수동 재트리거 완료. 리뷰 대기
 #   • **#71040 (CAND-024→SOL-0007, cron active-jobs symmetry, head c2cf00742e, 2026-04-24 발행)** — Greptile 5/5 자동 통과. pre-pr cross-review 2/3 real + 1/3 fix-insufficient → **scope-down 반영: Fixes #68157 → Related #68157 (partial)**. critical-devil 지적: ops.ts:100-106 의 startup 무조건 runningAtMs clear 가 #68157 "already-running survives restart" 증상을 restart 로 self-heal. mechanism + fix 자체는 3/3 real 인정. **상태 변화 (2026-04-25)**: #68157 vincentkoc 이 #40868 cron-lifecycle cluster dedupe 로 closed (#40868 도 closed). upstream PR #71547 (924271385b) 가 ops.ts start() 의 runningAtMs 처리 강화 — **다른 필드 (runningAtMs vs activeJobIds), 직교**. 로컬 rebase textually clean (push 안 함). 메인테이너 리뷰 대기
-#   • **#71648 (CAND-025→SOL-0008, mcp channel-bridge pending Maps TTL sweeper, head 9f16dd4823, 2026-04-26 발행)** — Closes #71646. pre-pr round 1 critical-devil 가 fallback 버그 잡음 → 4 fix → round 2 3/3 real proceed_to_pr. **Greptile 4/5 ("Safe to merge") + P2 1건** (sweeper self-terminate 안 함, lazy-init 깨짐) → CAL-009 2-agent 검증 후 반영 (commit `9f16dd4823`, sweepPendingExpired 끝 self-clear + 테스트 8/8). thread resolve + @greptile review 재트리거 완료. PR #56420 close() 라인 충돌 가능성. cap/FIFO 의도적 후속 PR 분리.
+#   • **#71648 (CAND-025→SOL-0008, mcp channel-bridge pending Maps TTL sweeper, head 9f16dd4823, 2026-04-26 발행)** — Closes #71646. pre-pr round 1 critical-devil 가 fallback 버그 잡음 → 4 fix → round 2 3/3 real proceed_to_pr. **Greptile 4/5 ("Safe to merge") + P2 1건** (sweeper self-terminate 안 함, lazy-init 깨짐) → CAL-009 2-agent 검증 후 반영 (commit `9f16dd4823`, sweepPendingExpired 끝 self-clear + 테스트 8/8). thread resolve + @greptile review 재트리거 완료. **2026-04-27 clawsweeper "Keep this PR open"** — Codex automated review 가 leak pattern main 에 여전함 + Greptile P2 fix 반영 확인. PR #56420 close() 라인 충돌 가능성 경고. cap/FIFO 의도적 후속 PR 분리.
 #
-# merged: #68842 (CAND-014, 파이프라인 첫 merge), #63105 (파이프라인 외 cron-store split, 2026-04-20 merged). warn=7 / block=10 기준 active 7 → **warn 경계 도달**, 다음 PR 발행 전 1건 정리 필요 (merge / close).
+# merged: #68842 (CAND-014, 파이프라인 첫 merge), #63105 (파이프라인 외 cron-store split, 2026-04-20 merged).
+# closed (indirect-merge with credit, CAL-010): #70142 (CAND-023, 2026-04-26) — clawsweeper auto-close. 메인테이너가 commit `8bc4d4bcd4` 로 우월한 fix 를 main 에 직접 반영 (registerChatAbortController.registered 플래그 활용, pre-parse 7줄). changelog `Fixes #70139. Thanks @Feelw00.` credit. 사실상 win.
+# warn=7 / block=10 기준 active 6 → **warn 미만 회복**, 다음 PR 발행 가능.
 #
 # 잔여 미처리 (다음 세션 우선순위 순):
-#   1. **PR queue 정리** — 활성 PR 7건으로 warn=7 도달. 다음 PR 발행 전 1건 merge/close 필요. 6/68543/68669/68839/68848 중 가장 stale (메인테이너 무응답 2주+) 한 건 ping 또는 self-close 검토.
+#   1. **PR #68669 steipete LGTM 답변 검토** — "worth landing. No blocking findings from me." 에 짧은 감사 답글. R-10 결정 트리상 maintainer COMMENT 면 cross-review 트리거지만 본문이 lgtm-only 라 cross-review 생략 후 thank-you-only 답글 가능 (사용자 판단). 톤: gratitude only, pushback 금지.
 #   2. PR #68341 모니터 (CAL-008 upstream-competing) — thesomewhatyou 가 grab-bag PR (5 unrelated fixes) 로 send/message.action/poll race 동일 fix 축으로 제거 중. CAND-021 + CAND-022 abandoned 양쪽의 근거. PR close-without-merge 시 두 CAND 재오픈 검토. 1-2주 내 close/merge 결판.
 #   3. PR #71040 본문 갱신 검토 — "Related #68157" 이 closed-as-dedupe 라 stale. 메인테이너 visibility 우려로 코드 변경 없는 본문-only 편집은 노이즈 0 (Greptile/메인테이너 알림 안 감). 선택사항.
-#   4. Phase 5 후속 셀 (PR queue 정리 후) — mcp-lifecycle (channel-bridge close path / channel-server lifetime / transport teardown) / mcp-concurrency / mcp-memory v2 (cap/FIFO 후속) / agents-registry-lifecycle (PR #68669 리뷰 완료 후) 중 택일.
+#   4. Phase 5 후속 셀 (PR queue 여유 회복) — mcp-lifecycle (channel-bridge close path / channel-server lifetime / transport teardown) / mcp-concurrency / mcp-memory v2 (cap/FIFO 후속) / agents-registry-lifecycle (PR #68669 리뷰 완료 후) 중 택일.
 #
 # CAND-021 종결 (2026-04-25): 5-agent post-harness cross-review (metrics/cross-review-CAND-021-20260425-224410.jsonl) primary_decision=upstream_wait. real_count=3 (positive/critical/reproduction-realist) + 1 fix-insufficient (hot-path-tracer score=3/5) + 1 upstream-duplicate (PR #68341, Greptile 5/5). FIND-001 자체는 valid race 였으나 PR #68341 이 동일 fix 축 선제 → CAND-016 (PR #68801 dup) 패턴.
 # CAND-022 종결 (2026-04-25): cross-review 생략 (CAL-008 dup 직접 확인). PR #68341 의 poll 핸들러 inflight extend + 'dedupes concurrent poll sends' 테스트가 본 FIND-002 의 fix 축과 일치 → state.yaml/CAND-022.md/index.yaml 동기화만 수행.
@@ -265,6 +266,7 @@ PR 제출 **직전** 3 agent 병렬 재검증. fix 포함 최종 diff 기준.
   - `calibration/CAL-007-stale-fetch-before-find.md` (stale upstream 기반 FIND, NEXT.md §1 fast-forward 강제 원천)
   - `calibration/CAL-008-gatekeeper-upstream-dup-gap.md` (gatekeeper upstream-dup check 필수 원천)
   - `calibration/CAL-009-codex-bot-review-rebuttal.md` (Codex/Greptile bot 지적 병렬 검증 → 반박/반영 결정 프로토콜)
+  - `calibration/CAL-010-indirect-merge-with-credit.md` (PR #70142 — 메인테이너가 우월한 fix 로 직접 commit + 우리 PR closed + changelog credit. atomic helper 반환 contract 활용 미스 + indirect-merge outcome 분류 신설)
 - **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
   - 파이프라인 외 PR (#63105 cron-store split) 포함
   - Greptile 재리뷰 수동 트리거 절차
