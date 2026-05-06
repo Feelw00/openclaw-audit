@@ -286,3 +286,12 @@ PR 제출 **직전** 3 agent 병렬 재검증. fix 포함 최종 diff 기준.
 # - 라벨: proof: supplied 6/6, proof: sufficient 2/6 (#68839 #78243). v3 강화 후에도 4 PR 의 sufficient 자동 부여 안 됨.
 # - clawsweeper 평가 한 번만 실행하는 패턴 추정. 메인테이너 수동 trigger 만 sufficient 가능성.
 # - 진짜 production 시연은 사용자가 결정한 수준까지 진행 완료. 라벨링 timing 은 우리 통제 밖.
+
+# 2026-05-06 V4 evidence 강화 — production demo (100 trial measurement)
+# - 4 PR (#68543/68669/68848/71648) 회귀 테스트 file 안에 production demo block 추가 → 100 trial real measurement → block 제거 → PR body update.
+#   - #68543: real node:http server timing — 23/50 < 1000ms (without) vs 0/50 (with)
+#   - #68669: 100 parallel-completion trials cleanup invocation count — 200 (without) vs 100 (with)
+#   - #68848: 100 unregistered RPC Map size — 100 leak (without) vs 0 (with)
+#   - #71648: 100 pending requests TTL eviction — 100 잔존 (without) vs 0 (with), fake timer 사용
+# - 라벨 결과: proof: sufficient 5/6 (#68543/68669/68839/68848/78243). #71648 만 supplied 만.
+#   추정: #71648 만 fake timer (vi.useFakeTimers) 사용 → clawsweeper 평가가 real measurement 와 구분 가능성.
