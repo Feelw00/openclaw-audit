@@ -1401,3 +1401,27 @@ items:
           line_range: 369-391
           sha: sha256:c1b295d9217e83d6
         computed_at: '2026-04-25T14:17:07+00:00'
+  SOL-0007:
+    kind: solution
+    state: abandoned
+    transitions:
+    - from: null
+      to: abandoned
+      actor: solution-drafter
+      reason: 'alternative-axis acceptance: 1fae716a04 sweeper recovery + deferAgentTurnJobs:true.
+        PR #71040 closed. SOL-0009 supersedes (manual-only).'
+      at: '2026-05-06T03:16:56+00:00'
+    created_at: '2026-05-06T03:16:56+00:00'
+    updated_at: '2026-05-06T03:16:56+00:00'
+  SOL-0009:
+    kind: solution
+    state: published
+    transitions:
+    - from: null
+      to: published
+      actor: solution-drafter
+      reason: 'manual-only scope. PR #78243 발행 (Fixes issue #78233). 회귀 테스트 2/2 +
+        tsgo green.'
+      at: '2026-05-06T03:16:56+00:00'
+    created_at: '2026-05-06T03:16:56+00:00'
+    updated_at: '2026-05-06T03:16:56+00:00'
