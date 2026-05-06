@@ -277,3 +277,12 @@ PR 제출 **직전** 3 agent 병렬 재검증. fix 포함 최종 diff 기준.
 - **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
   - 파이프라인 외 PR (#63105 cron-store split) 포함
   - Greptile 재리뷰 수동 트리거 절차
+
+# 2026-05-06 진척 (V3 evidence 강화 — production demo)
+# - upstream main 186 commits 진척 (af2719a7b9). 6 PR 모두 rebase + force-push, CI 완전 GREEN (이전 base broken test 16건 main 에서 fix됨).
+# - 4 PR (#68543/68669/68848/71648) Real behavior proof v3 추가 — production CLI keyword + with/without 빌드 비교.
+#   - #68543: 50 trial real `node:http` server + `retryAsync` real timing — without-fix 23/50 (46%) 1000ms 미만, with-fix 0/50.
+#   - #68669/68848/71648: 회귀 테스트 4/4-36/36 with/without 비교 + production CLI keyword.
+# - 라벨: proof: supplied 6/6, proof: sufficient 2/6 (#68839 #78243). v3 강화 후에도 4 PR 의 sufficient 자동 부여 안 됨.
+# - clawsweeper 평가 한 번만 실행하는 패턴 추정. 메인테이너 수동 trigger 만 sufficient 가능성.
+# - 진짜 production 시연은 사용자가 결정한 수준까지 진행 완료. 라벨링 timing 은 우리 통제 밖.
