@@ -211,3 +211,144 @@ rg -n "expiresAtMs" src/mcp/
 - **mcp-concurrency 셀 후보**: gateway event handler async + 동일 requestId/approval id 중복 입력 race.
 - **mcp-error-boundary 셀 후보**: `void this.handleGatewayEvent(event)` 의 sync throw 가 unhandledRejection 으로 전파, `processReadBuffer` onerror 미등록 silent path.
 - **agents 도메인 (pi-bundle-mcp-runtime)**: BundleMcpSession 의 disposeSession 호출 lifecycle 검증 (idle TTL, session end, error path).
+
+### plugin-lifecycle-auditor (2026-05-14, upstream `6a41a54212`)
+
+**셀**: `mcp-lifecycle` (allowed_paths: `src/mcp/**` + 8 개 src/agents/mcp-* + src/config/mcp-config.ts + src/cli/mcp-cli.ts).
+**결론**: **FIND 2 건 (P2/P2)** — in-flight cleanup gap 의 두 측면.
+
+**적용 카테고리 (agents/plugin-lifecycle-auditor.md §탐지 카테고리)**:
+
+- [x] A. Load 실패 rollback 부재 — 적용 (결과: `OpenClawChannelBridge.start()` partial init 후보 검토 → caller `serveOpenClawChannelMcp` 의 try/finally + shutdown idempotency 가 unconditional cleanup 제공. FIND 폐기).
+- [x] B. Dispose / Unload 경로 누락 — 적용 (FIND-001: tools-stdio-server.ts:39 floating `void server.close()`).
+- [x] C. Dynamic import 에러 격리 — 적용 (channel-server.ts:24 의 `await import("../config/config.js")` 와 channel-bridge.ts:89-101 의 `Promise.all([5 imports])` — 둘 다 caller finally 가 catch. FIND 폐기).
+- [x] D. Manifest parse 실패 후 partial state — 적용 (mcp-config.ts 의 `replaceConfigFile` 가 atomic validate-then-write. partial state 없음).
+- [x] E. Enable/Disable 상태 drift — 적용 (config reload 시 active transport dispose 호출은 host (agents 도메인) 책임. 본 셀 file 영역엔 enable flag 없음).
+- [x] F (셀 hints 4-5 in-flight): plugin reload/shutdown 중 in-flight tool call 처리 — **FIND-002**: plugin-tools-handlers.ts:45-70 의 callTool 이 `extra.signal` 무시 → cancellation 전파 부재.
+
+**Lifecycle 핵심 신규 사실 (mcp-memory 셀 도메인 노트에 없는 정보)**:
+
+| 흐름 | 위치 | 동기 vs 비동기 close | drain 보장 |
+|---|---|---|---|
+| `serveOpenClawChannelMcp` shutdown | channel-server.ts:83-94 | `close().then(resolveClosed, resolveClosed)` + finally `await closed` (L102-109) | unconditional (try/finally) |
+| `connectToolsMcpServerToStdio` shutdown | tools-stdio-server.ts:30-41 | `void server.close()` — floating | **부재** (caller 도 finally 없음) |
+| `OpenClawChannelBridge.close()` | channel-bridge.ts:162-178 | `await gateway?.stopAndWait().catch(() => undefined)` | unconditional |
+| `OpenClawStdioClientTransport.close()` | mcp-stdio-transport.ts:112-131 | stdin.end → race(close, 2s) → killProcessTree → race(close, 2s) → readBuffer.clear | unconditional (within transport scope) |
+
+**SDK abort/signal 전파 패턴 (신규 인벤토리)**:
+
+| handler 등록 위치 | extra 인자 수신 | tool.execute 의 signal 전달 |
+|---|---|---|
+| `tools-stdio-server.ts:16` (ListToolsRequestSchema) | 무시 | n/a (list-only) |
+| `tools-stdio-server.ts:17` (CallToolRequestSchema) | **무시** | **전달 안 함 (plugin-tools-handlers.ts:54)** |
+| `channel-server.ts:50` (ClaudePermissionRequestSchema) | params 만 사용 | n/a (notification handler) |
+| `channel-tools.ts:registerChannelMcpTools` | (server.tool 등록 — McpServer 의 high-level API) | 별도 검증 필요 |
+
+→ MCP host cancellation (`notifications/cancelled`) 가 plugin-tools server 의 in-flight tool 호출에 도달하지 못함. 이는 lifecycle 계약 위반 (host 의 graceful cancel 정책 vs server 의 silent ignore).
+
+**Caller wrapper finally 보장 여부**:
+
+| caller | 위치 | finally drain |
+|---|---|---|
+| `serveOpenClawChannelMcp` | channel-server.ts:73-110 | **있음** (L106-109 finally shutdown + await closed) |
+| `servePluginToolsMcp` | plugin-tools-serve.ts:67-80 | **없음** (단일 await 후 return) |
+| `serveOpenClawToolsMcp` | openclaw-tools-serve.ts:27-30 | **없음** (단일 await 후 return) |
+| `mcp-cli.ts:46-71` (channel CLI action) | cli/mcp-cli.ts | try/catch 로 stderr.exit. shutdown drain 은 `serveOpenClawChannelMcp` 내부의 finally 에 위임 |
+
+**R-3 Grep 핵심 결과**:
+
+```
+rg -n "await\s+server\.close|close\(\)\.then" src/mcp/
+  → channel-server.ts:68 (`await bridge.close(); await server.close()`)
+  → channel-server.ts:93 (`close().then(resolveClosed, resolveClosed)`)
+  → tools-stdio-server.ts:39 (`void server.close()`)   — 비대칭
+
+rg -n "AbortSignal|abortSignal|signal:" src/mcp/
+  → 0 매치 (signal 인자 미사용)
+
+rg -n "tool\.execute\(.*signal" src/mcp/
+  → 0 매치
+
+rg -n "shutdown|in.flight|abort" src/mcp/tools-stdio-server.ts src/mcp/plugin-tools-serve.ts src/mcp/openclaw-tools-serve.ts src/mcp/plugin-tools-handlers.ts
+  → tools-stdio-server.ts:30-45 의 shutdown 함수 + listener detach 만. in-flight drain / abort 처리 0 매치.
+
+rg -n "finally" src/mcp/plugin-tools-serve.ts src/mcp/openclaw-tools-serve.ts
+  → 0 매치 (caller 측 cleanup 부재)
+
+rg -n "ensureStandalonePluginToolRegistryLoaded|resolvePluginTools" src/mcp/
+  → plugin-tools-serve.ts:23, 45, 49 (startup-fixed registry load. runtime growth 없음)
+```
+
+**R-7 production hot-path 검증**:
+
+- FIND-001: `connectToolsMcpServerToStdio` 는 `servePluginToolsMcp` 와 `serveOpenClawToolsMcp` 두 standalone entry 의 유일한 stdio wiring. SIGTERM/SIGINT/stdin close 는 host (Claude Code SDK, ACPX bridge, Codex) restart 의 정규 신호 — primary hot-path.
+- FIND-002: `setRequestHandler(CallToolRequestSchema, ...)` 는 plugin-tools / openclaw-tools server 의 모든 callTool 요청 진입 지점 — primary hot-path. cancellation 은 host UX 정규 경로.
+
+**R-8 upstream 최신성**:
+
+- HEAD `6a41a54212` (2026-05-14 ff 완료).
+- 6 주 file 영역 commit 분석:
+  - `tools-stdio-server.ts`: `61ab68f5c9 refactor: share MCP tools stdio server` (본 패턴 도입 commit, 후속 fix 없음).
+  - `plugin-tools-handlers.ts`: 5 건 (policy / 결과 serialization / 보안 / 테스트) — signal/cancel 축 0.
+  - `mcp-stdio-transport.ts`: `e1a7c5b860 fix EPIPE on stdin writes (#75602)` — send() 의 write callback 만 다룸. start() 의 listener cleanup 미터치 (priors §3 일치).
+  - `channel-bridge.ts` / `channel-server.ts` / `channel-shared.ts` / `channel-tools.ts`: 본 셀 hints 1 의 close 비대칭 후보는 mcp-memory 셀 PR #71648 가 OPEN 인 상태로 axis 분리 유지.
+
+**CAL-001 회귀 방지**: 두 FIND 모두 unconditional cleanup 경로 부재를 명시. R-3 grep 결과로 대안 경로 (await close, signal listener) 가 코드에 존재하지 않음을 확인.
+
+**CAL-003 회귀 방지**: production hot-path (실제 SDK Server + 실제 stdio transport + 실제 tool.execute) 가 두 FIND 의 발현 조건. 기존 test 들은 SDK/transport 를 mock 으로 우회 (plugin-tools-serve.test.ts:43-45) — production 동작과 다른 branch. 재현 테스트는 실 SDK 인스턴스 필수.
+
+**CAL-004 회귀 방지**: PR #71648 (mcp-memory v2, close-time Map clear) 와 axis 분리 — 본 FIND 는 (1) tools-stdio-server 의 shutdown drain, (2) plugin-tools-handlers 의 cancel 전파. 두 file 모두 PR #71648 의 patch 범위 (channel-bridge.ts) 외.
+
+**CAL-008 회귀 방지**: `gh pr list --repo openclaw/openclaw --state open --search "plugin-tools-serve OR tools-stdio-server in:title,body"` + `--search "callTool OR AbortSignal mcp plugin"` 양쪽 검색. bundle-mcp (agents 도메인) PR #73536 / #78160 은 client-side timeout 축 (본 셀 외). 본 셀 file 영역 OPEN PR 없음 확인.
+
+**자체 한계**:
+
+- SDK `Server.close()` 의 정확한 in-flight handler 처리 동작 (abort trigger, resolve buffer 여부) 은 SDK 소스 미확인. protocol.d.ts type 정의에서 `extra.signal: AbortSignal` 제공 사실만 확인.
+- AnyAgentTool 구현체들 (cron-tool, browser, memory-lancedb 등, allowed_paths 외) 이 signal 을 실제로 honor 하는지 미확인. 만약 다수 tool 이 signal listener 를 안 등록하면 본 FIND-002 의 발현 강도가 약화.
+- production cancellation 빈도 metrics 부재 — host (Claude Code SDK) 의 사용자 cancel 빈도, child restart 빈도 정량 자료 없음.
+- 폐기한 후보 (bridge.start partial init, stdio transport spawn-error race) 의 finally cleanup 이 모든 caller 에서 보장된다는 가정은 mcp-cli.ts (production CLI caller) 만 확인. test/programmatic caller 는 try/finally 없이 호출할 수 있어 lifecycle 측면에서 위험은 잔존 — 그러나 그것은 caller 측 책임이라 본 셀 file 의 결함이 아님.
+
+**다음 페르소나를 위한 힌트**:
+
+- **mcp-concurrency 셀 후보** (재확인): channel-bridge.ts:127-148 의 `onEvent`/`onClose` 콜백이 `void this.handleGatewayEvent(event)` 패턴으로 async-fire. handleGatewayEvent 내부의 trackApproval/resolveTrackedApproval (L398-420) 가 같은 id 에 대해 set→delete 순서 race 시 leak.
+- **mcp-error-boundary 셀 후보** (재확인): `mcp-stdio-transport.ts:78` `child.stdin?.on('error', err => this.onerror?.(error))` 만 호출. child kill 이나 readBuffer.clear 안 함 → onerror 핸들러가 등록 안 됐으면 silent. 본 셀에서 error-boundary 축으로 재방문 시 cluster 가능.
+- **agents 도메인 (pi-bundle-mcp-runtime)**: BundleMcpSession 의 disposeSession 이 in-flight tool 호출에 signal 전달하는지 검증. 본 셀 FIND-002 의 server-side 대응으로 client-side 도 동일 gap 가능성.
+
+#### 클러스터 관찰 — clusterer (2026-05-14)
+
+**CAND-026 (epic, FIND-mcp-lifecycle-001 + FIND-mcp-lifecycle-002)** 로 묶음.
+
+**왜 같은 도메인 다른 axis 인가 (CAND-025 와의 분리)**:
+
+| 축 | CAND-025 (mcp-memory) | CAND-026 (mcp-lifecycle) |
+|---|---|---|
+| 결함 surface | channel-bridge.ts 의 두 pending Map (메모리 무한 성장) | tools-stdio-server.ts + plugin-tools-handlers.ts 의 in-flight callTool hook 부재 |
+| 결함 카테고리 | A. 무제한 자료구조 / E. 캐시 TTL 부재 | B. Dispose / Unload 경로 누락 / F. in-flight tool call 처리 |
+| 발현 trigger | 외부 (Claude SDK / gateway WS) 미응답 누적 | host SIGTERM / `notifications/cancelled` / stdin close |
+| 시간 축 | hours-units long-running (단조 증가) | 매 child restart 또는 매 cancel (event-driven) |
+| fix surface 겹침 | 없음 (다른 file) | 없음 (다른 file) |
+| 양방향 cross_refs | CAND-026 추가 (frontmatter) | CAND-025 추가 (rationale 본문) |
+
+→ 두 CAND 는 같은 mcp 도메인의 직교 두 축. 한 PR 으로 합치면 안 되고, 별 PR 두 개로 진행.
+
+**일반화된 anti-pattern (MCP server in-flight tool call lifecycle gap)**:
+
+`connectToolsMcpServerToStdio` (tools-stdio-server.ts:24-48) 는 plugin-tools 와 openclaw-tools 두 standalone MCP 프로세스의 유일한 wiring 함수다. 이 한 함수가 host 와의 lifecycle 계약 ("종료/취소 신호 시 in-flight tool call 을 정리하고 응답 또는 abort 한다") 의 양 끝점을 동시에 놓침:
+
+1. **outbound 측 (shutdown)**: 종료 신호 도착 시 in-flight handler.callTool 의 응답을 host 로 송신할 기회 부재. `void server.close()` 가 promise 를 버려 transport 가 닫힌 뒤에도 process 가 잠시 살아있어 응답이 도달할 수도 있고 못할 수도 있는 race. drain 보장 없음.
+
+2. **inbound 측 (cancel)**: 취소 신호 도착 시 in-flight tool.execute 에 abort 를 전달할 channel 부재. SDK 가 정상적으로 `extra.signal` 을 abort 해도 wrapper 가 extra 를 받지 않아 손실.
+
+같은 함수 내 두 hook 의 누락이 같은 lifecycle 계약 위반에 귀속 → epic.
+
+**channel-server.ts 와의 비대칭이 핵심 단서**: `serveOpenClawChannelMcp` (channel-server.ts:73-110) 는 같은 도메인의 다른 server entry 이면서 shutdown drain (L93 then + L102-109 finally `await closed`) 을 갖춤. tools-stdio-server.ts 는 channel-server.ts 패턴을 따르지 않음 — `61ab68f5c9 refactor: share MCP tools stdio server` 가 통합 시 drain 패턴을 가져오지 않은 한 commit. fix 도 channel-server.ts 패턴 이식이 자연.
+
+**signal 전파 결함이 wiring (extra 무시) + API (callTool signature) 두 layer 에 분포**: tools-stdio-server.ts:17 에서 extra 를 받아도 plugin-tools-handlers.ts:45 의 callTool 이 signal 파라미터를 안 받으면 전달 불가. 두 file 의 변경이 필연적으로 짝 → epic 자연.
+
+**메인테이너 수용 가능성 (CLAUDE.md 인용)**: maintainer 우선순위가 "memory, plugin loading, cron, reliability". 본 CAND 는 **reliability** 축 (host 종료/취소 정규 경로에서 응답 누락 / 자원 graceful release 실패) + **plugin loading 의 사후 lifecycle** 측면. CONTRIBUTING.md feature-freeze 와 무관 (bug fix).
+
+**다음 단계 (gatekeeper / publisher 입력)**:
+
+- one-thing-per-PR 검토 통과 — 3 hunk / 2 files / XS-S.
+- pre-pr cross-review 시 fix surface 의 channel-server.ts 패턴 이식 vs in-flight Set 추적 vs caller finally drain 세 옵션 중 선택지 정리.
+- 회귀 테스트 인프라가 channel-server.shutdown-unhandled-rejection.test.ts 와 유사 (실 SDK Server + 실 stdio transport) → 본 CAND 의 회귀 테스트는 그 패턴 follow.

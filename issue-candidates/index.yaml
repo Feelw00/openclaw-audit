@@ -269,6 +269,27 @@ candidates:
   openclaw_branch: fix/mcp-channel-bridge-pending-leak
   openclaw_commit: 61eb79c67a
   cross_review_pre_pr_metric: metrics/cross-review-SOL-0008-20260426-005346.jsonl
+  cross_refs:
+    - CAND-026  # same mcp domain, different axis (lifecycle vs memory)
+- id: CAND-026
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: FIND-mcp-lifecycle-001/002 — standalone tools MCP server (plugin-tools / openclaw-tools
+    가 공유하는 connectToolsMcpServerToStdio) 가 in-flight callTool lifecycle 처리를 양 끝점
+    동시 결여. (1) tools-stdio-server.ts:39 의 floating `void server.close()` → SIGTERM/SIGINT/stdin
+    close 시 in-flight 응답 EPIPE/silent drop + close() reject 시 unhandledRejection. (2)
+    tools-stdio-server.ts:17 의 setRequestHandler callback 이 extra (RequestHandlerExtra.signal)
+    무시 + plugin-tools-handlers.ts:54 의 tool.execute 가 signal 인자 미전달 → host
+    cancellation / transport close 시 in-flight tool.execute 무통보. fix surface 가 같은
+    wiring 함수 (tools-stdio-server.ts의 connectToolsMcpServerToStdio L24-48) 내 두 hook +
+    plugin-tools-handlers.ts callTool 시그니처 1 라인 → 3 hunk / 2 files / XS-S 단일 PR. CAL-008
+    검사 — 6주 file 영역 11 commits 모두 policy/serialization/보안/refactor (lifecycle 축 0),
+    bundle-mcp PR #73536/#78160 은 client-side timeout 축 (server-side 와 반대), PR #71648
+    은 channel-bridge.ts 한정 (file 겹침 없음). severity P2.
+  upstream_head_checked: 6a41a54212
+  cross_refs:
+    - CAND-025  # same mcp domain, different axis (memory vs lifecycle)
 published:
 - cand_id: CAND-004
   issue: 68487

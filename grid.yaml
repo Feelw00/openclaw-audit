@@ -249,8 +249,9 @@ cells:
   - id: gateway-memory
     domain: gateway
     type: memory
-    state: planned
+    state: done
     phase: 3
+    note: 'Phase 3 감사 (2026-04-19) 완료. FIND→CAND-014 (costUsageCache cap/FIFO, PR #68842 MERGED 2026-04-21) + CAND-015 (nodeWakeById no-registration cleanup, PR #68848 MERGED).'
     hints:
       - 'session/connection Map 들 (AccountId → state, sessionKey → ws) 의 TTL/cap'
       - 'auth-rate-limit 의 sliding window 버킷 unbounded 성장 가능성'
@@ -258,8 +259,9 @@ cells:
   - id: gateway-concurrency
     domain: gateway
     type: concurrency
-    state: planned
+    state: done
     phase: 3
+    note: 'Phase 3 감사 (2026-04-19~22) 완료. 3 FIND→CAND-021/022/023. CAL-008 upstream-competing 으로 CAND-021/022 retract (PR #68341 MERGED 2026-05-11). CAND-023 indirect-merge with credit (CAL-010).'
     hints:
       - 'parallel RPC 처리 중 공유 state (예: subagent-registry 와 상호작용) 락 보장'
       - 'control plane reconnect 시 in-flight request 중복 처리'
@@ -267,8 +269,9 @@ cells:
   - id: gateway-error-boundary
     domain: gateway
     type: error-boundary
-    state: planned
+    state: done
     phase: 3
+    note: 'Phase 3 감사 (2026-04-19) 완료. 2 FIND 검토 — gatekeeper 단계에서 primary cleanup 인접 발견 또는 P3 단순 leak 으로 abandon (CAND 흡수 없음).'
     hints:
       - 'plugin throw → gateway RPC 응답 경로 catch 커버리지'
       - 'malformed protocol message (schema 위반) 처리 경로'
@@ -276,8 +279,9 @@ cells:
   - id: channels-error-boundary
     domain: channels
     type: error-boundary
-    state: planned
+    state: done
     phase: 3
+    note: 'Phase 3 감사 (2026-04-19) 완료. 2 FIND→ready 승격.'
     hints:
       - 'incoming webhook payload JSON.parse 미보호'
       - 'channel adapter throw → routing 큐에 미전파'
@@ -285,8 +289,9 @@ cells:
   - id: channels-lifecycle
     domain: channels
     type: lifecycle
-    state: planned
+    state: done
     phase: 3
+    note: 'Phase 3 감사 (2026-04-19) 완료. 2 FIND 생성됐으나 validate REJECT (YAML frontmatter 복구 작업 대기). state 정의상 "FIND 생성됨 (validate 통과 또는 반려)" → done 처리.'
     hints:
       - 'channel open 중 실패 시 routing binding 부분등록 rollback'
       - 'ack-reaction 등록 후 channel close 시 listener 해제'
@@ -294,8 +299,9 @@ cells:
   - id: auto-reply-concurrency
     domain: auto-reply
     type: concurrency
-    state: planned
+    state: done
     phase: 3
+    note: 'Phase 3 감사 (2026-04-19) 완료. 2 FIND→CAND-012 (drain identity guard, PR #68839/SOL-0003 MERGED) + CAND-013 (multi-subcause, abandoned scope-down).'
     hints:
       - 'queue drain 중 새 item 추가 race (upstream 712644f0d9 fix 관련 추가 검증)'
       - 'chunk.ts 의 동시 chunk 생성 race'
@@ -368,6 +374,23 @@ cells:
       - 'src/agents/mcp-config-shared.ts: server descriptor map 의 lifetime — config reload 시 stale entry'
       - '신규 도메인 — domain-notes/mcp.md 신규 작성 필요'
       - 'gateway/mcp-http.* 는 gateway 도메인 소관 → 본 셀에서는 client/server core 만 다루고 transport boundary 만 인용'
+
+  - id: mcp-lifecycle
+    domain: mcp
+    type: lifecycle
+    state: planned
+    phase: 5
+    hints:
+      - 'src/mcp/channel-bridge.ts: bridge open→close 비대칭. mcp-memory PR #71648 가 close 시 pending Map clear 추가했으나 다른 state (subscribers, channel ref) 의 close-time cleanup 동등하게 보장되는지 (axis 독립 — memory 가 아닌 lifecycle: dispose 경로 자체의 완전성)'
+      - 'src/mcp/channel-server.ts: server start 실패 시 partial init state rollback. listen() throw 후 등록된 listener/timer 가 해제되는지'
+      - 'src/agents/mcp-stdio-transport.ts: child_process spawn 실패 vs spawn 성공 후 stdin write 실패 시 정리 경로 비대칭. AbortSignal listener detach 누락 + child kill timeout'
+      - 'src/mcp/tools-stdio-server.ts: stdio server 의 SIGTERM/SIGINT handler 등록 후 graceful shutdown 중 in-flight tool call 처리 (response 누락 vs orphan)'
+      - 'src/mcp/plugin-tools-serve.ts / plugin-tools-handlers.ts: plugin reload/uninstall 시 이미 in-flight 인 tool call 의 처리 — abort 전파, response 누락 가능성'
+      - 'src/agents/mcp-config-shared.ts: config reload 시 기존 server connection 의 dispose 호출. 새 config 적용 전 old server graceful shutdown 보장'
+      - 'src/mcp/openclaw-tools-serve.ts: singleton tool registry 의 re-init 시 기존 tool registration 의 unregister 보장'
+      - 'CAL-001 적용: dispose/teardown/cleanup 경로 발견 시 execution condition 분류 (unconditional vs conditional-edge)'
+      - 'CAL-004 적용: upstream-dup 으로 PR #71648 (mcp-memory v2 보류) 와 axis 명확히 분리 — close-time clear 는 memory 축에서 다룸. lifecycle 은 init failure rollback + in-flight cleanup 에 집중'
+      - 'CAL-008 적용: gatekeeper 단계에서 git log upstream/main / gh pr list 로 mcp 영역 OPEN PR 확인 필수'
 
 # ────────────────────────────────────────────────────────────
 # 상태 전이 (셀 단위, grid.yaml 내 관리)

@@ -62,6 +62,8 @@ upstream_dup_check:
   related_open_pr: 56420
   related_pr_axis: "sessionKey binding (security spoofing) — leak 축 직교. 오히려 sessionKey reject 가 누수 가속화 가능성."
   duplicate_decision: not-duplicate
+cross_refs:
+  - CAND-026  # same mcp domain, different axis (lifecycle vs memory) — added 2026-05-14
 ---
 
 # fix(mcp): bound pendingClaudePermissions / pendingApprovals via close-clear + TTL sweep + cap
