@@ -5,10 +5,12 @@ finding_ids:
   - FIND-agents-registry-lifecycle-001
 cluster_rationale: "단일 결함 — run-manager.ts:503-528 markSubagentRunTerminated 의 dispose loop 가 `clearPendingLifecycleError` 만 호출하고 `clearPendingLifecycleTimeout` 누락 (deps interface gap). 동등한 종착점 finalizeInterruptedSubagentRun (registry.ts:1100-1102) 은 두 marker 모두 clear — API 비대칭. listener (registry.ts:937) 의 aborted 분기가 15초 grace timer 를 걸어 둔 상태에서 markTerminated 가 호출되면 timer 가 entry 잔존 동안 fire 가능 → completeSubagentRun L780-791 reset 분기가 stale grace fire 를 'late COMPLETE event' 로 오인 → killed entry 의 endedReason / outcome / cleanupCompletedAt 가 모두 덮어쓰여 KILLED → COMPLETE/timeout 으로 외부 hook 관측 왜곡. 다른 P2 (FIND-001) 와 다른 file (run-manager vs listener wrapper) 다른 axis (timer marker vs unhandled rejection)."
 proposed_title: "agents/subagent-registry: markSubagentRunTerminated drops pendingLifecycleTimeout marker"
-proposed_severity: P2
+proposed_severity: P3  # cross-review scope-down 2026-05-14: lifecycle.ts:780-791 reset 분기는 commit 2f86ae71d5 by-design recovery (회귀 테스트 보호) — wrong-output framing 충돌. cleanup==='keep' marker 5분 잔존 (메모리 hygiene) 또는 async hook 두 번째 발사 (FIND self-check) 로 narrow framing.
 existing_issue: null
 created_at: 2026-05-14
 state: pending_gatekeeper
+cross_review_metric: metrics/cross-review-CAND-030-20260514-081538.jsonl
+cross_review_decision: 'scope-down: wrong-output (KILLED→COMPLETE overwrite) framing 폐기 — lifecycle.ts:780-791 reset 분기는 commit 2f86ae71d5 "fix(subagents): recover announce cleanup after kill/complete race" by-design recovery 이고 subagent-registry.steer-restart.test.ts:659-688 이 회귀 테스트로 EXPECT. production callsite 호출 순서도 abort→markTerminated→aborted event 역순. 잔존 가치: (a) cleanup==="keep" marker map 5분 잔존 memory hygiene + (b) async ordering 따른 hook 두 번째 발사 가능성. 둘 다 P3. avg 0.87, critical high scope-down override.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

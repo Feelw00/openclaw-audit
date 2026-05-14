@@ -8,7 +8,9 @@ proposed_title: "agents/subagent-registry: catch lifecycle listener rejections t
 proposed_severity: P2
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+cross_review_metric: metrics/cross-review-CAND-027-20260514-081538.jsonl
+retracted_reason: 'cross-review critical-devil CAL-001 패턴: 3 inner unconditional guard (emitSubagentEndedHookOnce catch L88-120, runBestEffortCleanup, retireSessionMcpRuntime catch) 가 listener IIFE catch 부재 경로의 reject 원천을 모두 silent swallow → unhandled rejection 도달 경로가 사실상 부재. avg score 0.75 이나 critical high confidence reject 로 override.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

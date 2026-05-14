@@ -8,7 +8,9 @@ proposed_title: "agents/subagent-registry: split state when createRunningTaskRun
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+cross_review_metric: metrics/cross-review-CAND-029-20260514-081538.jsonl
+retracted_reason: 'cross-review critical-devil CAL-001 perfect 재현: task-registry.ts:1595 tasks.set + L1600 addRunIdIndex 가 L1604 persistTaskUpsert 보다 먼저 unconditional in-memory write → within-session split state 가정 자체 무효, getTasksByRunId in-memory lookup 정상. avg 0.60 + critical high confidence false-positive 판정.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

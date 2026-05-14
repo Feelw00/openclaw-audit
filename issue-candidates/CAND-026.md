@@ -58,10 +58,12 @@ cluster_rationale: |
   L24-48) 안에 있어 결함도 같은 함수 책임 (host lifecycle contract
   honoring) 에 귀속된다.
 proposed_title: "fix(mcp): drain in-flight callTool on shutdown and propagate host cancellation signal"
-proposed_severity: P2
+proposed_severity: P3  # cross-review scope-down 2026-05-14: SDK Protocol._onclose 가 unconditional abort 함을 critical-devil 가 발견 → FIND-001 mechanism 부정확. P3 강등 + FIND-002 (signal propagation) 만 단독 진행 권고.
 existing_issue: null
 created_at: 2026-05-14
 state: pending_gatekeeper
+cross_review_metric: metrics/cross-review-CAND-026-20260514-081538.jsonl
+cross_review_decision: 'scope-down: FIND-mcp-lifecycle-001 (shutdown drain) abandon — SDK Protocol._onclose 가 transport.onclose 발화 시 _requestHandlerAbortControllers unconditional abort 호출 + protocol.js:369-372 post-handler abort check 가 응답 송신 자체 skip. drain/await close 추가 효과 미미. FIND-mcp-lifecycle-002 (RequestHandlerExtra.signal propagation) 만 단독 PR scope. plugin tool execute 시그니처가 signal 인자 미수신 다수 (memory_recall, cron-tool) — fix effective scope 는 signal-aware tool 한정. avg 0.84, critical high scope-down override.'
 upstream_dup_check:
   upstream_head: af3d9333aa  # re-verified 2026-05-14: 6a41a54212→af3d9333aa diff of mcp area = 0 commits
   six_week_commits:

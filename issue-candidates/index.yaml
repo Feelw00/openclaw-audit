@@ -275,6 +275,8 @@ candidates:
   type: epic
   finding_count: 2
   state: pending_gatekeeper
+  cross_review_metric: metrics/cross-review-CAND-026-20260514-081538.jsonl
+  cross_review_decision: 'scope-down (avg 0.84, critical high override): SDK Protocol._onclose 가 transport.onclose 시 _requestHandlerAbortControllers unconditional abort + protocol.js:369-372 post-handler abort check 가 응답 송신 skip → FIND-001 mechanism (EPIPE/silent drop/unhandledRejection) 부정확. FIND-002 (RequestHandlerExtra.signal propagation) 만 단독 XS PR. severity P2 → P3.'
   note: FIND-mcp-lifecycle-001/002 — standalone tools MCP server (plugin-tools / openclaw-tools
     가 공유하는 connectToolsMcpServerToStdio) 가 in-flight callTool lifecycle 처리를 양 끝점
     동시 결여. (1) tools-stdio-server.ts:39 의 floating `void server.close()` → SIGTERM/SIGINT/stdin
@@ -293,7 +295,9 @@ candidates:
 - id: CAND-027
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'cross-review CAL-001 패턴: 3 inner unconditional guard (emitSubagentEndedHookOnce L88-120 catch / runBestEffortCleanup / retireSessionMcpRuntime catch) 가 listener IIFE catch 부재의 reject 원천을 모두 swallow → unhandled rejection 도달 경로 사실상 부재. critical-devil high confidence abandon.'
+  cross_review_metric: metrics/cross-review-CAND-027-20260514-081538.jsonl
   note: FIND-agents-registry-error-boundary-001 — registry.ts:897-968 lifecycle listener IIFE 가 .catch
     부재 → completeSubagentRun reject 시 unhandledRejection → infra handler 가 process.exit(1) 직결. severity P2.
 - id: CAND-028
@@ -306,7 +310,9 @@ candidates:
 - id: CAND-029
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'cross-review CAL-001 perfect: task-registry.ts:1595 tasks.set + L1600 addRunIdIndex 가 L1604 persistTaskUpsert 보다 먼저 unconditional in-memory write 적재 → within-session split-state 가정 자체 무효, getTasksByRunId in-memory lookup 정상. critical-devil high confidence false-positive 판정.'
+  cross_review_metric: metrics/cross-review-CAND-029-20260514-081538.jsonl
   note: FIND-agents-registry-error-boundary-003 — run-manager.ts:424-453 registerSubagentRun 의 createRunningTaskRun
     catch warn-only fall-through → subagent registry 적재 후 task registry 미생성 split state → 모든 task 갱신 silent no-op,
     사용자 task UI 영구 빈 상태. severity P3.
@@ -314,10 +320,12 @@ candidates:
   type: single
   finding_count: 1
   state: pending_gatekeeper
+  cross_review_metric: metrics/cross-review-CAND-030-20260514-081538.jsonl
+  cross_review_decision: 'scope-down (avg 0.87, critical high override): lifecycle.ts:780-791 reset 분기는 commit 2f86ae71d5 "fix(subagents): recover announce cleanup after kill/complete race" by-design recovery + steer-restart.test.ts:659-688 회귀 보호. production callsite 호출 순서는 abort→markTerminated→aborted event 역순. wrong-output framing 폐기. 잔존 가치: cleanup==="keep" marker 5분 잔존 (memory hygiene) + async hook 두 번째 발사 가능성. severity P2 → P3.'
   note: FIND-agents-registry-lifecycle-001 — run-manager.ts:503-528 markSubagentRunTerminated 의 dispose loop 가
     clearPendingLifecycleError 만 호출하고 clearPendingLifecycleTimeout 누락 (deps interface gap). aborted event 후 15초 grace
     안에 markTerminated 호출 시 stale timer 가 fire → lifecycle.ts:780-791 reset 분기가 killed entry 를 COMPLETE/timeout 으로
-    덮어씀 → hook 관측치 / detached task tracker 왜곡. severity P2.
+    덮어씀 → hook 관측치 / detached task tracker 왜곡. severity P2 (cross-review scope-down → P3).
 - id: CAND-031
   type: single
   finding_count: 1

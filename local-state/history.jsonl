@@ -196,3 +196,5 @@
 {"item_id": "CAND-041", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from repaired FIND batch (041)", "at": "2026-05-14T07:11:24+00:00", "extras": {}}
 {"item_id": "CAND-042", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from repaired FIND batch (042)", "at": "2026-05-14T07:11:24+00:00", "extras": {}}
 {"item_id": "CAND-043", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from repaired FIND batch (043)", "at": "2026-05-14T07:11:24+00:00", "extras": {}}
+{"item_id": "CAND-027", "from": "pending_gatekeeper", "to": "abandoned", "actor": "cross-review-2026-05-14", "reason": "CAL-001: 3 inner unconditional guards swallow listener IIFE reject sources", "at": "2026-05-14T08:18:45+00:00", "extras": {}}
+{"item_id": "CAND-029", "from": "pending_gatekeeper", "to": "abandoned", "actor": "cross-review-2026-05-14", "reason": "CAL-001 perfect: task-registry in-memory write before persist invalidates split-state premise", "at": "2026-05-14T08:18:45+00:00", "extras": {}}

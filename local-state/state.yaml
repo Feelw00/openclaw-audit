@@ -1791,16 +1791,22 @@ items:
     created_at: '2026-05-14T06:55:21+00:00'
     updated_at: '2026-05-14T06:55:21+00:00'
   CAND-027:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (027)
       at: '2026-05-14T06:55:21+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: cross-review-2026-05-14
+      reason: 'CAL-001: 3 inner unconditional guards swallow listener IIFE reject
+        sources'
+      at: '2026-05-14T08:18:45+00:00'
     created_at: '2026-05-14T06:55:21+00:00'
-    updated_at: '2026-05-14T06:55:21+00:00'
+    updated_at: '2026-05-14T08:18:45+00:00'
   CAND-028:
     kind: candidate
     state: pending_gatekeeper
@@ -1813,16 +1819,22 @@ items:
     created_at: '2026-05-14T06:55:22+00:00'
     updated_at: '2026-05-14T06:55:22+00:00'
   CAND-029:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (029)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: cross-review-2026-05-14
+      reason: 'CAL-001 perfect: task-registry in-memory write before persist invalidates
+        split-state premise'
+      at: '2026-05-14T08:18:45+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T08:18:45+00:00'
   CAND-030:
     kind: candidate
     state: pending_gatekeeper
