@@ -101,11 +101,62 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # 상세 + 종결된 PR / merged history → openclaw-pr-tracker.md.
 #
 # 다음 세션 액션 우선순위 (잔여):
+#
+#   ## 0. 최우선 — 활성 9 CAND pre-sol real behavior proof (사용자 결정 2026-05-14)
+#
+#   사용자 지시: "다중 세션으로 전부 proof. 실제 테스트 후 문제가 아니면 SOL 작성 불필요" — pre-sol 을 false-positive
+#   filter 로 SOL 작성 *전* 게이트. NEXT.md 결정 트리 (`pre-sol unreproducible → CAND abandon`,
+#   `pre-sol collected → SOL 작성 착수`) 와 정합.
+#
+#   대상 9 CAND (gatekeeper approve + cross-review proceed/proceed-with-caveat):
+#   • CAND-026 — agents-registry-error-boundary (restoreSubagentRunsOnce silent catch + set-before-action)
+#   • CAND-030 — agents-registry-lifecycle (markSubagentRunTerminated 의 clearPendingLifecycleTimeout 누락)
+#   • CAND-031 — auto-reply/queue/drain self-recurse retry (max-attempts/backoff/dead-letter 부재)
+#   • CAND-032 — auto-reply/reply-run-registry void backend.queueMessage unhandled rejection
+#   • CAND-033 — auto-reply/queue/drain collect mode auth-groups snapshot
+#   • CAND-037 — context-engine/registry resolveContextEngine validation fallback dispose 부재
+#   • CAND-038 — gateway/ws-connection chatAbortControllers ownerConnId abort 누락
+#   • CAND-039 — gateway/server-runtime-services recovery IIFE SIGTERM 미가드
+#   • CAND-040 — infra/approval-handler-runtime activeEntries deliverTarget 중 onStopped race
+#
+#   feasibility 평가 (2026-05-14 점검):
+#
+#   | 유형 | CAND | 필요 작업 | 1건당 추정 |
+#   |---|---|---|---|
+#   | hook 있음 / 시나리오만 작성 | 026, 032 | 시나리오 작성 + 빌드 + 실행 | 1-2h |
+#   | __test export hook 추가 필요 | 030, 031, 033, 037, 040 | hook 1-2줄 (측정 instrumentation, fix 아님) + 시나리오 + 빌드 + 실행 | 2-3h |
+#   | LLM/SIGTERM/외부 메시지 mock 인프라 필요 | 038, 039 | mock + scenario + spawn 인프라 + 실행 | 3-5h |
+#
+#   총 추정: 20-35시간 → 다중 세션. blocked-env 는 적용 안 함 (실제로는 작성 가능, hook 추가는 instrumentation
+#   이지 fix 가 아님 — pre-sol 단계에서 worktree-local 으로 추가 후 측정만, 커밋하지 않음).
+#
+#   진행 순서:
+#     세션 N+1: CAND-026 + CAND-032 (hook 기존, 시나리오 신규) — end-to-end 파이프라인 검증 우선
+#     세션 N+2: CAND-030/031/033 (auto-reply / agents 도메인 hook 추가) — 도메인 묶음
+#     세션 N+3: CAND-037/040 (context-engine / infra 도메인 hook 추가)
+#     세션 N+4-5: CAND-038/039 (gateway 외부 mock 인프라)
+#
+#   각 세션 진입 시 첫 액션:
+#     1. 사용자 허락 받기 (skills/real-behavior-proof/SKILL.md §Step 1 gate)
+#     2. upstream/main fetch + behind 확인 (§1.B)
+#     3. 해당 CAND 의 file:line 재확인 (upstream HEAD 변경으로 CAL-007 stale risk)
+#     4. worktree 생성 (/Users/lucas/Project/openclaw-worktrees/proof-CAND-NNN)
+#     5. __test export hook 추가 (해당하는 경우, instrumentation only)
+#     6. scenarios/proof-CAND-NNN.py 작성 (gateway-map-size.py 패턴 차용)
+#     7. harness/run.py --mode pre-sol 실행
+#     8. status 평가 (collected / unreproducible / blocked-*)
+#     9. local-state + SOL 영역 transition (proofs/PROOF-CAND-NNN-pre-*.md 생성)
+#     10. unreproducible → CAND abandon. collected → SOL 작성 단계 진입.
+#
+#   참고: SOL 작성은 pre-sol collected 결과를 받은 후. proof 가 정직한 게이트.
+#
+#   ## 1-5. 기존 잔여 액션 (위 0번 이후)
+#
 #   1. PR #68669 무대응 유지 — close 트리거 시 race fix 논거 제시 + reopen 또는 CAL-010 credit-only.
 #   2. PR #71648 메인테이너 리뷰 대기 — sufficient 자동평가 미부여 (fake timer 추정). real wall-clock 재시도는 mcp-pending-ttl
 #      scenario + TTL env override hook 도입에 의존.
 #   3. CAL-011 calibration 정식 문서 작성 — alternative-axis acceptance 패턴 (PR #71040 사례).
-#   4. real-behavior-proof skill end-to-end 검증 — 다음 drafted SOL 진입 시 사용자 허락 받고 한 번 실행
+#   4. real-behavior-proof skill end-to-end 검증 — §0 의 CAND-026 + CAND-032 진행이 첫 end-to-end 검증 케이스.
 #      (참고: SOL-0004 는 2026-04-21 PR #68842 로 머지 완료 — proof skill 도입 전이라 미적용).
 #   5. Phase 5 후속 셀 — mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
 #
