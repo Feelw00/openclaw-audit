@@ -76,76 +76,40 @@ open PR worktree 는 `fix/*` 브랜치라 main 업데이트와 독립. rebase �
 # 아직 안 돌린 Phase 1 셀 확인
 grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 
-# 현재 Phase 1+2+3+4 상태 (2026-04-24 기준, 17 셀 전부 감사 완료 — Phase 4 본 세션 추가)
+# 감사 완료 셀 인벤토리 (axis 중복 회피용 — 새 셀 진입 시 참조).
+# 상세 outcome / PR / 종결 사유는 issue-candidates/index.yaml + solutions/SOL-*.md + openclaw-pr-tracker.md.
 #
-# Phase 1 (5/5 done):
-#   ✓ plugins-memory               — CAND-001 abandoned
-#   ✓ plugins-lifecycle            — CAND-005 abandoned (CAL-004 upstream superseded)
-#   ✓ cron-concurrency             — CAND-002/003 abandoned
-#   ✓ agents-registry-memory       — CAND-004 abandoned (CAL-001 maintainer reject)
-#   ✓ infra-process-error-boundary — CAND-006 abandoned (CAL-003 synthetic-only)
+# Phase 1 (5/5):
+#   ✓ plugins-memory / plugins-lifecycle / cron-concurrency / agents-registry-memory / infra-process-error-boundary
 #
-# Phase 2 (5/5 done):
-#   ✓ plugins-error-boundary       — 0 FIND (CAL-007 fresh 재감사, upstream 이미 fix)
-#   ✓ cron-memory                  — 0 FIND (전 Map/timer 방어 확인)
-#   ✓ infra-retry-concurrency      — adjacent: CAND-008 abandoned + CAND-009 open PR #68543
-#   ✓ infra-process-memory         — adjacent: CAND-007 abandoned
-#   ✓ agents-registry-concurrency  — adjacent: CAND-010 abandoned + CAND-011 open PR #68669
+# Phase 2 (5/5):
+#   ✓ plugins-error-boundary / cron-memory / infra-retry-concurrency / infra-process-memory / agents-registry-concurrency
 #
-# Phase 3 (6/6 done, 2026-04-22 잔여 3 셀 감사 완료):
-#   ✓ auto-reply-concurrency       — CAND-012 → PR #68839 (proceed) + CAND-013 scope_down
-#   ✓ gateway-memory               — CAND-014 → PR #68842 ✅ MERGED + CAND-015 → PR #68848 + CAND-016 abandoned (CAL-008)
-#   ✓ gateway-error-boundary       — CAND-017/018 abandoned (synthetic + observability scope 밖)
-#   ✓ gateway-concurrency          — 3 FIND → CAND-021 approve(cross-review 대기) / CAND-022 abandoned (CAL-008 PR #68341) / CAND-023 → SOL-0006 + PR #70142 (리뷰 대기)
-#   ✓ channels-error-boundary      — 2 FIND → CAND-019 abandoned (primary-path: 4 adapter swallow) / CAND-020 abandoned (primary-path: 3 caller 2-arg then)
-#   ✓ channels-lifecycle           — 2 FIND validate REJECT (YAML frontmatter error), 별도 복구 작업 대기
+# Phase 3 (6/6):
+#   ✓ auto-reply-concurrency / gateway-memory / gateway-error-boundary / gateway-concurrency
+#   ✓ channels-error-boundary / channels-lifecycle (2 FIND validate REJECT — YAML frontmatter 복구 작업 대기)
 #
-# Phase 4 (4/4 done, 2026-04-24 본 세션 — 메인테이너 공개 우선순위 "memory/plugin loading/cron/reliability" 정면):
-#   ✓ plugins-concurrency          — 0 FIND (CAL-008 dup: 2a283e87a7+59d07f0ab4+e8fd148437+c95507978f+d1e3ed3743+13821fd54b+cc343febfb 7 fix 커밋으로 sync 강제+rollback 확립, file-lock race 는 PR #67876 bandaid 인지)
-#   ✓ context-engine-memory        — 0 FIND (신규 도메인. CAL-008 dup: 59d07f0ab4 로 clearContextEnginesForOwner primary cleanup 이미 반영. rejectedKeys Set 은 literal type bounded. 타이머/리스너 0건. domain-notes/context-engine.md 신규 작성)
-#   ✓ cron-error-boundary          — 0 FIND (resolveStorePath throw 불가, onEvent 타입 sync 라 async injection compile-time 차단, onTimer try/finally self-healing. upstream 6주 cron fix 중 error-boundary 축 없음)
-#   ✓ cron-lifecycle               — 2 FIND (P2) → CAND-024 epic (activeJobIds partial merge gap: upstream 7d1575b5df (#60310) 가 runDueJob/executeJob 만 수정하고 startup catchup + manual run 간과. related issue #68157 OPEN 2026-04-23 증상 보고 중)
+# Phase 4 (4/4):
+#   ✓ plugins-concurrency / context-engine-memory / cron-error-boundary / cron-lifecycle
 #
-# Phase 5 (1/N — 본 세션 2026-04-25/26 — 메인테이너 우선순위 "plugin loading" 영역 진입):
-#   ✓ mcp-memory                   — 2 FIND (P2) → CAND-025 epic → SOL-0008 → issue #71646 + PR #71648 (초기 head 61eb79c67a → 9f16dd4823 → 현재 eef0be2a2e). OpenClawChannelBridge (src/mcp/channel-bridge.ts) 의 두 pending Map (pendingClaudePermissions L50, pendingApprovals L51) 이 TTL/sweeper/close-clear/cap 동시 결여 → fix scope A (sweeper+ttl-only): lazy-start 5min sweepPendingExpired interval (.unref()) + 1h TTL (Claude perm) / expiresAtMs?? trackedAtMs+30min (approvals) + close-clear + closed-guard. Pre-PR round 1 critical-devil 가 fallback 버그 (createdAtMs?? now 가 매 sweep 마다 expiry 재계산) 잡음 → PendingApprovalEntry wrapper + trackedAtMs instance bookkeeping 으로 수정 + 3 추가 fix → round 2 3/3 real → proceed_to_pr. PR diff 174 prod + 173 test (7 it). **2026-04-27 정정**: pre-PR 검증 시 보고한 "check + build green" 은 사실 unit test (1575/1575) 만 의미했고 `pnpm check:test-types` (tsgo) 는 안 돌렸음 → CI 의 check + check-test-types 가 50+ TS2339 'never' 에러로 fail. `OpenClawChannelBridge & BridgeInternals` intersection 이 private+public 같은 이름 충돌로 `never` 로 collapse 한 type 만 문제, 머지/main 무관, PR head 단독 재현. eef0be2a2e 에서 makeBridge 반환 타입을 BridgeInternals 단독으로 좁히고 `as unknown as` 캐스트 + handleClaudePermissionRequest/close 를 BridgeInternals 에 추가. types-only test-helper, prod 코드 변경 0. 8/8 unit + tsgo:core:test + tsgo:extensions:test 모두 green 재확인. domain-notes/mcp.md 신규 작성.
+# Phase 5 (1/N — "plugin loading" 영역):
+#   ✓ mcp-memory  (cap/FIFO 후속 v2 셀 보류 — PR #71648 머지 후 착수)
 #
-# OPEN PR 2건 (2026-05-14 기준, upstream/main 동기화 HEAD 52370c5998 — active 2/10):
-#   • #68669 (CAND-011, agents-registry, head 7067f30ab2) — Real behavior proof V4 (100 parallel-completion trials).
-#     `proof: supplied + sufficient`. `triage: refactor-only` 라벨 유지 (vincentkoc 일괄). 무대응 결정 유지 — close 트리거 시 race fix 논거 제시 + reopen 또는 CAL-010 credit-only.
-#   • #71648 (CAND-025→SOL-0008, mcp channel-bridge pending Maps TTL sweeper, head eb69de7135) — V4 (fake timer 사용) → `proof: supplied` 만 (sufficient 미부여, fake timer 추정 원인). Closes #71646. 메인테이너 리뷰 대기.
+# OPEN openclaw PR (다음 세션에서 상태 확인 우선):
+#   • #68669 (CAND-011, agents-registry-concurrency) — `proof: supplied+sufficient` + `triage: refactor-only`. 무대응 유지.
+#   • #71648 (CAND-025→SOL-0008, mcp channel-bridge TTL sweeper) — `proof: supplied` 만. 메인테이너 리뷰 대기.
+# 상세 + 종결된 PR / merged history → openclaw-pr-tracker.md.
 #
-# **MERGED 2026-05-11 — 4 PR 동시 머지 마일스톤** (메인테이너 일괄 검토 정황):
-#   • #78243 (SOL-0009/CAND-024, cron manual-run mark/clear, head merged 88cbbc84c1) — Fixes #78233. SOL-0007 (PR #71040 closed) 의 manual-only scope-down 후속. real wall-clock with/without sqlite task_runs 비교 evidence + V2 → V4 강화 모두 통과.
-#   • #68543 (CAND-009, infra-retry retryAsync retry-after lower bound, head merged 2f090f647a) — V3 (50 trial real `node:http` server timing) + `proof: supplied + sufficient`.
-#   • #68839 (CAND-012/SOL-0003, auto-reply drain identity guard, head merged eb552f1691) — V1 (회귀 테스트 1/1) 만으로도 sufficient 자동 부여 패턴.
-#   • #68848 (CAND-015/SOL-0005, gateway nodeWakeById cleanup, head merged 29db03ff4e) — V4 (100 unregistered RPC Map size). 새 main 이 wake state 를 nodes-wake-state.ts 별도 모듈 분리 → fix 이식 매끄럽게 진행.
+# 다음 세션 액션 우선순위 (잔여):
+#   1. PR #68669 무대응 유지 — close 트리거 시 race fix 논거 제시 + reopen 또는 CAL-010 credit-only.
+#   2. PR #71648 메인테이너 리뷰 대기 — sufficient 자동평가 미부여 (fake timer 추정). real wall-clock 재시도는 mcp-pending-ttl
+#      scenario + TTL env override hook 도입에 의존.
+#   3. PR #68341 모니터 (CAL-008 upstream-competing) — close-without-merge 시 CAND-021/022 재오픈 검토.
+#   4. CAL-011 calibration 정식 문서 작성 — alternative-axis acceptance 패턴 (PR #71040 사례).
+#   5. real-behavior-proof skill end-to-end 검증 — 실제 SOL (예: SOL-0004) 진행 시 사용자 허락 받고 한 번 실행.
+#   6. Phase 5 후속 셀 — mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
 #
-# 누적 merged: #68842 (CAND-014, 파이프라인 첫 merge 2026-04-19), #63105 (파이프라인 외 cron-store split 2026-04-20),
-#   + 2026-05-11 4건 (#78243/#68543/#68839/#68848) → 총 6 PR merged.
-# closed (indirect-merge with credit, CAL-010): #70142 (CAND-023/SOL-0006, 2026-04-26) — clawsweeper auto-close. 메인테이너 commit `8bc4d4bcd4` 우월 fix. changelog `Fixes #70139. Thanks @Feelw00.` credit.
-# closed (alternative-axis acceptance, CAL-011): #71040 (CAND-024/SOL-0007, 2026-05-06) — 메인테이너 commit `1fae716a04` 가 sweeper-side 사후 복구 axis 채택 → 우리 PR close + 잔여 manual-run 영역만 follow-up issue #78233 + SOL-0009 + PR #78243 으로 좁게 분리 (위 4 머지 중 1건). CAL-008 (dup-axis 선제) + CAL-010 (indirect-merge with credit) 의 hybrid. 사용자가 cross-review 능동 트리거 (PR 작성 2주+ 후 잔존 검증) 한 운영 패턴 신설.
-#
-# **2026-05-14 신규 작업: real-behavior-proof skill 신설** (commit cc653c2). openclaw 의 `triage:needs-real-behavior-proof` /
-# `proof:supplied` / `proof:sufficient` 라벨 정책에 맞춰 SOL 작성 전(pre-sol)/후(post-sol) production-like 환경 결함 재현/검증을
-# **자동화 파이프라인**으로 forward-shift. `skills/real-behavior-proof/` (SKILL + 2 modes + 3 scenarios + 5 harness module).
-# 시나리오 3개 (cron-manual-run / gateway-map-size / mcp-pending-ttl) 모두 dry-run PR body 가 evaluateRealBehaviorProof()
-# `status: passed` + `label: [proof:supplied]` 통과 확인. 모든 severity 에 적용 (P3 포함), 재현 불가능은 별도 상태 표기
-# (blocked-external-dep). 결정 트리는 §2 의 R-12/R-13 행 + §7.5 참조.
-#
-# 잔여 미처리 (다음 세션 우선순위 순):
-#   1. **PR #68669 무대응 유지** — close 트리거 시 race fix 논거 제시 + reopen 또는 CAL-010 credit-only.
-#   2. **PR #71648 메인테이너 리뷰 대기** — supplied 부여, sufficient 자동평가 미부여 (fake timer 추정). real wall-clock 재시도 가치는 mcp-pending-ttl scenario 에 의존 — TTL env override hook 이 fix 에 없음.
-#   3. PR #68341 모니터 (CAL-008 upstream-competing) — thesomewhatyou grab-bag PR. CAND-021 + CAND-022 abandoned 근거.
-#   4. **CAL-011 calibration 정식 문서 작성** — PR #71040 사례 정착. NEXT.md §123 prose 만으로 부족. (CAL-008 + CAL-010 hybrid 패턴.)
-#   5. real-behavior-proof skill end-to-end 검증 — 실제 SOL (예: SOL-0004 gateway costUsageCache) 진행 시 사용자 허락 받고 한 번 실행. 시나리오 build/run 시간/안정성 측정.
-#   6. Phase 5 후속 셀 (PR queue 여유 8/10) — mcp-lifecycle / mcp-concurrency / mcp-memory v2 (cap/FIFO 후속) / agents-registry-lifecycle (PR #68669 리뷰 완료 후) 중 택일.
-#
-# CAND-021 종결 (2026-04-25): 5-agent post-harness cross-review (metrics/cross-review-CAND-021-20260425-224410.jsonl) primary_decision=upstream_wait. real_count=3 (positive/critical/reproduction-realist) + 1 fix-insufficient (hot-path-tracer score=3/5) + 1 upstream-duplicate (PR #68341, Greptile 5/5). FIND-001 자체는 valid race 였으나 PR #68341 이 동일 fix 축 선제 → CAND-016 (PR #68801 dup) 패턴.
-# CAND-022 종결 (2026-04-25): cross-review 생략 (CAL-008 dup 직접 확인). PR #68341 의 poll 핸들러 inflight extend + 'dedupes concurrent poll sends' 테스트가 본 FIND-002 의 fix 축과 일치 → state.yaml/CAND-022.md/index.yaml 동기화만 수행.
-# CAND-025 종결 (2026-04-26): mcp-memory 첫 셀 → issue #71646 + PR #71648 (head 61eb79c67a) 발행 완료. gatekeeper approve@high → 5-agent post-harness primary_decision=proceed (metrics/cross-review-CAND-025-20260425-233553.jsonl) → SOL-0008 chosen_fix=A (sweeper+ttl-only) → 3-agent pre-pr round 1: critical-devil 가 sweepPendingExpired fallback 버그 (createdAtMs ?? now 매 sweep 마다 expiry 재계산해 영원히 expire 안 됨) 잡음 → PendingApprovalEntry wrapper + trackedAtMs instance bookkeeping + closed-guard + 테스트 보강 (vi.getTimerCount + 양 undefined + close 후 set) 으로 수정 → round 2 3/3 real_problem_real_fix proceed_to_pr (metrics/cross-review-SOL-0008-20260426-005346.jsonl). cap/FIFO 의도적 후속 PR 분리.
-#
-# 신규 셀 정의 필요 시 grid.yaml §types 에 id 추가 후 §cells 확장.
-# 다음 Phase 5 후보 (보류 중): agents-registry-lifecycle (PR #68669 리뷰 완료 후 착수), mcp-memory / mcp-lifecycle (신규 도메인 경계 조사 필요), cron-concurrency 신축 (이미 audit 된 영역이라 우선순위 낮음).
+# 신규 셀 정의 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 ```
 
 셀 실행 프롬프트 템플릿 (Agent 도구, `subagent_type=general-purpose`):
@@ -165,12 +129,16 @@ allowed_paths: {grid.yaml 해당 도메인}
 R-3 Grep 결과를 counter_evidence.reason 에 명시.
 ```
 
-## 4. Phase 2 로 확장 (Phase 1 완료 후)
+## 4. 다음 셀 선택 시 우선순위
 
-```
-cells 에서 phase: 2 항목 찾기 (plugins-error-boundary, cron-memory,
-infra-retry-concurrency, infra-process-memory, agents-registry-concurrency)
-```
+Phase 1-5 의 21 셀 모두 1차 audit 완료. 새 셀 착수 시:
+
+1. **메인테이너 공개 우선순위 부합 도메인** 우선 (memory / plugin loading / cron / reliability)
+2. PR queue 여유 확인 (`gh pr list --author "@me" --repo openclaw/openclaw --state open` ≤ 7)
+3. 기존 abandoned CAND 와 axis 중복 회피 (CAL-004/CAL-008 패턴)
+4. 신규 도메인 진입 시 `domain-notes/<name>.md` 신규 작성 의무
+
+현재 후보 (위 §3 마지막 코멘트 참조): mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / event-bus.
 
 ## 5. 졸업 조건 (shadow → 자동화)
 
@@ -179,7 +147,8 @@ wc -l metrics/shadow-runs.jsonl metrics/human-verdicts.jsonl metrics/self-consis
 # 목표: 50 / 10 / 10
 ```
 
-현재 (2026-04-18): 4 / 0 / 0 → 갈 길 멀다. 매 세션 +1~2 shadow 씩 누적.
+현재 (2026-05-14): **28 / 23 / 10** — self-consistency 졸업, human-verdicts 졸업,
+shadow-runs 22 누적 더 필요. real-behavior-proof skill 도입으로 SOL 단계마다 evidence 증가 → shadow 누적 가속 예상.
 
 ## 6. 세션 종료
 
@@ -335,24 +304,6 @@ guard `_check_no_inline_heading` 가 line-start `# ` 패턴 (policy 가 거기�
   - `calibration/CAL-008-gatekeeper-upstream-dup-gap.md` (gatekeeper upstream-dup check 필수 원천)
   - `calibration/CAL-009-codex-bot-review-rebuttal.md` (Codex/Greptile bot 지적 병렬 검증 → 반박/반영 결정 프로토콜)
   - `calibration/CAL-010-indirect-merge-with-credit.md` (PR #70142 — 메인테이너가 우월한 fix 로 직접 commit + 우리 PR closed + changelog credit. atomic helper 반환 contract 활용 미스 + indirect-merge outcome 분류 신설)
+  - **CAL-011 (TODO 작성)** — alternative-axis acceptance + cross-review-driven retract. CAL-008 (dup-axis 선제) + CAL-010 (indirect-merge with credit) 의 hybrid 패턴. 메인테이너가 다른 axis 로 동일 문제 해결 시 우리 PR close + 잔여 영역만 follow-up issue 로 좁게 분리.
 - **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
-  - 파이프라인 외 PR (#63105 cron-store split) 포함
-  - Greptile 재리뷰 수동 트리거 절차
-
-# 2026-05-06 진척 (V3 evidence 강화 — production demo)
-# - upstream main 186 commits 진척 (af2719a7b9). 6 PR 모두 rebase + force-push, CI 완전 GREEN (이전 base broken test 16건 main 에서 fix됨).
-# - 4 PR (#68543/68669/68848/71648) Real behavior proof v3 추가 — production CLI keyword + with/without 빌드 비교.
-#   - #68543: 50 trial real `node:http` server + `retryAsync` real timing — without-fix 23/50 (46%) 1000ms 미만, with-fix 0/50.
-#   - #68669/68848/71648: 회귀 테스트 4/4-36/36 with/without 비교 + production CLI keyword.
-# - 라벨: proof: supplied 6/6, proof: sufficient 2/6 (#68839 #78243). v3 강화 후에도 4 PR 의 sufficient 자동 부여 안 됨.
-# - clawsweeper 평가 한 번만 실행하는 패턴 추정. 메인테이너 수동 trigger 만 sufficient 가능성.
-# - 진짜 production 시연은 사용자가 결정한 수준까지 진행 완료. 라벨링 timing 은 우리 통제 밖.
-
-# 2026-05-06 V4 evidence 강화 — production demo (100 trial measurement)
-# - 4 PR (#68543/68669/68848/71648) 회귀 테스트 file 안에 production demo block 추가 → 100 trial real measurement → block 제거 → PR body update.
-#   - #68543: real node:http server timing — 23/50 < 1000ms (without) vs 0/50 (with)
-#   - #68669: 100 parallel-completion trials cleanup invocation count — 200 (without) vs 100 (with)
-#   - #68848: 100 unregistered RPC Map size — 100 leak (without) vs 0 (with)
-#   - #71648: 100 pending requests TTL eviction — 100 잔존 (without) vs 0 (with), fake timer 사용
-# - 라벨 결과: proof: sufficient 5/6 (#68543/68669/68839/68848/78243). #71648 만 supplied 만.
-#   추정: #71648 만 fake timer (vi.useFakeTimers) 사용 → clawsweeper 평가가 real measurement 와 구분 가능성.
+  - 파이프라인 외 PR + 종결된 PR + Greptile 재리뷰 수동 트리거 절차
