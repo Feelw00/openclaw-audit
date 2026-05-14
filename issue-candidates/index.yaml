@@ -290,6 +290,106 @@ candidates:
   upstream_head_checked: 6a41a54212
   cross_refs:
     - CAND-025  # same mcp domain, different axis (memory vs lifecycle)
+- id: CAND-027
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-agents-registry-error-boundary-001 — registry.ts:897-968 lifecycle listener IIFE 가 .catch
+    부재 → completeSubagentRun reject 시 unhandledRejection → infra handler 가 process.exit(1) 직결. severity P2.
+- id: CAND-028
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-agents-registry-error-boundary-002 — registry.ts:676-714 restoreSubagentRunsOnce 의 restoreAttempted=true
+    set-before-action + silent catch + state.ts:31 in-place Map mutate 결합 → wire-up 부분 실패 시 entries 잔존 +
+    listener/sweeper/resume 미완 영구 partial state. severity P3.
+- id: CAND-029
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-agents-registry-error-boundary-003 — run-manager.ts:424-453 registerSubagentRun 의 createRunningTaskRun
+    catch warn-only fall-through → subagent registry 적재 후 task registry 미생성 split state → 모든 task 갱신 silent no-op,
+    사용자 task UI 영구 빈 상태. severity P3.
+- id: CAND-030
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-agents-registry-lifecycle-001 — run-manager.ts:503-528 markSubagentRunTerminated 의 dispose loop 가
+    clearPendingLifecycleError 만 호출하고 clearPendingLifecycleTimeout 누락 (deps interface gap). aborted event 후 15초 grace
+    안에 markTerminated 호출 시 stale timer 가 fire → lifecycle.ts:780-791 reset 분기가 killed entry 를 COMPLETE/timeout 으로
+    덮어씀 → hook 관측치 / detached task tracker 왜곡. severity P2.
+- id: CAND-031
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-auto-reply-error-boundary-001 — drain.ts:298-313 catch+finally 가 max-attempts/backoff 없이 scheduleFollowupDrain
+    self-recurse → deterministic-fail 시 debounceMs=500ms 간격 무한 retry + typing keepalive 폭주. severity P3.
+- id: CAND-032
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-auto-reply-error-boundary-002 — reply-run-registry.ts:505 void backend.queueMessage(text) .catch 부재 →
+    backend reject 시 unhandled rejection → non-transient class 시 process.exit(1) crash. 자매 경로 (pi-embedded-runner/runs.ts:148-154)
+    의 .catch 패턴이 reference. severity P2.
+- id: CAND-033
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-auto-reply-lifecycle-001 — drain.ts:239-264 collect mode 의 auth-groups inner for loop 가 snapshot 패턴으로
+    동작 → 외부 clearSessionQueues 면역 → /stop 후에도 pre-captured group 이 모델로 전달. CAND-012 (PR #68839 MERGED) 의 identity
+    guard 는 outer finally 만 보호. severity P2.
+- id: CAND-034
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-auto-reply-lifecycle-002 — inbound-debounce.ts:177-180 의 setTimeout unref + 반환 객체 (flushAll/dispose 부재)
+    조합으로 SIGTERM 시 buffered inbound silent drop. severity P3.
+- id: CAND-035
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-context-engine-lifecycle-002 (FIND-context-engine-error-boundary-001 dedup-merged) — init.ts:13-23 의
+    set-before-action ordering (initialized=true 가 registerLegacyContextEngine 전에 set) 으로 register throw 시 영구 lockout.
+    동일 fix surface (ordering swap) 라 두 FIND 단일 CAND 로 통합, FIND-009 는 ready 잔존 + finding_ids 미포함. severity P3.
+  dedup_note: FIND-context-engine-error-boundary-001 과 FIND-context-engine-lifecycle-002 가 동일 코드 (init.ts:19/L22) 를
+    다른 axis 로 진단. 동일 fix surface (1 라인 swap) → FIND-012 만 cluster 포함.
+- id: CAND-036
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-context-engine-error-boundary-002 — registry.ts:239-267 invokeWithLegacyCompat 의 정규식 매칭 기반 retry 가
+    side-effectful method (compact/ingest) 의 LLM API 중복 호출 발사 (1-3회 청구). 현재 production 활성 0 (LegacyContextEngine 만),
+    third-party plugin engine 도입 시 즉시 활성. severity P3 future-proofing.
+- id: CAND-037
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-context-engine-lifecycle-001 — registry.ts:561-599 resolveContextEngine 의 contract validation fallback
+    분기 (factory throw / validation throw / contractError) 에서 이미 instantiated engine 의 dispose?.() 호출 부재.
+    factory 가 SQLite / chokidar / HTTP keep-alive 셋업 시 leak. caller-side dispose 는 invalid engine 미도달. severity P3.
+- id: CAND-038
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-gateway-lifecycle-001 — ws-connection.ts:351-421 WS close 핸들러가 session/node/presence 만 cleanup 하고
+    chatAbortControllers 의 ownerConnId 매칭 entry 는 abort 안 함. maintenance sweep (expiresAtMs 최소 2분 floor) 까지
+    runner 가 abort 없이 진행 → LLM 토큰 과금 + tool 실행 + 외부 API call 누적. severity P3.
+- id: CAND-039
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-gateway-lifecycle-002 — server-runtime-services.ts:156-190 recoverPendingOutboundDeliveries IIFE +
+    recoverPendingSessionDeliveries setTimeout(1250ms) 가 stop handle 미반환 + caller (server.impl.ts) cancellation
+    통로 부재. boot 직후 1250ms 이내 SIGTERM 시 tearing-down state 에서 recovery 진행 → 외부 메시지 의도치 않은 발사. 같은 파일의
+    scheduleGatewayPostReadyMaintenance 는 isClosing 가드 보유 (비대칭). severity P3.
+- id: CAND-040
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-infra-process-concurrency-001 — approval-handler-runtime.ts:498-537 deliverTarget 의 두 await 사이에
+    onStopped 의 activeEntries.clear() 가 실행되면 wrapped entry 가 비어있던 Map 에 다시 등록되고 stopped 핸들러로는 finalize
+    경로 미도달 → native binding orphan + 외부 자원 leak. file 내 동기화 원시 0건. caller (approval-native-runtime.ts, 셀 밖)
+    의 in-flight delivery vs onStopped sequencing 미확인 — R-7 확인 후 P3 유지 또는 abandon. severity P3.
 published:
 - cand_id: CAND-004
   issue: 68487

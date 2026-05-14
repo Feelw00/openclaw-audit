@@ -332,3 +332,194 @@ rg -n "beginSubagentCleanup|endedHookEmittedAt|endedHookInFlightRunIds" src/agen
 - 도메인 내 다른 FIND 들 (memory-001/002) 과는 root cause 가 달라 묶지 않음 (memory 계열은 sweeper
   self-stop / grace-period timer gap 축).
 
+---
+
+### plugin-lifecycle-auditor (2026-05-14, Phase 6 재진입)
+
+**재진입 사유**: Phase 4 (2026-04-18~19) 에서 PR #68669 인접 scope 혼란 위험으로 보류했었음.
+2026-05-14 PR #68669 무대응 유지 상태에서 분리된 axis 만 재탐색.
+
+**R-3 lifecycle 축 Grep 결과**:
+
+```
+rg -n "dispose|teardown|cleanup|unregister|deregister|destroy" src/agents/subagent-registry*.ts
+  → 대량 cleanup* 매치 (entry.cleanupHandled / cleanupCompletedAt 필드, browserCleanup*).
+    dispose/teardown/unregister/deregister/destroy 키워드 0 매치 (domain 의 cleanup 의미는
+    field-level 만).
+
+rg -n "process\.(on|once|off)" src/agents/subagent-registry*.ts
+  → 0 매치. process-level shutdown 핸들러 부재 (graceful shutdown gap 은 phase 4 에서 기록됨).
+
+rg -n "AbortController|AbortSignal" src/agents/subagent-registry*.ts
+  → 0 매치 (concurrency 세션에서도 동일 확인).
+
+rg -n "try\s*\{[\s\S]*?finally" src/agents/subagent-registry*.ts
+  → 0 매치 (try/finally pattern 부재; emitSubagentEndedHookOnce 의 try/finally 만 completion.ts:88-120).
+
+rg -n "\.delete\(|\.clear\(\)" src/agents/subagent-registry*.ts src/agents/live-cache-test-support.ts
+  → 33 매치. 주요 cluster:
+    - subagentRuns/resumedRuns: registry.ts:632/828/858/1028-1029, lifecycle.ts:459/492/595/640
+    - pendingLifecycleErrorByRunId: registry.ts:376/383/410
+    - pendingLifecycleTimeoutByRunId: registry.ts:392/399/447 (신규 marker, PR 845040214e)
+    - resumeRetryTimers: registry.ts:628/1027
+    - scheduledResumeTimers: lifecycle.ts:93/107 (controller-local)
+    - endedHookInFlightRunIds: registry.ts:1030, completion.ts:119 (finally unconditional)
+```
+
+**Lifecycle marker dispose 매트릭스** (CAL-001 / R-5 execution condition 분류):
+
+| 경로 | clearError | clearTimeout | entry delete | 조건 |
+|---|---|---|---|---|
+| schedulePendingLifecycleError (reg:402-404) | self | cross-clear | — | unconditional |
+| schedulePendingLifecycleTimeout (reg:439-441) | cross-clear | self | — | unconditional |
+| listener phase=start (reg:911-912) | both | both | — | unconditional |
+| listener phase=end (reg:956-957) | both | both | — | unconditional |
+| sweeper TTL (reg:870-879) | TTL 5분 | TTL 5분 | sweeper 도달 시 | conditional (TTL) |
+| finalizeInterruptedSubagentRun (reg:1100-1102) | both | both | — | unconditional |
+| **replaceSubagentRunAfterSteer (run-mgr:307-311)** | error only | **missing** | line 311 delete | safe (entry 삭제로 timer fire safe-exit) |
+| **releaseSubagentRun (run-mgr:457/470)** | error only | **missing** | line 470 delete | safe (entry 삭제 + test-only caller) |
+| **markSubagentRunTerminated (run-mgr:504)** | error only | **missing** | maintain (cleanupCompletedAt only) | **functional impact** |
+
+`pendingLifecycleTimeoutByRunId` 는 `git show 845040214e` 로 신규 marker 확인 (registry.ts:362-368, fix: recover subagent waits after transport drops, 2026-04-25). 추가된 후 markSubagentRunTerminated 에 dispose 가 incidental 누락된 것으로 추정.
+
+**replaceSubagentRunAfterSteer / releaseSubagentRun** 도 같은 누락이지만:
+- 둘 다 entry 즉시 delete → timer callback (registry.ts:442-466) L449 `if (!entry) return;` 으로 safe-exit.
+- marker map 에 5분 동안 잔존 (sweeper TTL 까지) → P3 수준 memory pressure 만.
+- functional impact 없음 → FIND 생성 보류.
+- releaseSubagentRun 은 production caller 부재 (`rg -n "releaseSubagentRun\b" src/` → test only).
+
+**markSubagentRunTerminated** 만 entry 를 maintain (cleanupCompletedAt=now + 5분 잔존) → timer fire 시 callback 의 모든 guard 통과 → completeSubagentRun L780-791 reset 분기 발동 → endedReason KILLED→COMPLETE / outcome error→timeout 으로 덮어쓰임. **functional bug P2**.
+
+**적용 카테고리 (lifecycle-auditor 페르소나)**:
+- [x] A. Load 실패 rollback 부재 — registerSubagentRun (run-mgr:374-454) 의 try/catch (425-446) 가 createRunningTaskRun 만 swallow, runs.set 은 그 이전 (424). detached-task-tracker 가 가지 못해도 subagent 자체는 OK. impact 약함 — skip.
+- [x] B. Dispose / Unload 경로 누락 — **본 finding** (markTerminated dispose 비대칭).
+- [ ] C. Dynamic import 에러 격리 — browserCleanupLoader (registry.ts:110) 의 .load() 가 throw 시 caller 가 await — try/catch 없는 곳 있음. 하지만 본 cell allowed_paths 안의 호출자 모두 try/catch 로 감싸짐. skip.
+- [ ] D. Manifest parse 실패 후 partial state — 본 도메인 manifest 부재. skip.
+- [ ] E. Enable / Disable 상태 drift — 본 도메인 enable flag 부재. skip.
+
+**스킵 사유 (false-positive 방지)**:
+- `scheduledResumeTimers` (lifecycle.ts:89) controller-local Set 의 production graceful shutdown 경로 부재 — `clearScheduledResumeTimers` 는 controller export 이지만 production caller 없음 (test only). 그러나 timer 가 entry guard (line 94) 로 safe-exit. timer.unref() 도 적용 → memory 영향 미미. P4 이하 — skip.
+- `replaceSubagentRunAfterSteer` 의 attachmentsDir double-touch (line 309 `void safeRemoveAttachmentsDir(source)` + 새 entry 가 동일 attachmentsDir 사용 가능) — 본 cell 범위 race axis. 별도 concurrency-auditor 영역. skip.
+- `registerSubagentRun` (run-mgr:447) 의 ensureListener throw 가 partial init 만들 가능성 — listenerStarted=true set 후 throw 면 silent. 그러나 onAgentEvent 의 throw 가능성은 out-of-scope (gateway). evidence 부족 → skip.
+- `pendingLifecycleErrorByRunId / pendingLifecycleTimeoutByRunId` 의 sweeper TTL cleanup 이 sweeper self-stop 후 무력화되는 경로 — 이전 FIND-agents-registry-memory-002 (sweeper self-stop) 의 cross-ref. 본 finding 의 axis 와 다름 (memory-002 는 sweeper, 본 finding 은 marker dispose). skip (중복 회피).
+
+**Self-critique (미확인)**:
+- markTerminated 의 production callsite (gateway-side kill, agent.kill 명령, subagent-orphan-recovery.ts) 는 allowed_paths 밖. 빈도 실측 불가.
+- completeSubagentRun L780-791 reset 분기의 도입 의도 (killed → COMPLETE late arrival) 는 코드 주석 부재. git blame 으로 추적해도 PR overlap (CAL-008 dup) 가능성.
+- detached task runtime 의 status enum 외부 visibility 미확인.
+- emitSubagentEndedHookOnce 의 async timing 으로 endedHookEmittedAt set 이 markTerminated 직후 *완료 전* 인 시점에 stale timer 가 fire 하면 두 번째 hook 발사 가능 — 정확한 확률 미측정.
+
+**다음 페르소나 hints**:
+
+### concurrency-auditor (재실행 시)
+
+- `replaceSubagentRunAfterSteer` 의 attachmentsDir 동기성 race (source delete + new entry create 가 같은 attachmentsDir 사용 시) 가 axis 후보. R-7 production hot-path 확인 필요.
+- markTerminated 의 emit 직후 stale timer fire 의 hook double-dispatch 가능성 — endedHookEmittedAt set 의 async-ness 가 trigger.
+
+### shutdown / error-boundary-auditor
+
+- process-level graceful shutdown 경로 부재가 본 도메인 전체 axis. registry.ts:1022 resetSubagentRegistryForTests 만 존재. production shutdown 시 in-flight emit / pending marker / sweeper / listener 가 정리되지 않음.
+
+---
+
+### error-boundary-auditor (2026-05-14, Phase 6 batch 2)
+
+**셀**: agents-registry-error-boundary. upstream HEAD `af3d9333aa`.
+
+**페르소나 카테고리 적용 (A~E)**:
+- [x] A. unhandledRejection / uncaughtException handler chain — 외곽 global handler 만 존재
+  (infra/unhandled-rejections.ts:511). 본 도메인 내부 등록 없음. global handler 의 분류
+  (`isTransientUnhandledRejectionError`, line 420-424) 가 network/sqlite/file-watch 만 transient
+  처리, 그 외는 `process.exit(1)` → FIND-001 의 핵심 메커니즘.
+- [x] B. Floating promise / fire-and-forget async — `void` 패턴 30+. registry.ts:898 listener IIFE
+  가 catch chain 없는 유일한 production hot-path → FIND-001.
+- [ ] C. JSON.parse / 외부 입력 미보호 — allowed_paths 내 JSON.parse 직접 호출 없음. skip.
+- [x] D. AbortController / AbortSignal 전파 — concurrency-auditor (2026-04-19) 가 이미 검사.
+  본 페르소나 범위 외.
+- [ ] E. fs/network 동기 호출 — out-of-scope (helpers.ts realpathSync 는 cleanup 영역). skip.
+
+**R-3 Grep (방어 경로 + throw)**:
+
+```
+rg -n "try\s*\{|catch\s*\(|\.catch\(" src/agents/subagent-registry*.ts \
+   src/agents/live-cache-test-support.ts
+  핵심:
+  - registry.ts:480-498  notifyContextEngineSubagentEnded try/catch (best-effort warn) — 정상
+  - registry.ts:681-713  restoreSubagentRunsOnce try / // ignore restore failures  ← FIND-002
+  - registry.ts:840-857  sweeper sessions.delete try/catch warn (정상)
+  - registry.ts:897-968  listener IIFE *catch chain 없음*  ← FIND-001
+  - run-manager.ts:153-244 waitForSubagentCompletion try / // ignore
+    ← **PR #75462 (SebTardif, OPEN) 가 수정 중** → CAL-008 회피, FIND 생성 안 함
+  - run-manager.ts:425-446 createRunningTaskRun try/catch warn  ← FIND-003
+  - lifecycle.ts:156-211 safeSetSubagentTaskDeliveryStatus / safeFinalizeSubagentTaskRun
+    try/catch warn (defense layer, 정상)
+  - lifecycle.ts:446, 655, 688, 706, 717, 753, 756 fire-and-forget `.catch(...)` 부착 — 정상
+
+rg -n "throw new|throw err|throw error"
+  → helpers.ts:200, 236 (fs.realpath ENOENT 외 re-throw), store.ts:207 (disk write throw)
+  → 본 audit 내 명시적 throw 적음. 외부 의존성 (createRunningTaskRun, plugin hook, dynamic
+    import) 의 throw 가 주 벡터.
+
+rg -n "console\.|log\.|emit\.(error|warn)"
+  → log.info/warn 진단 신호 정상. silent 영역은 // ignore 가 catch 표지자.
+
+rg -n "^\s*void " src/agents/subagent-registry*.ts | grep -v test
+  → 30+ matches. .catch 부착 점검 완료. registry.ts:898 만 unprotected.
+
+rg -n "process\.exit|process\.kill"
+  → match 없음. global handler 만 종료 경로 (FIND-001 메커니즘).
+```
+
+**R-5 silent catch 4-caller 분석 (CAL-001)**:
+
+| Silent catch | callers | primary-path inversion | FIND |
+|---|---|---|---|
+| run-manager.ts:243 `// ignore` | 4 callers all `void` | 없음 | **PR #75462 수정 중** (skip) |
+| registry.ts:712 `// ignore restore` | 단일 startup | 없음 | FIND-002 |
+| run-manager.ts:441 catch warn | sessions-spawn-tool, subagent-spawn (sync void) | 없음 | FIND-003 |
+| registry.ts:898 (catch 부재) | onAgentEvent 단일 production | 없음 | FIND-001 |
+| state.ts:11 `// ignore persistence` | persist 호출자 다수 | 미확인 | skip (P4) |
+| store.ts:169 `// ignore migration` | one-shot | — | skip |
+
+**CAL-008 upstream 6주 OPEN PR 검사**:
+
+| PR | 본 audit 관계 |
+|---|---|
+| #68669 | 우리 PR. lifecycle.ts:871-877 browser dedup. **본 audit 의 listener IIFE 와 다른 layer** — FIND-001 분리 명시. |
+| #75462 | run-manager.ts:243 silent catch 수정 — **직접 충돌 axis 회피, FIND 생성 안 함**. |
+| #76332 | completeSubagentRun preclaim lease. listener wrapper 와 다른 axis. |
+| #54765 | durable restore. FIND-002 와 일부 영역 중첩 가능. cross_refs 후보 (PR diff 미 deep-read). |
+| #54764 | orphan-prune 통합. 다른 axis. |
+| #80544 | ownership 모델. FIND-003 와 무관. |
+
+**신규 FIND (3건)**:
+- FIND-agents-registry-error-boundary-001 (P2): listener IIFE 의 catch chain 부재 → cleanup
+  transient throw 가 global handler 통해 `process.exit(1)`. PR #68669 axis (line 871-877 browser
+  dedup) 와 명확히 분리된 *listener wrapper* layer 결함.
+- FIND-agents-registry-error-boundary-002 (P3): restoreSubagentRunsOnce 의 silent catch +
+  restoreAttempted try-진입-전 set. 부분 wire-up 실패 영구화 (entries 적재 후 listener/sweeper
+  미가동).
+- FIND-agents-registry-error-boundary-003 (P3): registerSubagentRun 의 createRunningTaskRun
+  catch 가 warn 만 출력하고 진행 → subagent registry vs task registry split state. 사용자 task UI
+  영구 누락.
+
+**스킵 사유**:
+- **PR #68669 axis 회피**: lifecycle.ts:871-877 browser cleanup wrapper / completeSubagentRun 내
+  announce cleanup throw 시 후속 cleanup 미실행 — 본 audit 에서 새 FIND 생성 안 함.
+- **PR #75462 axis 회피**: waitForSubagentCompletion silent catch (run-manager.ts:243).
+- live-cache-test-support.ts: `LIVE_CACHE_TEST_ENABLED` env guard (line 19-20) 로 test-only.
+  importer 모두 `.live.test.ts` 또는 regression-runner. production 영향 없음.
+- persistSubagentRunsToDisk silent catch (state.ts:11): caller 다수, 영향 정량 부족, P4. drop.
+- safe* helpers (lifecycle.ts:156-211): 의도된 defense, 정상.
+- notifyContextEngineSubagentEnded best-effort catch (registry.ts:495-497): 의도된 design.
+
+**Self-critique**:
+- `emitSubagentEndedHookForRun` 실제 throw 빈도 미측정. plugin runtime / hook 콜백 production
+  failure mode 정량 부재.
+- `loadCleanupBrowserSessionsForLifecycleEnd` dynamic import 의 production 실패 빈도 미측정.
+- PR #54765 diff deep-read 미수행 — FIND-002 와 일부 중첩 가능성.
+- `retireRunModeBundleMcpRuntime` 내부 throw 경로는 pi-bundle-mcp-tools.ts out-of-scope.
+- ensureListener 의 `listenerStarted=true` 가 throw 전 set 되는 fragile 패턴은 별도 FIND 후보지만
+  4건 한도 + 단독 trigger 빈도 부족으로 본 세션 제외 (FIND-002 의 mechanism 안에서 메모만).
+
+

@@ -241,3 +241,227 @@ ReDoS 위험 부재. 단 `Array.includes` 는 큰 allowlist 에서 O(n) — 성�
   미확인 — 존재하면 resolve 경로 복구는 정상.
 - ackReactionPromise 생성부에서 caller 가 선-`.catch` 부착하는 계약이 실재
   하는지 미확인 — 존재하면 CAND-020 drop.
+
+---
+
+## Memory 축 조사 (2026-05-14, memory-leak-hunter, cell: channels-memory, Phase 6)
+
+**스코프**: `src/channels/**`, `src/routing/**` (upstream/main af3d9333aa)
+**선행 확인**: channels-error-boundary (Phase 3) + channels-lifecycle (Phase 3) 이미
+완료. CAND-019/020 abandoned (primary-path inversion). lifecycle FIND-001/002
+가 `thread-binding-api`/`message-tool-api`/`loggedMessageActionErrors` 의
+plugin re-pin signal 전파 부재를 다룸 — 본 memory 셀에서 동일 코드 재진입 시
+cross-axis dup 발생 위험 → 회피.
+
+### 적용 카테고리
+
+- [x] applied — 무제한 Map/Set 성장 (module-scope, fn-scope 분리)
+- [x] applied — setInterval/setTimeout 미정리 (clearTimeout/clearInterval 대칭)
+- [x] applied — EventEmitter / abortSignal listener 누적 (addEventListener vs removeEventListener)
+- [x] applied — 캐시 TTL/cap 부재 (LRU/WeakMap 사용 여부)
+- [x] applied — Strong reference chain (WeakMap 미사용 한계)
+
+### Module-scope long-lived state 인벤토리 (production 경로)
+
+| 파일:라인 | 자료구조 | 키 도메인 | cap/eviction | R-5 평가 |
+|---|---|---|---|---|
+| `routing/account-id.ts:12,13` | normalize cache (2 Map) | account id 문자열 | `cap 512 + FIFO` (setNormalizeCache) | unconditional |
+| `routing/resolve-route.ts:127` `agentLookupCacheByCfg` | WeakMap | OpenClawConfig | WeakMap + agentsRef ID-equality 무효화 | unconditional |
+| `routing/resolve-route.ts:204` `evaluatedBindingsCacheByCfg` | WeakMap | OpenClawConfig | WeakMap + inner `MAX_EVALUATED_BINDINGS_CACHE_KEYS=2000` clear-on-overflow | unconditional |
+| `routing/resolve-route.ts:206` `resolvedRouteCacheByCfg` | WeakMap | OpenClawConfig | WeakMap + inner `MAX_RESOLVED_ROUTE_CACHE_KEYS=4000` clear-on-overflow | unconditional |
+| `channels/bundled-channel-catalog-read.ts:23` `officialCatalogFileCache` | Map | `listPackageRoots()` (≤2 paths) | bounded-by-domain (cap 불요) | conditional but domain-bounded |
+| `channels/plugins/catalog.ts:75` `officialCatalogEntriesByPath` | Map | resolveOfficialCatalogPaths(≤4 paths) | bounded-by-domain | conditional but domain-bounded |
+| `channels/plugins/bundled.ts:96` `bundledChannelLoadContextsByRoot` | Map | rootScope.cacheKey | `MAX_BUNDLED_CHANNEL_LOAD_CONTEXTS=32` FIFO (line 329-334) | unconditional |
+| `channels/plugins/bundled.ts:97` `sourceBundledEntryLoaderCache` | Map | modulePath-derived | cap 없으나 bundled plugin set = build-time fixed (~5 paths) | conditional but domain-bounded |
+| `channels/plugins/module-loader.ts:14` `jitiLoaders` | Map | scopedCacheKey = `${import.meta.url}::channel-plugin-module-loader::${aliasMap+tryNative}` (modulePath 비포함) | cap 없으나 cacheKey 도메인이 alias/tryNative 의 함수 — 매우 작음 | conditional but domain-bounded |
+| `channels/plugins/package-state-probes.ts:32` `sourcePackageStateLoaderCache` | Map | bundled channel catalog enum 의 specifier path | cap 없으나 enum 도메인 bounded | conditional but domain-bounded |
+| `channels/plugins/read-only.ts:44` `moduleLoaders` | Map | loader (line 105) 또는 manifest setupSource (line 386) | cap 없으나 plugin manifest set bounded | conditional but domain-bounded |
+| `channels/plugins/stateful-target-drivers.ts:38` | Map | driver id | `unregister` 양방향 (line 57-58) | unconditional symmetric |
+| `channels/plugins/configured-binding-consumers.ts:35` | Map | consumer id | `unregister` 양방향 | unconditional symmetric |
+| `channels/plugins/message-action-discovery.ts:43` `loggedMessageActionErrors` | Set | pluginId+op+message | test-only clear (line 362) | **channels-lifecycle FIND-002 cross-axis** — 본 셀에서 신규 FIND 만들지 않음 |
+| `channels/plugins/thread-binding-api.ts` cache + `message-tool-api.ts` cache | Map | channel id | test-only clear | **channels-lifecycle FIND-001 cross-axis** — 본 셀에서 신규 FIND 만들지 않음 |
+
+### Timer / listener parity (전부 대칭, R-3 + R-5 통과)
+
+| 모듈 | 등록 | 해제 | 조건 |
+|---|---|---|---|
+| `draft-stream-loop.ts:59` setTimeout | `clearTimeout` line 22/84/94 | unconditional (stop()+ resetThrottleWindow) |
+| `status-reactions.ts:225/229/307` setTimeout (×3) | `clearAllTimers` line 189-202 + early-exit | unconditional |
+| `transport/stall-watchdog.ts:92` setInterval + `:91` addEventListener("abort") | `clearInterval` line 39 + `removeEventListener` line 54 | unconditional |
+| `typing-lifecycle.ts:33` setInterval | `clearInterval` line 42 | unconditional |
+| `typing.ts:56` setTimeout (ttl) | `clearTimeout` line 66 | unconditional |
+| `run-state-machine.ts:48` setInterval + `:70` addEventListener("abort", once:true) | `clearInterval` line 40 + auto-detach | unconditional |
+| `plugins/binding-routing.ts:173` setTimeout (race) | `clearTimeout` line 197 | unconditional (Promise.race finally) |
+
+### status-reactions.ts `activeEmojis` Set (라인 176)
+
+controller closure-scope (turn-scoped lifetime). `applyEmoji` (line 268) add,
+`removeActiveEmojis` (line 250) delete. `clear()`/`finishWithEmoji()` 가
+무조건 호출 — controller 종료 시 모든 emoji 제거. **unconditional cleanup**.
+
+### CAL-008 upstream 검사 (6주 기준)
+
+`git log upstream/main --since="6 weeks ago" -- src/channels src/routing` 의
+memory/cache 관련 fix:
+- `7b05b4b68e fix(channels): share plugin module jiti cache helper` (2026-04-14)
+- `3e63b7c112 fix: align channel module loader cache import` (2026-05-02)
+- `855c220a63 fix(channels): preserve bundled channel load caches` (2026-04-29)
+- `e27fe55aa8 refactor: simplify plugin cache boundaries` (2026-04-29)
+- `7a5b419843 refactor(plugins): simplify plugin cache boundaries`
+- `1ecd46f49b fix(channels): cache selected channel registry lookups`
+- `dc469a3db5 fix(gateway): preserve channel plugin identity in cache`
+- `cdaa70facb refactor: cache repeated lazy imports`
+- `ad0d87d881 perf: cache startup package metadata`
+
+→ **upstream 이 channel plugin/module loader cache 영역에 활발히 정리 중**.
+module-loader.ts:14 `jitiLoaders` 는 7b05b4b68e 가 이미 jiti-loader-cache 공용
+헬퍼로 옮김. 본 셀에서 신규 memory FIND 만들면 CAL-004/CAL-008 (upstream
+parallel work) dup 위험.
+
+### 결론 — FIND 0건 (abandon)
+
+본 채널/라우팅 memory 축의 production-relevant 무제한 자료구조는 부재:
+1. **routing 측 캐시 3종** 은 WeakMap + clear-on-overflow cap 으로 보호됨.
+2. **module-scope Map/Set 11개** 중 9개는 cap+FIFO/WeakMap 또는 build-time fixed
+   key 도메인 (≤32 entries) 으로 bounded. 나머지 2개 (thread-binding-api /
+   message-tool-api / loggedMessageActionErrors) 는 channels-lifecycle FIND-001/002
+   와 동일 코드 영역 — cross-axis dup 회피.
+3. **adapter parity**: 4 bundled adapter (telegram/slack/discord/whatsapp) 는
+   `src/channels/extensions/**` 에 있어 본 셀 allowed_paths 외. plugin 코드
+   소관 — 본 channels-domain 코드 내 module-scope adapter-specific state 없음.
+4. **timer/listener 7종** 전부 production-path unconditional cleanup.
+5. **CAL-008**: upstream 이 이미 module loader cache 영역을 적극 정리 중 — 신규
+   FIND 가 평가 단계에서 dup 으로 abandon 될 가능성 매우 높음.
+
+### 자체 한계
+
+- adapter 자체 (`extensions/**` 하의 telegram/slack/discord/whatsapp) 의
+  in-memory state (rate-limit, dedup, presence) 는 scope 외라 확인 불가.
+  본 셀은 channels routing core 만 다룸.
+- `read-only.ts:44` `moduleLoaders` 의 line 386 호출은 `params.record.setupSource`
+  (per-manifest path) — manifest set 크기가 production 에서 10 미만이라 추정,
+  실제 telemetry 데이터 부재.
+- routing WeakMap 캐시 3종은 cfg lifetime 에 묶이는데, openclaw 가 config
+  reload 시 cfg object 를 replace 하는지 mutate 하는지 미확인. replace 면
+  GC 후 cleanup 자동.
+
+---
+
+## Concurrency 축 조사 (2026-05-14, concurrency-auditor, cell: channels-concurrency, Phase 6 batch 2)
+
+**스코프**: `src/channels/**`, `src/routing/**` (upstream/main af3d9333aa)
+**선행 확인**: channels-error-boundary/lifecycle/memory 모두 완료. CAND-019/020 abandoned
+(primary-path inversion). memory FIND 0건. 본 셀은 race-condition 축으로만 신규 탐색.
+
+### 적용 카테고리
+
+- [x] applied — shared mutable state race (check-then-act)
+- [x] applied — Promise.race loser
+- [x] applied — listener register race
+- [x] applied — AbortController 전파
+- [x] applied — primary-path inversion (lock/CAS 탐색)
+- [x] applied — hot-path vs test-path
+- [x] skipped — microtask ordering — 사유: queueMicrotask/setImmediate/process.nextTick
+  매치 0건 (R-3 grep 5/5).
+
+### R-3 Grep 매핑 (전체 결과)
+
+| 분류 | 결과 |
+|---|---|
+| Mutex/Semaphore/AsyncLock | 0 매치 |
+| AbortController/AbortSignal | 8 매치 — 모두 입력 receiver / receive.ts:25 neverAbortedSignal default / send.ts:106 default / message types — abort 가 receive ack 와 통합되지 않음 |
+| Promise.race | 1 매치 — binding-routing.ts:178 (intentional with logging loser observer, 8ed52c1463) |
+| Promise.all/allSettled | 4 매치 — message-access state.ts / runtime.ts (independent fan-out, race 없음) |
+| listener register (`addEventListener`) | 2 매치 — stall-watchdog.ts:91 / run-state-machine.ts:70 (둘 다 once:true + removeEventListener 대칭) |
+| listener cleanup (`removeEventListener` 등) | 1 매치 — stall-watchdog.ts:54 (대칭 정상) |
+| microtask | 0 매치 |
+
+### 핵심 race 후보 평가
+
+| 후보 | 위치 | 평가 | 결과 |
+|---|---|---|---|
+| typing-lifecycle tickInFlight | typing-lifecycle.ts:38-45 | stop 이 in-flight tick 의 플래그 강제 reset → restart 시 concurrent onTick | **FIND-001 (P3)** |
+| MessageReceiveContext.ack | message/receive.ts:69-77 | check-then-await-then-set, in-flight token 부재 | **FIND-002 (P3, R-7 한계)** |
+| binding-routing Promise.race loser | binding-routing.ts:178 | 30s timeout 후 readyPromise 가 abort 안 됨, side effect 누수 | **기각** — 8ed52c1463 commit 메시지 + L187 `readyPromise.then(...)` 의 명시적 observer 로 author 가 의도적 채택. AbortSignal 통합은 ensureReady 계약 변경 필요 (out-of-scope architectural). |
+| ack-reactions.removeAckReactionAfterReply | ack-reactions.ts:134-139 | `.then` 만 있고 onRejected 없음 | **기각** — CAND-020 abandoned 와 동일 코드. primary-path inversion. |
+| status-reactions enqueue chain | status-reactions.ts:181-184 `chainPromise.then(fn, fn)` | 두 핸들러 모두 동일 fn 으로 reject 도 동일 처리. serialization 정상 | **safe** (대칭 처리) |
+| status-reactions scheduleEmoji race | status-reactions.ts:280-320 | pendingEmoji 의 sync 영역 mutation + chain 직렬화 | **safe** — chain 으로 serialize, race window 부재 |
+| draft-stream-loop flush re-entrance | draft-stream-loop.ts:20-52 | inFlightPromise 가드로 multiple flush 가 co-operative | **safe** — inFlightPromise check + await 로 직렬화 |
+| run-state-machine activeRuns | run-state-machine.ts:18-99 | closure-scope, 모든 mutation sync | **safe** (closure 단일) |
+| typing.ts onReplyStart 의 stopSent 재설정 | typing.ts:75 | 다음 turn 시작 시 reset, fireStop 와 race 가능하나 closed 플래그가 우선 차단 | **safe** |
+| stateful-target-builtins.ts ??= 캐시 | stateful-target-builtins.ts:9-32 | plugins-error-boundary-003 와 동일 패턴 (R-7 transient 아님) | **기각** (lifecycle 셀에서 이미 abandon) |
+| inboundSessionRuntimePromise ??= import | session.ts:7-14 | 동일 ??= 패턴, init guard | **safe** (single-shot import) |
+| listBindings 순회 + bind/unbind | routing/bindings.ts 전체 | 전부 sync + pure, mutation 없음 | **safe** |
+| resolveAccountEntry | routing/account-lookup.ts | 전부 sync + pure | **safe** (cell hint 의 "fetch dedup" 은 hint 가 잘못 — async fetch 없음) |
+
+### Promise.race loser 의 의도적 누수 (binding-routing.ts:165-199)
+
+upstream commit **8ed52c1463** (2026-04-26, "fix: bound configured acp binding readiness") 가
+명시적으로 Promise.race + 명시적 then() observer 패턴을 채택:
+
+```ts
+readyPromise.then(
+  (lateResult) => logVerbose(`... settled after timeout (ok=${lateResult.ok})`),
+  (err) => logVerbose(`... rejected after timeout: ${String(err)}`),
+);
+```
+
+author 가 loser 의 fate 를 관측은 하나 cancel 하지 않음. 이는 `ensureConfiguredBindingTargetReady`
+→ `driver.ensureReady` 의 contract 가 AbortSignal 을 받지 않기 때문 (acp-stateful-target-driver.ts:70-90).
+loser 의 side effect (ACP subprocess setup, socket open) 가 누수될 수 있으나 architectural
+변경 필요 — 본 셀의 FIND 로 분리 안 함.
+
+### Hot-path vs test-path 비교 (R-7 핵심)
+
+- **FIND-001 (typing-lifecycle)**: production caller (typing.ts:71-88 onReplyStart) 가
+  stop→fireStart→start sequence 를 매 reply turn 마다 실행. mock 으로 다른 branch 강제
+  필요 없음. **production 일치 확인**.
+- **FIND-002 (receive ack)**: production caller 가 src/channels/extensions/** (out-of-scope)
+  로 본 셀 내 verification 불가. 따라서 P3 + counter_evidence 에 한계 명시. **R-7 한계 상태**.
+
+### CAL-008 upstream 검사 (6주 기준)
+
+`git log upstream/main --since="6 weeks ago" -- src/channels src/routing` 중 race 키워드:
+- `8ed52c1463 fix: bound configured acp binding readiness` — Promise.race + loser
+  observer 패턴 도입. 본 셀 FIND-002 가 영향받는 영역 아님 (receive.ts).
+- `45b8645079 fix(channels): keep typing indicators off reply critical path` — typing.ts
+  의 onReplyStart 를 `await fireStart() + start()` → `void fireStart().then(start)` 로
+  변경 (2026-05-01). FIND-001 의 typing-lifecycle 자체는 수정 안 됨. **typing 영역
+  parallel work 중** — FIND-001 가 reviewer 에 의해 typing.ts 측 수정 일환으로
+  유보될 가능성 있음.
+
+### 결론 — FIND 2건 (둘 다 P3)
+
+1. **FIND-001**: typing-lifecycle stop() 의 tickInFlight reset 으로 인한 in-flight tick
+   ownership 침범. Production hot-path 일치. 그러나 영향은 typing indicator 시각적
+   불일치 + counter race → P3.
+2. **FIND-002**: receive context ack() 의 check-then-await-then-set race. plugin SDK
+   로 export 되어 4 adapter 사용. 실 production caller 가 allowed_paths 외이므로
+   R-7 한계 → P3 borderline.
+
+clusterer/gatekeeper 단계에서 추가 정보 반영 후 abandon/re-promote 결정 가능.
+
+### Clusterer 를 위한 힌트
+
+- **FIND-001 + 가능성 있는 SOL**: tick self-token 패턴 (각 tick 이 myToken 들고
+  finally 에서 자기 token 일 때만 reset) 또는 stop() 에서 tickInFlight reset 제거.
+  fix 가 typing-lifecycle 단일 파일 수정 → XS PR. 단 upstream 45b8645079 의 typing.ts
+  연쇄 수정과 충돌 검토 필요.
+- **FIND-002 + 가능성 있는 SOL**: in-flight token 패턴 — `pendingAckPromise = onAck()`
+  캐싱 후 두 번째 호출자가 동일 promise 를 await. ackState 를 "pending|acking|acked|
+  nacked" 4-상태로 확장하는 대안도 가능. fix 가 receive.ts 단일 함수 → S PR.
+- **cross-axis**: 둘 다 "check-then-act with await between" 동일 root pattern. 그러나
+  fix 축이 다르므로 epic 묶지 말고 single CAND.
+
+### 자체 한계 / 미확인 항목
+
+- FIND-002 의 실제 caller 확인: src/channels/extensions/** 가 allowed_paths 외라 4
+  adapter 의 ack() 사용 패턴 (single-path vs fan-in) 검증 불가. clusterer 가
+  필요 시 expanded scope 로 재검토.
+- FIND-001 의 race window 정량: tick 의 onTick (= fireStart) 의 platform API
+  latency 실측 데이터 부재. 추정 100ms-수 초.
+- typing-start-guard.ts:41 `consecutiveFailures += 1` 의 concurrent race-counter
+  영향: 이론상 V8 single-thread 라 ++ 자체는 atomic 이지만 두 catch path 가 모두
+  진입하면 두 번 증분 — onTrip 의도와 차이.
+- 4 adapter (telegram/slack/discord/whatsapp) 의 platform-specific ack idempotency
+  실측 데이터 부재.

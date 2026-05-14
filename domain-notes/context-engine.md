@@ -176,3 +176,226 @@ rg -n "clearContextEnginesForOwner" src/
 - **plugin-lifecycle-auditor**: `src/plugins/` 에서 plugin unload/disable 시 `clearContextEnginesForOwner(\`plugin:${pluginId}\`)` 호출 경로 확인. 현재 확인된 call site 는 register 실패 rollback 1곳뿐.
 - **concurrency-auditor**: 여러 chunk 가 동시 `ensureContextEnginesInitialized()` 를 호출할 때 `initialized = true` race 는 safe (덮어쓰기 허용) 이나, 같은 원리가 3rd-party plugin 에서도 성립하는지 (owner mismatch + race) 확인 가치 있음.
 - **agents 도메인 감사 시**: `resolveContextEngine` 결과 engine 을 장기 자료구조 (subagent-registry 등) 에 저장하는 경로가 있다면 caller 측 memory 관찰 필요 — context-engine 자체는 caller-side 참조에 의존.
+
+---
+
+### concurrency-auditor (2026-05-14, upstream HEAD 부근)
+
+**셀**: `context-engine-concurrency` (allowed_paths: `src/context-engine/**`).
+**결론**: **FIND 1건** (P3 borderline, hygienic).
+
+**R-3 Grep 5종 결과 (allowed_paths 한정)**:
+
+```
+rg -n "Mutex|Semaphore|AsyncLock|acquire|release" src/context-engine/
+  → types.ts:85 "released" (SubagentEndReason enum string, lock 의미 아님). lock primitive **0건**.
+rg -n "AbortController|AbortSignal|signal\.(abort|addEventListener)" src/context-engine/
+  → **0건**.
+rg -n "Promise\.race\(|Promise\.all\(|Promise\.allSettled\(" src/context-engine/
+  → context-engine.test.ts:1202 (test 의 Promise.all). production source **0건**.
+rg -n "once\(|prepend(Once)?Listener\(|removeAllListeners\(" src/context-engine/
+  → **0건**.
+rg -n "setImmediate|queueMicrotask|process\.nextTick" src/context-engine/
+  → **0건**.
+```
+
+→ context-engine 전체에 동기화 primitive / cancellation / 명시적 task scheduling **부재**. 모든 함수가 "단일 microtask 안에 끝난다 (동기)" 는 single-thread 모델에 의존.
+
+**적용 카테고리 (agents/concurrency-auditor.md §탐지 카테고리)**:
+
+- [x] A. Shared mutable state async 갱신 race — 적용. 결과: `engines` Map check-then-act (L382-395) 는 함수 전체 동기 → race 불성립. `resolveContextEngine` 의 entry snapshot (L546) → factory await (L563) → entry.owner 재사용 (L601) 만 unguarded → FIND-001.
+- [x] B. Promise.race loser — 적용 (결과: 사용 0건).
+- [x] C. Listener register-unregister — 적용 (결과: emitter 사용 0건).
+- [x] D. AbortController 전파 — 적용 (결과: 사용 0건. factory 가 throw 시 fallback 으로 우회. cancellation 개념 자체 없음).
+- [x] E. Microtask/setImmediate ordering — 적용 (결과: 사용 0건. delegate.ts 의 `compactRuntimePromise ??= import()` 는 single sync expression).
+- [x] F. Map/Set operation atomicity — 적용. `engines` Map 의 set/delete 는 함수 동기 → 직렬화. 단 `clearContextEnginesForOwner` 호출이 `resolveContextEngine` 의 await 와 겹치면 entry snapshot 이 stale (FIND-001).
+- [x] G. Double-dispatch / re-entrance — 적용. `ensureContextEnginesInitialized` (init.ts L13-23) 의 `initialized` flag 는 함수 동기 → 같은 chunk 안에서 재진입 불가. multi-chunk 시 chunk-local 이지만 `allowSameOwnerRefresh: true` 라 functional bug 없음.
+- [x] H. Cleanup race — 적용. `RESOLVED_CONTEXT_ENGINE_METADATA` WeakMap 은 GC 기반 cleanup, race 불성립.
+- [x] primary-path inversion — 적용. FIND-001 의 counter_evidence 에 명시.
+- [x] hot-path vs test-path — 적용. resolveContextEngine 은 session/heartbeat 마다 호출되는 hot-path. clear path 는 plugin install partial-failure rollback 의 catch 블록 (plugins/registry.ts:2932). 두 경로 동시 활성 빈도는 plugin lifecycle 모델 (부팅 1회 vs lazy/hot-reload) 에 의존.
+
+**R-5 실행 조건 분류 표** (cross-domain summary):
+
+| 경로 | await 여부 | 가드 | 평가 |
+|---|---|---|---|
+| registerContextEngineForOwner | 없음 | 함수 동기 | atomic |
+| clearContextEnginesForOwner | 없음 | 함수 동기 | atomic |
+| resolveContextEngine 전반부 | 없음 (L546-559) | 함수 동기 | atomic |
+| **resolveContextEngine entry lifetime** | **L563 await** | **재검증 없음** | **unguarded race window → FIND-001** |
+| wrapResolvedContextEngine | 없음 | 함수 동기 | atomic |
+| ensureContextEnginesInitialized | 없음 | 함수 동기 | atomic |
+| compactRuntimePromise ??= import() | ??= 자체 동기 | single expression | atomic |
+| wrapContextEngineWithSessionKeyCompat closure (isLegacy/rejectedKeys) | invokeWithLegacyCompat 안에 await | Set add 멱등, 양쪽 retry 모두 성공 | race 가능하나 functional bug 없음 → FIND 아님 |
+
+**고려했으나 FIND 부적합 사례**:
+
+- **registerContextEngineForOwner check-then-act (L382-395)**: 함수 전체 동기. microtask suspension 없음. race 불성립.
+- **rejectedKeys Set concurrent add (registry.ts:260, invokeWithLegacyCompat 의 활성 호출 path)**: Set.add 멱등. 두 동시 method 호출이 첫 시도 실패 후 양쪽 모두 retry → 둘 다 성공. duplicate work 비용 있으나 functional bug 없음.
+- **init.ts `initialized` flag (L13-23)**: 함수 동기. chunk-local 이라 multi-chunk 시 두 chunk 모두 `registerLegacyContextEngine()` 실행 가능하나 `allowSameOwnerRefresh: true` 라 덮어쓰기 OK.
+- **delegate.ts `compactRuntimePromise ??= import()` (L11-18)**: `??=` 는 single expression. read+null check+assign 사이 microtask yield 없음. race 불성립.
+- **wrapContextEngineWithSessionKeyCompat idempotent guard (L274-275)**: 같은 raw engine 의 동시 wrap 시 두 새 Proxy 생성 가능 (LEGACY_SESSION_KEY_COMPAT 는 Proxy 통과 후에만 true). 그러나 production 경로에서 같은 engine 인스턴스가 동시에 두 번 wrap 되는 시나리오 부재 — `resolveContextEngine` 마다 factory 호출로 새 engine 인스턴스가 매번 생성됨.
+
+**자체 한계**:
+
+- `pi-embedded-runner` 측 (allowed_paths 외) 에서 stale `resolveContextEngineOwnerPluginId` 결과가 단순 metric/log 외에 어떤 lifecycle 동작에 사용되는지 미확인 — agents-runner 도메인 감사 시 검증.
+- plugin lazy-install / hot-reload 가 실제 production 에서 활성화되는지 미확인 — plugins-lifecycle 도메인 감사 시 검증. lazy/hot-reload 활성 시 FIND-001 race 빈도 증가.
+- factory 가 long-running (DB connection 등) 한 3rd-party engine 의 경우 await window 가 길어져 race 빈도 상승. 본 분석은 평균적인 factory 가정.
+
+**다음 페르소나를 위한 힌트**:
+
+- **plugin-lifecycle-auditor**: `clearContextEnginesForOwner` 의 추가 caller (현재 plugins/registry.ts:2932 외) 가 있는지 확인. unload/disable/reinstall 경로에서 호출되면 본 race 빈도 증가.
+- **agents-runner-auditor**: `resolveContextEngineOwnerPluginId` 가 어떤 lifecycle 동작 (단순 metric vs 실제 capability lookup) 에 사용되는지 확인. 실제 lookup 에 사용된다면 FIND-001 severity 상향 (P3 → P2 가능).
+
+---
+
+### plugin-lifecycle-auditor (2026-05-14, upstream `af3d9333aa`)
+
+**셀**: `context-engine-lifecycle` (allowed_paths: `src/context-engine/**`).
+**결론**: **FIND 2건** (P3 / P3).
+
+**적용 카테고리 (agents/plugin-lifecycle-auditor.md §탐지 카테고리)**:
+
+- [x] A. Load 실패 rollback 부재 — 적용 (결과: register 자체는 atomic Map.set 이라 partial 잔존 불가; init.ts ordering 의 향후 fragility 는 FIND-002 로 기록)
+- [x] B. Dispose / Unload 경로 누락 — 적용 (결과: FIND-001 — contract validation fail 시 instantiated engine 의 dispose 미호출. caller-side dispose 는 fallback path 의 leaked engine 을 보지 못함)
+- [x] C. Dynamic import 에러 격리 — 적용 (결과: `delegate.ts` 의 `compactRuntimePromise ??=` 패턴은 sibling chunk 라 transient 실패 surface 부재 — R-7 미충족, FIND 금지)
+- [x] D. Manifest parse 실패 후 partial state — N/A (context-engine 에 manifest 개념 없음. 등록은 in-process factory)
+- [x] E. Enable / Disable 상태 drift — 적용 (결과: context-engine 내부에 enable/disable 개념 없음. plugin 측 책임 — plugins 도메인 scope)
+
+**R-3 Grep 결과 (lifecycle 축 fresh @ `af3d9333aa`)**:
+
+```
+rg -n "dispose|teardown|cleanup|unregister|deregister|destroy" src/context-engine/
+  → legacy.ts:84 (LegacyContextEngine.dispose no-op)
+  → types.ts:325 (dispose? contract)
+  → registry.ts:523 (dispose 안 됨 — 주석만 "Non-default engines that fail... silently replaced")
+  → context-engine.test.ts: dispose 테스트만
+rg -n "try\s*\{" src/context-engine/
+  → registry.ts:239 (invokeWithLegacyCompat), 261 (재시도 inner try), 562 (factory await), 577 (validation 호출)
+rg -nP "engine\.dispose|dispose\?\." src/context-engine/registry.ts
+  → 0 매치 (registry.ts 내부에 dispose 호출 없음 — FIND-001 의 핵심 evidence)
+rg -nP "engine\.dispose|contextEngine\.dispose" src/
+  → run.ts:3094 (finally + runAgentCleanupStep), compact.queued.ts:108 (early return), 301 (finally)
+rg -n "finally" src/context-engine/
+  → context-engine.test.ts:947 (테스트 cleanup만)
+```
+
+**R-5 (CAL-001) cleanup execution condition 분류표 — lifecycle 축**:
+
+| 경로 | 위치 | 조건 | 평가 |
+|---|---|---|---|
+| `engine.dispose?.()` — 정상 종료 | run.ts:3094 (finally + runAgentCleanupStep) | turn 종료 시 unconditional | unconditional (caller-side) |
+| `engine.dispose?.()` — compact 완료 | compact.queued.ts:301 (finally) | compact 종료 시 unconditional | unconditional (caller-side) |
+| `engine.dispose?.()` — compact harness early return | compact.queued.ts:108 | harness result 분기 | conditional-edge (caller-side) |
+| `engine.dispose?.()` — resolveContextEngine fallback (factory throw) | registry.ts:572-574 | **부재** | **gap (FIND-001)** — engine 변수 미할당이라 dispose 부를 객체 없음, factory 책임 |
+| `engine.dispose?.()` — resolveContextEngine fallback (validation throw) | registry.ts:587-588 | **부재** | **gap (FIND-001)** — engine 변수 할당됐으나 dispose 호출 없음 |
+| `engine.dispose?.()` — resolveContextEngine fallback (contractError) | registry.ts:596-598 | **부재** | **gap (FIND-001)** — 동상 |
+| `clearContextEnginesForOwner` — plugin register rollback | plugins/registry.ts:2932 | catch 블록 unconditional | unconditional (plugin 도메인) |
+| `clearContextEnginesForOwner` — plugin unload/disable | (확인 안 됨) | plugins 도메인 책임 | **out-of-scope** — plugins-lifecycle 셀에서 확인 필요 |
+| `initialized` flag reset on register throw | init.ts:19,22 | **flag-first ordering** | **fragility (FIND-002)** — register throw 시 partial init 고착 |
+
+**R-7 production hot-path 검증**:
+
+- FIND-001: `resolveContextEngine` 의 contract-error path 가 활성화되려면 invalid 3rd-party 엔진이 배포 + 사용돼야 함 — production 환경에서는 edge case. 다만 `resolveContextEngine` 자체는 turn / compact / spawn / CLI 마다 호출되는 hot-path 이므로 한 번 활성화되면 빈도 자체는 매우 높음. P3 책정.
+- FIND-002: `ensureContextEnginesInitialized` 의 throw 경로가 활성화되려면 future change (SQLite migration 재시도, embedder sandbox 등) 가 필요. 현재 base 에서는 trigger 부재. confidence 정책상 borderline P3 — primary-path inversion 아니므로 기록.
+
+**CAL-008 upstream 6주 commit 검사 (2026-04-02~2026-05-14)**:
+
+| commit | 내용 | 본 셀 영향 |
+|---|---|---|
+| `2677f7cf14` (#63222, 2026-04-13) | fix: validate resolved context engine contracts | **FIND-001 의 도입 commit** — contract validation 추가됐으나 dispose 처리 누락 |
+| `6aa4515798` (#66930, 2026-04-15) | fix: gracefully degrade to legacy on third-party resolution failure | FIND-001 의 fallback 경로 확립. 그러나 fallback engine cleanup 미추가 |
+| `59d07f0ab4` (2026-04-17) | fix(plugins): roll back failed register globals | `clearContextEnginesForOwner` 추가 + plugins/registry.ts 의 register rollback path 와 연결. 본 셀 lifecycle 축에 register-rollback 만 커버, unload 미커버 |
+| `263a190fc9` (#66678, 2026-04-20) | accept third-party engines whose info.id differs | contract 완화만 — lifecycle 의미 중립 |
+| `d8a600f2ad` (#67243) | pass runtime context to ContextEngineFactory | factory ctx 확장만 |
+| `42584964ac` (#74255) | honor assembled prompt authority in precheck | assemble path — lifecycle 무관 |
+| `9e1e59717f` (#64294) | feat(plugin-sdk): add LLM completion API | runtimeContext 확장 — lifecycle 무관 |
+| `694ca50e97` (2026-05-13) | Revert "refactor: move runtime state to SQLite" | **FIND-002 의 fragility evidence** — registry storage 를 IO 로 옮기려는 시도가 한 번 있었음. 재시도 시 register throw 가능 surface 활성화 |
+
+`gh pr list --search "context engine dispose"` / `gh issue list --search "context engine lifecycle"` → 0 매치. upstream 미인지 영역.
+
+**고려했으나 FIND 부적합 사례**:
+
+- **`allowSameOwnerRefresh: true` 의 in-flight engine 인스턴스 dispose 누락 (registry.ts:395 overwrite)**: registry 가 보관하는 건 factory 만. 인스턴스는 caller-side. 새 factory 등록 시 이전 인스턴스 dispose 호출 의무는 caller (plugin reload 핸들러) 측 — context-engine scope 아님.
+- **`LegacyContextEngine.dispose()` no-op (legacy.ts:84-86)**: LegacyContextEngine 은 instance-level state 없음 (`compactRuntimePromise` 는 module-level). 정상.
+- **`registerContextEngineForOwner` 의 atomic Map.set**: L395 single op 이라 partial 잔존 불가. 정상.
+- **`RESOLVED_CONTEXT_ENGINE_METADATA` WeakMap (L37)**: WeakMap 이라 wrapped engine GC 시 자동 정리. lifecycle gap 아님.
+- **`describeResolvedContextEngineContractError` 가 `dispose` 메소드 존재 미검증 (L482-490)**: dispose 가 optional contract 이므로 검증 부재가 정상.
+
+**자체 한계**:
+
+- **plugin unload/disable 시 context-engine 정리 경로 미확인** (`src/plugins/**` 직접 Read 안 함, allowed_paths 외): 본 셀 도메인 노트의 "다음 페르소나를 위한 힌트" 가 지적한 그대로. plugins-lifecycle 셀에서 검증 필요. unload 가 `clearContextEnginesForOwner` 를 호출하지 않으면 "successfully loaded plugin 의 unload 후 engines Map 에 stale entry" 가 lifecycle gap. plugins 도메인 책임.
+- **3rd-party context engine 의 실제 factory 구현 미관찰**: factory 가 native resource 잡는다는 가정은 contract 명세 (types.ts:323-325) 기반 plausible scenario. plain-object factory 만 쓰는 환경이면 FIND-001 의 실효 영향 0.
+- **caller-side throw handling**: pi-embedded-runner/run.ts:1065 등이 `ensureContextEnginesInitialized` throw 를 어떻게 다루는지 — caller 도메인 (agents) 책임. catch + retry 면 FIND-002 의 lock-in 효과; throw 그대로 propagate 면 process crash → supervisor restart 로 자연 복구.
+
+**다음 페르소나를 위한 힌트**:
+
+- **plugins-lifecycle-auditor** (다음 셀): `clearContextEnginesForOwner` 가 plugin unload / disable / reinstall 경로에서 호출되는지 확인. plugins/registry.ts:2932 (register rollback) 외 호출 site 가 없으면 lifecycle gap (load 성공한 plugin 의 unload 시 stale entry 잔존).
+- **agents-runner-auditor**: pi-embedded-runner/run.ts:3094 의 `runAgentCleanupStep` 이 dispose throw 를 어떻게 swallow 하는지 — context engine dispose 가 throw 하면 다른 cleanup 단계가 skip 되는지 확인. cleanup ordering 의 cascading failure 가능성.
+- **stability-auditor**: FIND-002 의 fragility 가 실제 발현된 적 있는지 issue/incident 검색. 없으면 P3 유지; 있으면 ordering bug 자체로 활성화 P2 가능.
+- **error-boundary-auditor**: `resolveContextEngine` 의 factory await (L563) 가 unhandled rejection 으로 빠지는 경로 (catch 가 L564 에 있어 잡지만 fallback 으로 우회) — fallback 으로 우회 시 caller 가 다른 engine 을 받는다는 점은 caller 가 인지하는가? subagent spawn 경로에서 expected engine != actual engine 일 때 후속 동작 검토 가치 있음.
+
+---
+
+### error-boundary-auditor (2026-05-14, upstream `af3d9333aa`)
+
+**셀**: `context-engine-error-boundary` (allowed_paths: `src/context-engine/**`).
+**결론**: **FIND 2건** (P3 / P3 — 둘 다 borderline, future-proofing).
+
+**R-3 방어 경로 Grep (`src/context-engine/`)**:
+
+```
+try { / catch ( / .catch(  → registry.ts:239,241,261,263,562,564,577,579  (4 try/catch 쌍)
+throw                       → registry.ts:254,364,549,566,581,592,616,624  (8건 boundary 명시)
+console.|log.               → registry.ts:554,568,583,595                  (silent fallback 4곳)
+void (non-`void 0`)         → init.ts:15, registry.ts:427, legacy.registration.ts:4
+                              (모두 함수 return-type 선언, 누락 catch 아님)
+process.on(...)            → 0 매치
+```
+
+**R-5 silent catch caller 전수조사 (CAL-001)**:
+
+`resolveContextEngine` 의 4개 silent fallback (registry.ts:554/568/583/595) caller 들 — `pi-embedded-runner/run.ts:1066`, `subagent-spawn.ts:462`, `compact.queued.ts:63`, `harness/context-engine-lifecycle.ts:76`, `attempt.ts:934` — 어느 caller 도 fallback 발생 여부를 분기 신호로 활용 안 함. `resolveContextEngineOwnerPluginId(contextEngine) === undefined` 가 간접 신호이긴 하지만 사용자가 plugin slot 을 명시 설정했을 때 silent downgrade 됐다는 사실은 표면화되지 않음. 그러나 **registry.ts:523-525 의 주석에 명시된 의도** ("Non-default engines that fail ... are logged and silently replaced") → 의도된 design → **FIND 금지** (CAL-001 함정 회피).
+
+**카테고리 적용 결과** (agents/error-boundary-auditor.md §탐지 카테고리):
+
+- [x] A. unhandledRejection / uncaughtException — 적용 (process.on 매치 0건. caller 측 의존)
+- [x] B. Floating promise — 적용 (void return-type 외 floating 없음. delegate.ts 의 `compactRuntimePromise ??=` 도 await 처리)
+- [x] C. JSON.parse 미보호 — 적용 (JSON 사용 0건)
+- [x] D. AbortController/AbortSignal 전파 — 적용 (사용 0건. context-engine 자체는 abort 미사용)
+- [x] E. fs/network 동기 호출 — 적용 (매치 0건)
+
+**FIND-001 (P3) 요약**: `init.ts:19` 가 `initialized = true` 를 `registerLegacyContextEngine()` (L22) **호출 전** 에 set — set-flag-before-action 안티패턴. register throw 시 영구 partial-state lockout (`initialized=true` latched + legacy engine 미등록). 현재 코드에서 register throw 실재성 낮음 (`registerContextEngineForOwner` 는 throw 대신 ok/false-result 패턴, owner="core" non-empty). 그러나 미래 변경 (validation 추가, sealed globalThis 환경) 시 즉시 활성. `legacy.registration.ts:4-7` 가 register 결과를 무시하는 점도 동일 fragility.
+
+**FIND-002 (P3) 요약**: `invokeWithLegacyCompat` (registry.ts:239-267) 가 unrecognized-key 정규식 매칭 (L128-147, sessionKey/prompt 각 7패턴) 으로 method retry — `compact`/`ingest`/`assemble` 등 side-effect 가능한 메서드가 LLM call 후 응답 파싱 단계에서 throw 한 경우에도 retry 발사 → LLM API 중복 호출. 현재 production 활성 engine 이 LegacyContextEngine 1개 (sessionKey 무시) 이라 발현 0. third-party plugin engine 등장 시 활성. visibility gap: caller 는 retry 발생 인지 불가 (`onLegacyModeDetected`/`onLegacyKeysDetected` 콜백은 wrapper closure 내부 상태만 갱신).
+
+**FIND 후보 제외 (의도된 design / production 미충족)**:
+
+- `resolveContextEngine` 의 silent fallback (registry.ts:554/568/583/595): 주석 L523-525 가 의도 명시. CAL-001 함정 회피 위해 FIND 금지.
+- `delegate.ts` 의 try/catch 부재: caller (run.ts:1066, compact.queued.ts:63, subagent-spawn.ts:460) 가 try/catch 로 감싸므로 propagate 가 정상 design.
+- `wrapContextEngineWithSessionKeyCompat` 의 silent strip (registry.ts:298-303): isLegacy=true latched 후 sessionKey 자동 제거는 의도된 호환성. 첫 retry 의 side-effect 중복은 FIND-002 가 다룸.
+- `delegate.ts` `compactRuntimePromise ??= import()` 의 fail-once-fail-always 이론: 동일 패키지 sibling chunk 라 transient 실패 불가능 — R-7 미충족 (memory-leak-hunter 세션의 동일 결론과 일치).
+
+**R-7 production hot-path 검증**: FIND-001 의 evidence (init.ts) caller 는 subagent-registry.ts:324, cli-compaction.ts:208 등 production 정규 경로. FIND-002 의 wrapper 가 감싸는 메서드 caller 도 cli-compaction.ts:152, pi-embedded-runner/run.ts:1639/1814 등 production 경로. 다만 FIND-002 의 trigger (plugin engine 의 schema validation throw) 는 LegacyContextEngine 만 활성인 현재 production 에서 발현 0.
+
+**CAL-004/008 회귀 방지**:
+
+- `git log --since="6 weeks ago" -- src/context-engine/init.ts` → 0건 (6주 무수정).
+- `git log --since="6 weeks ago" -- src/context-engine/registry.ts` → 9건 (메모리/contract validation/info.id mismatch 등). init flag / invokeWithLegacyCompat 관련 수정 0건.
+- `gh pr list --state open --search "ensureContextEnginesInitialized OR invokeWithLegacyCompat OR initialized partial context-engine in:title,body"` → PR #81242 (subagent isolation 측면), #73161 (Discord 무관). init flag / retry 패턴 변경 PR 0.
+
+**고려했으나 FIND 부적합 사례 (본 세션 추가)**:
+
+- **`init.ts:22` 의 register 결과 무시**: `legacy.registration.ts` 가 `ContextEngineRegistrationResult` 를 받아 던지지만 caller 로 전달 안 함 (`void` return). 현재 코드에서 ok:false 발현 실재성 낮으나 future-proofing 결여 — FIND-001 의 보조 evidence 로 포함.
+- **`describeResolvedContextEngineContractError` (registry.ts:454-497) 의 plain-string error**: Result<T,E> 패턴 (closed error code) 대신 freeform string. CLAUDE.md 규칙 "Result<T, E>, 닫힌 에러 코드 사용 (freeform string 금지)" 와 미세하게 어긋나지만 본 함수는 contract validation 결과 reporting 용 (예외 처리 아님) 이라 규칙 위반 아님 — FIND 금지.
+
+**자체 한계**:
+
+- FIND-002 의 false-positive 시나리오 (사용자 prompt 의 "sessionKey" 토큰이 LLM 응답 에러에 echo) 정량 빈도 미측정. third-party plugin engine 의 실제 구현이 등장하는 시점에 재평가 필요.
+- FIND-001 의 lockout 발현 트리거가 현재 코드에서 매우 제한적 — register throw 경로 실재성 분석은 `requireContextEngineOwner` / `registerContextEngineForOwner` 본문 + `resolveGlobalSingleton` 의 globalThis 접근만 살펴봄. LegacyContextEngine 생성자 (legacy.ts:21-87) 자체는 클래스 본문에 side-effect 없음 (instance field 초기화만).
+- caller (`subagent-spawn.ts:460-484`, `cli-compaction.ts`) 의 try/catch 가 lockout 후의 사용자 UX 를 어떻게 표면화하는지 — caller 도메인 책임. silent degradation (status:"error" 반환) 패턴이라 사용자가 retry 해도 동일 프로세스에서는 영구 실패.
+
+**다음 페르소나를 위한 힌트**:
+
+- **agents-runner-auditor (다음 셀 후보)**: `pi-embedded-runner/run.ts:1066-1070` 가 `resolveContextEngine` 결과의 silent fallback 을 인지하는 신호 (resolveContextEngineOwnerPluginId === undefined) 를 후속 로직에서 활용하는지 검토. 활용한다면 silent fallback 자체가 functional bug surface — context-engine FIND 후보 재활성. 활용 안 한다면 사용자 plugin 선택이 silent 하게 무시되는 UX gap (P3 위생).
+- **plugins-lifecycle-auditor**: 플러그인 register 결과 `{ok: false; existingOwner}` 처리가 적절한지. 본 셀에서 확인한 바: `legacy.registration.ts` 가 결과를 무시 (FIND-001 의 보조 fragility). 다른 register 호출도 결과를 무시하면 동일 fragility.
+- **error-boundary-auditor (재방문 시)**: third-party plugin engine 이 production 에 도입되는 시점에 FIND-002 의 정량 빈도 재평가. 그 plugin 의 schema validator 라이브러리 (zod / joi / yup) 와 LLM 응답 파싱 경로의 텍스트 매칭 빈도 측정.

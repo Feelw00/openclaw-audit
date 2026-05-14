@@ -378,8 +378,9 @@ cells:
   - id: mcp-lifecycle
     domain: mcp
     type: lifecycle
-    state: planned
+    state: done
     phase: 5
+    note: '2026-05-14 plugin-lifecycle-auditor → 2 FIND P2 (FIND-mcp-lifecycle-001 tools-stdio-server.ts floating server.close(), FIND-002 plugin-tools-handlers.ts RequestHandlerExtra.signal 무시). validate 2/2 PASS. clusterer epic CAND-026 (pending_gatekeeper). upstream_head_checked af3d9333aa (mcp 영역 6주 diff 0).'
     hints:
       - 'src/mcp/channel-bridge.ts: bridge open→close 비대칭. mcp-memory PR #71648 가 close 시 pending Map clear 추가했으나 다른 state (subscribers, channel ref) 의 close-time cleanup 동등하게 보장되는지 (axis 독립 — memory 가 아닌 lifecycle: dispose 경로 자체의 완전성)'
       - 'src/mcp/channel-server.ts: server start 실패 시 partial init state rollback. listen() throw 후 등록된 listener/timer 가 해제되는지'
@@ -391,6 +392,212 @@ cells:
       - 'CAL-001 적용: dispose/teardown/cleanup 경로 발견 시 execution condition 분류 (unconditional vs conditional-edge)'
       - 'CAL-004 적용: upstream-dup 으로 PR #71648 (mcp-memory v2 보류) 와 axis 명확히 분리 — close-time clear 는 memory 축에서 다룸. lifecycle 은 init failure rollback + in-flight cleanup 에 집중'
       - 'CAL-008 적용: gatekeeper 단계에서 git log upstream/main / gh pr list 로 mcp 영역 OPEN PR 확인 필수'
+
+  # ─── Phase 6 (2026-05-14 추가) — 미실행 도메인×축 확장 ───
+  # 직전 phase 1-5 에서 21셀 audit 완료, mcp-memory/lifecycle 까지 마침.
+  # active non-published CAND 누적을 위해 미실행 셀 6 개 동시 audit.
+  # 메인테이너 우선순위 (memory / plugin loading / cron / reliability) 정면 셀들 우선.
+  - id: mcp-concurrency
+    domain: mcp
+    type: concurrency
+    state: done
+    note: '0 FIND. R-3 5종 Grep 결과 lock/abort/race API 모두 부재 → JS single-thread + sync 두 줄 mutation 으로 atomic. 6 race 가설 폐기.'
+    phase: 6
+    hints:
+      - 'src/mcp/channel-bridge.ts: pendingClaudePermissions / pendingApprovals / pendingWaiters / queue 의 동시 set/delete race. 같은 requestId 중복 등록 / TTL sweeper 와 close() 의 동시 실행 race (PR #71648 fix 후 잔존 axis).'
+      - 'src/mcp/channel-server.ts: setRequestHandler 등록 후 transport.start() 도착하는 첫 message 와 handler 등록 race.'
+      - 'src/mcp/tools-stdio-server.ts: handlers Map 등록 중 callTool 진입 race — production 에서는 connect 가 단일 await 라 직렬화되지만, 두 번째 인스턴스 spawn 또는 reconnect 경로 검토.'
+      - 'src/agents/mcp-stdio-transport.ts: 동일 transport 인스턴스에 동시 send + close 진입. AbortSignal abort listener 등록 vs detach race.'
+      - 'src/agents/mcp-config-shared.ts: config reload 시 old/new descriptor map swap 의 atomicity.'
+      - 'CAL-008 적용: PR #71648 (mcp-memory) 와 CAND-026 (mcp-lifecycle) 와 file 영역 겹침/축 직교 검증.'
+
+  - id: mcp-error-boundary
+    domain: mcp
+    type: error-boundary
+    state: zero_find
+    phase: 6
+    note: '2026-05-14 error-boundary-auditor 진입 — upstream af3d9333aa. 4 후보 검토 후 0 FIND. sendNotification try/catch + global UR handler + shutdown-unhandled-rejection.test.ts 의 3-layer 방어 unconditional. 상세 사유 domain-notes/mcp.md 의 error-boundary-auditor 섹션 참조.'
+    hints:
+      - 'src/mcp/channel-bridge.ts: callBridgeRpc 의 reject 시 pending Map cleanup 보장 (catch path).'
+      - 'src/mcp/channel-server.ts: setRequestHandler callback 내 throw 시 SDK Server 의 error response 자동 변환 의존도 + log/metric 부재.'
+      - 'src/mcp/tools-stdio-server.ts: tool.execute throw 시 error response 직렬화 (formatErrorMessage 안전성 + serialize 실패 fallback).'
+      - 'src/agents/mcp-stdio-transport.ts: child stderr 처리 부재, child exit code != 0 시 caller 통보 경로, stdin write EPIPE 처리.'
+      - 'src/agents/mcp-http.ts: HTTP 4xx/5xx response 의 host 측 error 변환, malformed JSON-RPC body 처리.'
+      - 'CAL-001: silent catch + return 패턴 발견 시 primary observation/log/throw 경로 인접 여부 확인.'
+
+  - id: agents-registry-lifecycle
+    domain: agents-registry
+    type: lifecycle
+    state: integrated
+    note: '1 FIND P2 → CAND-030. markSubagentRunTerminated 의 clearPendingLifecycleTimeout 누락 (finalizeInterruptedSubagentRun 비대칭). PR #68669 axis 와 분리 명시.'
+    phase: 6
+    note: 'Phase 4 에서 보류 (PR #68669 인접 scope 혼란 위험). 2026-05-14 재진입 — PR #68669 head 7067f30ab2 무대응 유지 상태에서 nearby axis 분리 가능.'
+    hints:
+      - 'src/agents/subagent-registry.ts: registerSubagentRun 의 partial init rollback — controller 등록 후 lifecycle hook 등록 실패 시 registry 잔존 가능성.'
+      - 'src/agents/subagent-registry-lifecycle.ts: completeSubagentRun 의 announce cleanup vs browser cleanup 순서 (CAND-011/PR #68669 인접 — 별 axis: lifecycle dispose 비대칭).'
+      - 'src/agents/subagent-registry-memory.ts: pendingLifecycleErrorByRunId / resumeRetryTimers / endedHookEmittedAt 등 marker 의 stop()/reset() 일관성.'
+      - 'src/agents/subagent-registry-run-manager.ts: gateway waitForSubagentCompletion 도착 전 controller dispose 시 marker 누수.'
+      - 'live-cache-test-support.ts: test cache invalidation 의 production 경로 영향 없음 검증.'
+      - 'CAL-001 적용: cleanup 경로의 unconditional vs conditional 분류 (CAND-010 5-agent scope-down 교훈).'
+      - 'CAL-008: PR #68669 (browser cleanup dedup) 와 axis 다른 lifecycle gap 만 탐지 — 분리 PR 가능한 축으로 좁힘.'
+
+  - id: channels-memory
+    domain: channels
+    type: memory
+    state: done
+    note: '0 FIND. routing WeakMap 3개 cap+clear, channels module-scope Map/Set 14개 모두 cap+FIFO 또는 unregister 대칭. CAL-008 upstream 활발 정리 중 (PR #75602 etc).'
+    phase: 6
+    hints:
+      - 'src/channels/ack-reactions.ts: 채널/메시지 → emoji state Map 의 lifetime — 채널 close 시 cleanup 보장.'
+      - 'src/channels/allow-from.ts: allowlist 캐시 (account → set) 의 갱신/만료. config reload 시 stale entry.'
+      - 'src/routing/bindings.ts: account ↔ channel binding Map cap/TTL. unbind 경로 누락 시 누적.'
+      - 'src/routing/account-lookup.ts: lookup cache (account key → routing meta) 의 LRU/TTL 여부.'
+      - '4 adapter (telegram/slack/discord/whatsapp) 각각 in-memory state (rate limit, dedup, presence) 의 cleanup.'
+      - 'CAL-001: TTL/cap/close-clear 의 primary path 인접 여부 확인 (CAND-019/020 patterns 회피).'
+
+  - id: auto-reply-memory
+    domain: auto-reply
+    type: memory
+    state: done
+    note: '0 FIND. 25 Map/Set 모두 cap+TTL+identity-guard 중 하나가 unconditional. setInterval 0건, setTimeout 7개 clearTimeout 짝맞음.'
+    phase: 6
+    hints:
+      - 'src/auto-reply/reply/queue/drain.ts: FOLLOWUP_QUEUES Map 의 cap/TTL — `/stop` 직후 orphan 방지 (CAND-012 fix 후 잔존).'
+      - 'src/auto-reply/chunk.ts: chunk 상태 buffer — 빈 user 메시지 도착 시 cleanup.'
+      - 'src/auto-reply/command-detection.ts: in-flight command detection state 누적.'
+      - 'src/auto-reply 의 in-memory dedup Map (idempotencyKey → seen) 의 만료.'
+      - 'CAL-008: upstream queue 영역 6주 fix 다수 — 동일 file dup 회피.'
+
+  - id: infra-process-lifecycle
+    domain: infra-process
+    type: lifecycle
+    state: done
+    note: '0 FIND. listener detach 대칭 + AbortController detach + restart.ts unconditional cleanup 검증. CAND-006/007 와 axis 분리 어려움.'
+    phase: 6
+    hints:
+      - 'src/infra/process-respawn.ts: respawn loop 의 graceful shutdown vs immediate exit 분기. timeout cleanup 누락.'
+      - 'src/infra/restart.ts: emitGatewayRestart 의 listener attach/detach 비대칭 (CAND-006 abandoned 인접 — 별 axis: lifecycle setup gap).'
+      - 'src/infra/abort-signal.ts: AbortController 의 abort listener 등록 후 detach 누락 — registry-wide signal 의 lifetime.'
+      - 'src/infra/approval-handler-runtime.ts: approval handler register/unregister 비대칭.'
+      - 'src/infra/unhandled-rejections.ts 의 install/uninstall 비대칭 (CAND-007 abandoned 인접 — 별 axis: idempotency 가 아닌 dispose).'
+      - 'CAL-008: process 도메인 6주 upstream fix 검토 후 진입.'
+
+  # ─── Phase 6 batch 2 (2026-05-14 추가) — 미실행 axes 확장 ───
+  - id: channels-concurrency
+    domain: channels
+    type: concurrency
+    state: done
+    note: '2 FIND P3 (typing-lifecycle.ts:38-45 stop()/onTick race + message/receive.ts:69-82 ctx.ack() check-then-await-set) — 둘 다 validate REJECT (evidence whitespace mismatch). 재현/보정 후속 가능. rejected/ 보관.'
+    phase: 6
+    hints:
+      - '4 adapter (telegram/slack/discord/whatsapp) 의 동일 message 동시 ack vs deliver race.'
+      - 'src/routing/bindings.ts: bind/unbind 중 enumerate 동시 접근 atomicity.'
+      - 'src/channels/ack-reactions.ts: ack-add 후 ack-remove 사이 retry race.'
+      - 'src/routing/account-lookup.ts: lookup cache miss 후 fetch 도중 같은 key 두 번 호출 dedup 부재.'
+
+  - id: gateway-lifecycle
+    domain: gateway
+    type: lifecycle
+    state: integrated
+    note: '2 FIND P3 → CAND-038 (WS close 시 chatAbortControllers 미abort) + CAND-039 (activateGatewayScheduledServices recovery IIFE/setTimeout cancellation handle 미반환).'
+    phase: 6
+    hints:
+      - 'WS handshake 실패 시 partial init state rollback (auth + session 분리).'
+      - 'gateway client reconnect 도중 in-flight request 의 controller dispose.'
+      - 'agent-event-assistant-text 의 EventEmitter listener cleanup.'
+      - 'server start 실패 시 listen() throw 후 timer/heartbeat 등 partial init 정리.'
+
+  - id: context-engine-lifecycle
+    domain: context-engine
+    type: lifecycle
+    state: integrated
+    note: '2 FIND P3 → CAND-035 (init.ts initialized=true set-before-action, dedup-merged with eb-001) + CAND-037 (registry.ts resolveContextEngine fallback dispose 누락).'
+    phase: 6
+    hints:
+      - 'registry.ts: engine register 실패 시 partial registration rollback (clearContextEnginesForOwner 외 경로).'
+      - 'delegate.ts: per-session delegate dispose 경로.'
+      - 'init.ts: bootstrap 실패 시 부분 init 잔존.'
+      - 'legacy.ts: compat path 의 dispose 비대칭 (legacy 엔진은 unregister 가 없는지).'
+
+  - id: context-engine-concurrency
+    domain: context-engine
+    type: concurrency
+    state: done
+    note: '1 FIND P3 (registry.ts:561-599 resolveContextEngine WeakMap orphan attach) — validate REJECT (YAML 파싱). 재시도 가능. rejected/ 보관.'
+    phase: 6
+    hints:
+      - 'registry.ts: 동시 register 두 caller — engines Map.set check-then-act race.'
+      - 'rejectedKeys Set 의 동시 add — atomic check 부재 시 중복 인입.'
+      - 'delegate.ts: per-session 상태 read-modify-write race.'
+
+  - id: infra-retry-memory
+    domain: infra-retry
+    type: memory
+    state: done
+    note: '0 FIND. unique timer (sleepWithAbort setTimeout) + abort listener 모두 {once:true} + 양분기 명시 removeEventListener + clearTimeout unconditional cleanup.'
+    phase: 6
+    hints:
+      - 'retry.ts / retry-policy.ts: per-key retry state (attempts, last error) 의 cap/TTL.'
+      - 'backoff.ts: jitter state 누적 가능성.'
+      - 'in-flight retry timers 의 clear 보장.'
+
+  - id: agents-registry-error-boundary
+    domain: agents-registry
+    type: error-boundary
+    state: integrated
+    note: '3 FIND (1 P2 + 2 P3) → CAND-027 (listener IIFE catch chain 부재 → process.exit) + CAND-028 (restoreSubagentRuns silent ignore) + CAND-029 (registerSubagentRun task split state). PR #68669 axis 분리 + PR #75462 CAL-008 회피.'
+    phase: 6
+    hints:
+      - 'subagent-registry-lifecycle.ts: completeSubagentRun 의 announce cleanup throw 시 후속 cleanup 누락.'
+      - 'subagent-registry.ts: registerSubagentRun 의 lifecycle hook 등록 실패 catch — silent vs propagate.'
+      - 'PR #68669 의 browser cleanup dedup 후 announce cleanup 가 throw 하는 경우 처리 보장 (CAL-001 회피).'
+      - 'live-cache-test-support.ts: invalidate 실패 시 production 경로 영향 없음 확인 (test-only path).'
+
+  # ─── Phase 6 batch 3 (2026-05-14 추가) — 잔여 axes 마무리 ───
+  - id: infra-process-concurrency
+    domain: infra-process
+    type: concurrency
+    state: integrated
+    note: '1 FIND P3 → CAND-040 (approval-handler-runtime.ts deliverTarget activeEntries RMW vs onStopped clear race, R-7 confidence 낮음).'
+    phase: 6
+    hints:
+      - 'process-respawn.ts: respawn 직전 cleanup 과 새 child spawn 사이 race.'
+      - 'restart.ts: emitGatewayRestart 동시 두 호출 시 listener 중복 호출.'
+      - 'unhandled-rejections.ts: install/uninstall 동시 진입 race.'
+      - 'abort-signal.ts: registry-wide signal 의 concurrent abort + add listener race.'
+
+  - id: auto-reply-lifecycle
+    domain: auto-reply
+    type: lifecycle
+    state: integrated
+    note: '2 FIND (1 P2 + 1 P3) → CAND-033 (drain.ts collect mode auth-groups loop snapshot, CAND-012 와 다른 axis) + CAND-034 (inbound-debounce SIGTERM silent drop).'
+    phase: 6
+    hints:
+      - 'reply/queue/drain.ts: drain 중간에 close() 시 in-flight chunk 처리.'
+      - 'chunk.ts: chunk lifecycle (open/close) 의 비대칭.'
+      - 'command-detection.ts: detect→handle 사이 channel close 시 cleanup.'
+
+  - id: auto-reply-error-boundary
+    domain: auto-reply
+    type: error-boundary
+    state: integrated
+    note: '2 FIND (1 P2 + 1 P3) → CAND-031 (drain.ts self-recurse 무한 재시도) + CAND-032 (reply-run-registry queueMessage floating promise).'
+    phase: 6
+    hints:
+      - 'drain.ts: adapter send throw 시 queue state 처리.'
+      - 'chunk.ts: chunk 직렬화 실패 catch.'
+      - 'command-detection.ts: regex throw / parse error.'
+
+  - id: context-engine-error-boundary
+    domain: context-engine
+    type: error-boundary
+    state: integrated
+    note: '2 FIND P3 → CAND-035 (init.ts initialized=true, dedup-merged with lc-002) + CAND-036 (invokeWithLegacyCompat side-effectful retry).'
+    phase: 6
+    hints:
+      - 'registry.ts: register/use 중 engine init throw 시 partial state.'
+      - 'delegate.ts: per-session call throw catch — silent vs propagate.'
+      - 'init.ts: bootstrap throw 처리.'
 
 # ────────────────────────────────────────────────────────────
 # 상태 전이 (셀 단위, grid.yaml 내 관리)

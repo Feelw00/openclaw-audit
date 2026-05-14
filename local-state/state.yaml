@@ -1544,3 +1544,388 @@ items:
     extras:
       errors:
       - 'B-1-3: title exceeds 80 chars'
+  FIND-agents-registry-error-boundary-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:38+00:00'
+    created_at: '2026-05-14T06:43:38+00:00'
+    updated_at: '2026-05-14T06:43:38+00:00'
+  FIND-agents-registry-error-boundary-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:38+00:00'
+    created_at: '2026-05-14T06:43:38+00:00'
+    updated_at: '2026-05-14T06:43:38+00:00'
+  FIND-agents-registry-error-boundary-003:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:38+00:00'
+    created_at: '2026-05-14T06:43:38+00:00'
+    updated_at: '2026-05-14T06:43:38+00:00'
+  FIND-agents-registry-lifecycle-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:39+00:00'
+    created_at: '2026-05-14T06:43:39+00:00'
+    updated_at: '2026-05-14T06:43:39+00:00'
+  FIND-auto-reply-error-boundary-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:39+00:00'
+    created_at: '2026-05-14T06:43:39+00:00'
+    updated_at: '2026-05-14T06:43:39+00:00'
+  FIND-auto-reply-error-boundary-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:39+00:00'
+    created_at: '2026-05-14T06:43:39+00:00'
+    updated_at: '2026-05-14T06:43:39+00:00'
+  FIND-auto-reply-lifecycle-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:39+00:00'
+    created_at: '2026-05-14T06:43:39+00:00'
+    updated_at: '2026-05-14T06:43:39+00:00'
+  FIND-auto-reply-lifecycle-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:39+00:00'
+    created_at: '2026-05-14T06:43:39+00:00'
+    updated_at: '2026-05-14T06:43:39+00:00'
+  FIND-channels-concurrency-001:
+    kind: find
+    state: rejected
+    transitions:
+    - from: null
+      to: rejected
+      actor: validate
+      reason: 'gate rejection: B-1-2c: evidence mismatch at src/channels/typing-lifecycle.ts:38-45
+        — whitespace or content differs'
+      at: '2026-05-14T06:43:39+00:00'
+    created_at: '2026-05-14T06:43:39+00:00'
+    updated_at: '2026-05-14T06:43:39+00:00'
+    extras:
+      errors:
+      - 'B-1-2c: evidence mismatch at src/channels/typing-lifecycle.ts:38-45 — whitespace
+        or content differs'
+  FIND-channels-concurrency-002:
+    kind: find
+    state: rejected
+    transitions:
+    - from: null
+      to: rejected
+      actor: validate
+      reason: 'gate rejection: B-1-2c: evidence mismatch at src/channels/message/receive.ts:69-82
+        — whitespace or content differs'
+      at: '2026-05-14T06:43:40+00:00'
+    created_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T06:43:40+00:00'
+    extras:
+      errors:
+      - 'B-1-2c: evidence mismatch at src/channels/message/receive.ts:69-82 — whitespace
+        or content differs'
+  FIND-context-engine-concurrency-001:
+    kind: find
+    state: rejected
+    transitions:
+    - from: null
+      to: rejected
+      actor: validate
+      reason: "gate rejection: B-1-3: frontmatter YAML error: while parsing a block\
+        \ mapping\n  in \"<unicode string>\", line 83, column 3:\n    - why: 왜 clearContextEnginesForOwn\
+        \ ... \n      ^\nexpected <block end>, but found '<scalar>'\n  in \"<unicode\
+        \ string>\", line 84, column 42:\n     ... : 'clearContextEnginesForOwner'\
+        \ (registry.ts:427-435) 는 동기 함수지만  ... \n                                \
+        \         ^"
+      at: '2026-05-14T06:43:40+00:00'
+    created_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T06:43:40+00:00'
+    extras:
+      errors:
+      - "B-1-3: frontmatter YAML error: while parsing a block mapping\n  in \"<unicode\
+        \ string>\", line 83, column 3:\n    - why: 왜 clearContextEnginesForOwn ...\
+        \ \n      ^\nexpected <block end>, but found '<scalar>'\n  in \"<unicode string>\"\
+        , line 84, column 42:\n     ... : 'clearContextEnginesForOwner' (registry.ts:427-435)\
+        \ 는 동기 함수지만  ... \n                                         ^"
+  FIND-context-engine-error-boundary-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:40+00:00'
+    created_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T06:43:40+00:00'
+  FIND-context-engine-error-boundary-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:40+00:00'
+    created_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T06:43:40+00:00'
+  FIND-context-engine-lifecycle-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:40+00:00'
+    created_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T06:43:40+00:00'
+  FIND-context-engine-lifecycle-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:40+00:00'
+    created_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T06:43:40+00:00'
+  FIND-gateway-lifecycle-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:40+00:00'
+    created_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T06:43:40+00:00'
+  FIND-gateway-lifecycle-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:41+00:00'
+    created_at: '2026-05-14T06:43:41+00:00'
+    updated_at: '2026-05-14T06:43:41+00:00'
+  FIND-infra-process-concurrency-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T06:43:41+00:00'
+    created_at: '2026-05-14T06:43:41+00:00'
+    updated_at: '2026-05-14T06:43:41+00:00'
+  CAND-026:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (026)
+      at: '2026-05-14T06:55:21+00:00'
+    created_at: '2026-05-14T06:55:21+00:00'
+    updated_at: '2026-05-14T06:55:21+00:00'
+  CAND-027:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (027)
+      at: '2026-05-14T06:55:21+00:00'
+    created_at: '2026-05-14T06:55:21+00:00'
+    updated_at: '2026-05-14T06:55:21+00:00'
+  CAND-028:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (028)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-029:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (029)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-030:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (030)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-031:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (031)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-032:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (032)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-033:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (033)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-034:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (034)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-035:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (035)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-036:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (036)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-037:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (037)
+      at: '2026-05-14T06:55:22+00:00'
+    created_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T06:55:22+00:00'
+  CAND-038:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (038)
+      at: '2026-05-14T06:55:23+00:00'
+    created_at: '2026-05-14T06:55:23+00:00'
+    updated_at: '2026-05-14T06:55:23+00:00'
+  CAND-039:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (039)
+      at: '2026-05-14T06:55:23+00:00'
+    created_at: '2026-05-14T06:55:23+00:00'
+    updated_at: '2026-05-14T06:55:23+00:00'
+  CAND-040:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from Phase 6 batch (040)
+      at: '2026-05-14T06:55:23+00:00'
+    created_at: '2026-05-14T06:55:23+00:00'
+    updated_at: '2026-05-14T06:55:23+00:00'

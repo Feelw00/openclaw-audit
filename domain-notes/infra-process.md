@@ -195,3 +195,199 @@
   uncaughtException 핸들러" (memory-leak-hunter §1, index.ts:92 + run-main:225)
   와 같은 "two-entrypoint duplicate registration" 패턴의 unhandledRejection
   변종이나, uncaughtException 은 allowed_paths 밖이라 본 CAND 에서 미포함.
+
+### plugin-lifecycle-auditor (2026-05-14)
+
+**R-3 Grep 결과:**
+
+- `rg -n "dispose|teardown|cleanup|unregister|deregister"` (allowed 5종)
+  → 1 hit (restart.ts:629 주석에 "deregistered from launchd" 단순 단어).
+  명시적 dispose/teardown 함수 0건.
+- `rg -n "process\.(on|once|off|removeListener)"` (allowed 5종)
+  → 1 hit. `process.on("unhandledRejection", ...)` (unhandled-rejections.ts:511) 만.
+  본 셀 범위 내 process listener detach 호출은 production·테스트 모두 0건
+  (테스트 파일들의 `process.off("unhandledRejection", ...)` 호출은 각 테스트가
+  자체적으로 등록한 listener 를 떼는 것; installUnhandledRejectionHandler 가
+  설치한 익명 콜백을 떼는 경로는 없음).
+- `rg -n "AbortController|AbortSignal|addEventListener|removeEventListener"`
+  → abort-signal.ts:7/10 의 `addEventListener("abort", onAbort, {once:true})`
+  + 내부 `removeEventListener` 쌍. **{once:true} + 명시 remove 이중 안전망.**
+  abort-signal.test.ts:30-56 가 contract 검증.
+- `rg -n "setInterval|clearInterval|setTimeout|clearTimeout"` (allowed 5종)
+  → restart.ts 9 hits. memory-leak-hunter 가 이미 모든 exit branch
+  (clearInterval@L490/L497/L509, clearActiveDeferralPolls@L71, callback self-null
+  @L484, clearPendingScheduledRestart@L46-49) 검증.
+- `rg -n "try\s*\{"` → 15 hits. lifecycle 관점에서 신규 발견 없음.
+
+**R-5 (CAL-001) execution-condition 분류표 (lifecycle 축):**
+
+| listener / handle | 등록 경로 | cleanup 경로 | 분류 |
+|---|---|---|---|
+| `process.on("unhandledRejection")` (unhandled-rejections.ts:511) | `installUnhandledRejectionHandler()` 호출 | **없음** (uninstaller 미제공) | `none` (CAND-007 axis 인접) |
+| `handlers` Set entries (unhandled-rejections.ts:20) | `registerUnhandledRejectionHandler` (L457) | closure return `handlers.delete` (L459); caller bonjour/telegram/whatsapp finally·explicit 호출 | `unconditional` (호출자 책임) |
+| `exceptionHandlers` Set (unhandled-rejections.ts:30) | `registerUncaughtExceptionHandler` (L480) | closure return `exceptionHandlers.delete` (L482); tui.ts:303 cleanup 함수 반환 | `unconditional` (호출자 책임) |
+| `signal.addEventListener("abort")` (abort-signal.ts:10) | `waitForAbortSignal` 진입 | onAbort 내부 `removeEventListener` (L7) + `{once:true}` | `unconditional` (이중 안전) |
+| `pendingRestartTimer` setTimeout (restart.ts:786) | `scheduleGatewaySigusr1Restart` | callback 본체 self-null (L790-794), `clearPendingScheduledRestart` (L46-49) | `unconditional` |
+| `activeDeferralPolls` setInterval (restart.ts:485) | `deferGatewayRestartUntilIdle` (L453) | 3 branch clearInterval+delete (L490/L497/L509), `clearActiveDeferralPolls` (L71) | `unconditional` |
+| spawn child (process-respawn.ts:27) | `spawnDetachedGatewayProcess` | `child.unref()` + caller exit; detached=true → OS 가 lifetime 관리 | `unconditional` (OS 위임) |
+| `activeEntries` Map entries (approval-handler-runtime.ts:535) | `deliverTarget` callback | `consumeActiveWrappedEntries` (L96 delete), `onStopped` (L671 clear) | `unconditional` (정상 flow) |
+| native `binding` (approval-handler-runtime.ts:524) | `bindPending` 호출 후 wrapped.binding 저장 | finalize 시 `unbindPending` (L597, L632), `onStopped` → `unbindWrappedEntries` (L662) | `unconditional` (finalize/stop) |
+
+**적용 카테고리 (lifecycle 축):**
+
+- [x] A. listener attach 후 detach 누락
+  → `process.on("unhandledRejection")` 만 uninstaller 부재. 그러나
+    (1) CAND-007 의 idempotency axis 와 같은 listener,
+    (2) production normal flow 에서 "install 했다가 끄는" 시나리오 없음 (in-process
+        restart 시에도 globalThis 캐시 재사용. resetGatewayRestartStateForInProcessRestart
+        도 listener 는 건드리지 않음 — 의도된 설계),
+    (3) process exit 시 자동 GC 로 leak 부담 0
+  → 별 axis 의 단단한 결함 아님. **FIND 금지.**
+- [x] B. AbortController register 후 abort listener detach 누락
+  → abort-signal.ts 는 {once:true} + 명시 remove 이중 방어. error-boundary-auditor
+    이전 평가 (FIND 금지) 와 동일. plugin-sdk re-export 라 production hot-path
+    in-repo 호출자 0 (R-7 미충족). **Skip.**
+- [x] C. approval handler register/unregister 비대칭
+  → `consumeActiveWrappedEntries` (L96 delete) + `onStopped` clear (L671) 모두
+    unconditional. binding 도 finalize/unbind 쌍 완비. 단, `deliverTarget`
+    내부 `bindPending` (L517) throw 시 wrapped 가 activeEntries 에 등록되지
+    않아 native side 에 deliver 된 entry 가 orphan 가능 — 그러나 caller
+    (approval-native-runtime.ts, 범위 밖) 가 throw 를 어떻게 처리하는지 contract
+    추적 불가. confidence 낮음. **Skip.**
+- [x] D. timeout / interval cleanup 누락
+  → memory-leak-hunter 가 이미 검증. 모든 exit branch에 clearInterval/clearTimeout
+    + Set delete. **Skip.**
+- [x] E. emitGatewayRestart listener lifetime
+  → emitGatewayRestart 자체는 listener 등록 안 함 (process.emit/process.kill 만).
+    SIGUSR1 listener 는 cli/gateway-cli/run-loop (범위 밖) 가 attach.
+    CAND-006 의 부분 롤백 axis 와도 무관. **Skip.**
+- [x] F. respawn loop graceful shutdown vs immediate exit
+  → process-respawn.ts 는 detached spawn + child.unref() 후 caller 가 exit.
+    timeout 사용 안 함, listener 등록 안 함. cleanup 대상 자체가 없음.
+    **Skip.**
+
+**핵심 관찰:**
+
+1. **dispose/teardown 함수 부재가 결함 아닌 설계 의도**: allowed 5 파일 전체에서
+   "dispose|teardown|cleanup|unregister|deregister" 매치 0건이지만, listener·
+   timer·child 각각이 OS/process exit/once-true/closure-return 방식으로 lifetime
+   을 위임함. install/uninstall 비대칭처럼 보이는 `installUnhandledRejectionHandler`
+   는 process-level signal handler 라 "lifetime = process lifetime" 가 정상 설계.
+
+2. **CAND-006/007 와 별 axis 후보가 없음**: 후보들이 결국 같은 file/같은 자료구조
+   /비슷한 mechanism 으로 수렴. lifecycle 축 자체로 epic 가능한 새 결함 없음.
+
+3. **approval-handler-runtime.ts 의 bindPending orphan 가능성은 외부 contract
+   의존**: deliverPending 성공 → bindPending throw 시 wrapped 미등록.
+   approval-native-runtime.ts (범위 밖) 가 throw 를 swallow 하는지, native
+   side entry 가 어떻게 cleanup 되는지 본 셀 범위에서 확인 불가. R-7
+   production hot-path branch 동작 불명 → confidence 낮음, abandon.
+
+4. **deferGatewayRestartUntilIdle hook callback throw 시 setInterval orphan**:
+   line 499/505/511 의 hook 호출은 try/catch 없음. hook throw 시 clearInterval
+   skip → poll 영구. 그러나 production caller (server-reload-handlers.ts:423)
+   는 hook 에 logger.warn/info 만 공급. R-7 적용 시 production branch 의 실제
+   동작 = "hook throw 없음". false positive 위험 → abandon.
+
+**발견 FIND:** 0건. lifecycle 축에서 단단한 새 결함은 발견되지 않음.
+
+**CAL-008 활동 검토:** restart.ts 는 6주 내 fix 다수 (preserve restart hooks
+during async prep `2a4514af`, preserve restart hooks across coalescing
+`ab32c531`, keep restart emitting after ack prep failure `46ce666b`, bound
+default restart deferral `1f41b8b4`, expose restart drain controls `f6f8d747`)
+— lifecycle 영역의 변동성 매우 큼. 열린 PR 도 #46303 #70466 #72224 등 다수.
+upstream 이 활발히 다듬는 영역이라 현재 코드는 안정화 단계로 판단.
+unhandled-rejections.ts 도 transient error 분류 정교화 중 (`d1365fef` ENOSPC,
+`db6951088a` ECONNREFUSED 등). approval-handler-runtime.ts 는 type/export
+refactor 가 주로 진행됨 (lifecycle 관련 변경 없음).
+
+### concurrency-auditor (2026-05-14)
+
+**R-3 Grep 결과 (5종, 본 셀 5 파일 전체):**
+
+- `rg -n "Mutex|Semaphore|AsyncLock|acquire|release" {5파일}` → **0 hits.**
+  본 셀 file 군 내 동기화 원시 부재.
+- `rg -n "AbortController|AbortSignal|signal\.(abort|addEventListener)" {5파일}`
+  → 3 hits, 모두 abort-signal.ts (L1/L2/L10). 새 AbortController 생성 0건.
+- `rg -n "Promise\.race\(|Promise\.all\(|Promise\.allSettled\(" {5파일}` → **0 hits.**
+- `rg -n "once\(|prepend(Once)?Listener\(|removeAllListeners\(" {5파일}` → **0 hits.**
+- `rg -n "setImmediate|queueMicrotask|process\.nextTick" {5파일}` → **0 hits.**
+
+5종 중 4종이 zero match. 본 셀은 동기화 원시도 race-prone API 도 거의 사용 안 함.
+나머지 race 표면은 (a) `await` 사이의 shared mutable state read-modify-write,
+(b) 외부 process signal emit 동시 호출 두 카테고리로 좁혀짐.
+
+**R-5 (CAL-001) execution-condition 분류 (concurrency 축):**
+
+| race 후보 | 위치 | unconditional guard | 분류 |
+|---|---|---|---|
+| `restart.ts emitGatewayRestart` 동시 두 호출 | L280-320 | `hasUnconsumedRestartSignal()` (L281) — sync check, set/clear도 같은 sync 블록 | `unconditional` → FIND 금지 |
+| `scheduleGatewaySigusr1Restart` 동시 두 호출 | L684-819 | L711 + L730 coalesce/pull-earlier 분기 (sync) | `unconditional` |
+| `emitPreparedGatewayRestart` 의 `pendingRestartEmitHooks` chain | L413-446 | 2a4514afca + ab32c53103 이미 fix (R-8) — while-loop 가 await 사이 추가된 hooks pickup | `unconditional` (chain fix) |
+| `deferGatewayRestartUntilIdle` 멀티 instance 의 `activeDeferralPolls` | L453-516 | `activeDeferralPolls` Set 의 add/delete 가 sync. 첫 emit 가 token 점유 → 나머지 bail | `unconditional` |
+| `installUnhandledRejectionHandler` 의 process listener 재등록 | L502-546 | idempotency guard 없음 (CAND-007 abandoned) | `none` (memory axis 별도) |
+| `isUnhandledRejectionHandled` iteration 중 handlers Set 변이 | L463-477 | JS Set 의 iteration semantics + handlers.delete 안전 | `unconditional` (JS semantics) |
+| `process-respawn.ts spawnDetached` 동시 두 호출 | L25-34 | gateway-lock 외부 가드 (범위 밖) | `conditional-edge` (외부 의존, 본 셀 가드 없음) |
+| `abort-signal.ts` L2 check 와 L10 addEventListener 사이 race | L1-12 | L2 와 L10 사이에 await 없음 (sync 블록) | `unconditional` (JS single-thread) |
+| `approval-handler-runtime.ts activeEntries` read-modify-write (L529-535) | deliverTarget L498-537 | 없음 — line 505/517 두 await 가 sync 블록 분리 | `none` → **FIND-001** |
+| `consumeActiveWrappedEntries` (L89-97) 직후 deliverTarget 진입 race | finalize* L587-655 | caller (out-of-scope) 의 dispatch ordering 에 의존 (R-7) | `none` 가능, **R-7 confidence 낮음 abandon** |
+
+**적용 카테고리:**
+
+- [x] A. Shared mutable state 의 async 갱신 race
+  → activeEntries Map 의 read-modify-write 가 두 await (deliverPending /
+    bindPending) 뒤에 일어남. onStopped clear 와 race → **FIND-001 (P3).**
+- [x] B. Promise.race loser 처리
+  → R-3 grep 0 hits. **Skip.**
+- [x] C. Listener / hook register-unregister race
+  → unhandled-rejections.ts 의 idempotency 부재는 CAND-007 (memory axis) 중복.
+    restart.ts emitGatewayRestart 의 process.emit("SIGUSR1") 후 동기 reentrance
+    가능성 분석 — run-loop SIGUSR1 listener 는 async IIFE 라 sync 부분이 즉시
+    반환, reentrance 없음. **Skip.**
+- [x] D. AbortController / AbortSignal 전파 단절
+  → 본 셀에 AbortController 사용처 0. abort-signal.ts 는 receiver-only helper,
+    R-3 race 분석상 race 미발생 (L2-L10 sync). **Skip.**
+- [x] E. Microtask / setImmediate ordering 가정
+  → R-3 grep 0 hits. **Skip.**
+- [x] F. Map/Set operation atomicity
+  → activeEntries (approval-handler-runtime), handlers (unhandled-rejections),
+    activeDeferralPolls (restart) 세 Map/Set 점검. 후자 둘은 unconditional 가드
+    완비. activeEntries 만 race → FIND-001 에서 처리.
+- [x] G. Double-dispatch / re-entrance
+  → emitGatewayRestart 의 single-flight token guard 검증 (L281). 동시 두 호출
+    중 두번째는 bail. process.emit 후 markGatewaySigusr1RestartHandled 가 동기
+    실행되더라도 sync 블록 내에서 token 정합. **Skip.**
+- [x] H. Race with cleanup / disposal
+  → onStopped (approval-handler-runtime) 가 in-flight deliverTarget 를 await
+    하지 않고 activeEntries.clear() 하는 패턴이 FIND-001 의 본질.
+- [x] **primary-path inversion (CAL-001)**: race 가 재현되려면 어떤 atomic guard
+  가 우회돼야 하는가 — activeEntries 접근에 file-local lock 없음, caller (out-of-
+  scope) 의 dispatch ordering 만이 사실상 가드. unconditional guard 부재 확인.
+- [x] **hot-path vs test-path (R-7)**: caller approval-native-runtime.ts (범위 밖)
+  가 deliverTarget 와 onStopped 의 ordering 을 보장하는지 본 셀 범위에서 확인
+  불가. confidence 낮아 P3 로 격하. CAL-008 "borderline P3 OK" 가이드에 따라
+  FIND 기록.
+
+**핵심 관찰:**
+
+1. **본 셀은 동기화 원시를 거의 쓰지 않음.** 대신 (a) 모든 자료구조 변이를 sync
+   block 안에 묶거나, (b) token 패턴 (emittedRestartToken / consumedRestartToken)
+   으로 single-flight 를 보장. await 사이 외부 mutation 가능성을 인지하고 설계.
+
+2. **유일하게 await 사이 race 가 남은 곳이 approval-handler-runtime 의 deliverTarget
+   activeEntries 갱신**. caller (approval-native-runtime.ts) 의 dispatch contract
+   에 race 방지 책임을 위임한 형태. 본 셀 코드만으로는 race 확정 불가하지만,
+   guard 부재가 명확하므로 FIND 기록 후 cross-cell 또는 메인테이너 리뷰에서 caller
+   contract 확인 필요.
+
+3. **CAL-008 upstream 변동성 검토**: restart.ts 의 concurrency 관련 fix 가 매우
+   활발 (2a4514afca, ab32c53103, 46ce666b04, fe5f0cddb9). 본 셀 내 race 후보 중
+   `pendingRestartEmitHooks` chain 은 upstream 이 이미 fix → 본 audit 에서 FIND
+   금지 (R-8). approval-handler-runtime.ts 는 race/concurrent 키워드 commit 0건.
+
+4. **abort-signal.ts 는 plugin-sdk re-export 만 됨** (production hot-path in-repo
+   caller 0). FIND 대상 아님.
+
+**발견 FIND:**
+- FIND-infra-process-concurrency-001: deliverTarget 의 activeEntries 갱신 사이
+  onStopped 가 clear 하면 wrapped binding orphan (P3, resource-exhaustion).

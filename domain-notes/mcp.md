@@ -352,3 +352,153 @@ rg -n "ensureStandalonePluginToolRegistryLoaded|resolvePluginTools" src/mcp/
 - one-thing-per-PR 검토 통과 — 3 hunk / 2 files / XS-S.
 - pre-pr cross-review 시 fix surface 의 channel-server.ts 패턴 이식 vs in-flight Set 추적 vs caller finally drain 세 옵션 중 선택지 정리.
 - 회귀 테스트 인프라가 channel-server.shutdown-unhandled-rejection.test.ts 와 유사 (실 SDK Server + 실 stdio transport) → 본 CAND 의 회귀 테스트는 그 패턴 follow.
+
+### concurrency-auditor (2026-05-14, upstream `af3d9333aa`)
+
+**셀**: `mcp-concurrency` (allowed_paths: `src/mcp/**` + 8 개 src/agents/mcp-* + src/config/mcp-config.ts + src/cli/mcp-cli.ts).
+**결론**: **FIND 0 건** — 본 도메인의 race surface 는 JS single-threaded 모델 + sync-mutation-only 패턴으로 인해 false-positive 비용이 큰 가설만 남았다.
+
+**R-3 Grep 결과 (5종 모두 실행)**:
+
+```
+rg -n "Mutex|Semaphore|AsyncLock|acquire|release" {allowed_paths}
+  → 0 매치 (외부 lock primitive 부재)
+
+rg -n "AbortController|AbortSignal|signal\.(abort|addEventListener)" {allowed_paths}
+  → 0 매치 (allowed_paths 내부에는 cancellation primitive 부재. SDK 가 제공하는
+    extra.signal 은 plugin-tools-handlers 가 무시 — 이미 FIND-mcp-lifecycle-002 에서 다룸)
+
+rg -n "Promise\.race\(|Promise\.all\(|Promise\.allSettled\(" {allowed_paths}
+  → mcp-stdio-transport.ts:124,127 (close 의 timeout race, unconditional)
+  → channel-bridge.ts:95 (Promise.all 5 dynamic imports — startup phase, race source 아님)
+
+rg -n "once\(|prepend(Once)?Listener\(|removeAllListeners\(" {allowed_paths}
+  → 9 매치 — 전부 lifecycle listener once 등록 (process.once SIGINT/SIGTERM,
+    stdin.once "end"/"close", child.once "close", stdin.once "drain")
+  → 모두 단일 source per once → fire 후 자동 detach. 등록 race 부재.
+
+rg -n "setImmediate|queueMicrotask|process\.nextTick" {allowed_paths}
+  → 0 매치 in production code (test 1건만: channel-server.shutdown-unhandled-rejection.test.ts:121)
+```
+
+**R-5 execution condition 분류**:
+
+| guard | 위치 | 조건 | 평가 |
+|---|---|---|---|
+| `Promise.race([closePromise, delay(CLOSE_TIMEOUT_MS)])` | mcp-stdio-transport.ts:124,127 | unconditional in close path | child 종료 timeout 보장. unconditional → race 대상 아님 |
+| `shuttingDown` boolean | channel-server.ts:84, tools-stdio-server.ts:31 | unconditional in shutdown handler | 재진입 차단 — set 과 check 사이 await 없음, atomic |
+| `this.closed` flag | channel-bridge.ts:163 | unconditional in close() | 재진입 차단, sync check-and-set |
+| `this.started` flag | channel-bridge.ts:84 | unconditional in start() | 재진입 차단, sync check-and-set + `await this.readyPromise` 로 재진입자 직렬화 |
+| `readySettled` flag | channel-bridge.ts:362, 370 | unconditional in resolveReadyOnce/rejectReadyOnce | promise 중복 settle 차단 |
+| Map.has + delete | channel-bridge.ts:487-488 | conditional on regex match | 두 줄 sync, atomic. await 가 그 사이에 없음 |
+| `processToClose = this.process; this.process = undefined` | mcp-stdio-transport.ts:113-114 | unconditional in close() | sync 두 줄, double-entry 시 두 번째 caller 의 `processToClose` 는 undefined → if-branch skip, double-kill 부재 |
+| Map.set (overwrite) | channel-bridge.ts:308, 403 | unconditional | overwrite 자체는 race 아님. idempotency 결여는 SDK retry 정책 의존 (잠재 P3, 본 셀 outside) |
+
+**R-8 upstream 최신성**:
+
+- HEAD `af3d9333aa` (2026-05-14 ff 완료).
+- `git log upstream/main --since="6 weeks ago" -- src/mcp src/agents/mcp-*.ts src/config/mcp-config.ts src/cli/mcp-cli.ts` 30 건 중 race/concurrent/lock/atomic/serialize 키워드 0 건. mcp 영역의 동시성 축 upstream fix 활동 0.
+
+**탐색한 race 가설과 폐기 사유**:
+
+1. **`handleGatewayEvent` async fire-and-forget + 같은 approval id requested/resolved 순서 reverse**
+   - 가설: `void this.handleGatewayEvent(event)` (L127-129) 가 두 event 를 promise 두 개로 등록 → resolved 가 requested 보다 먼저 처리되면 delete-then-set → stale entry.
+   - 폐기: handleGatewayEvent body 의 case 안에 await 없음 (전부 sync `trackApproval`/`resolveTrackedApproval`/`enqueue`). 두 promise body 가 sync 라 caller 호출 순서대로 execute. GatewayClient 가 한 event-loop tick 안에 두 onEvent 호출하면 첫 promise 의 sync body 가 끝난 후 두 번째 시작. session.message 만 await 있지만 다른 case 와 path 분리.
+   - CAL-001 함정 회피: "JS lock primitive 부재 = race" 아님. sync mutation 만 있으면 single-threaded model 에서 atomic.
+
+2. **`pendingClaudePermissions.set` 과 `delete` 사이 같은 requestId 중복**
+   - 가설: handleClaudePermissionRequest (L308 set) 와 handleSessionMessageEvent (L487-488 has+delete) 사이 race. 같은 requestId 가 두 번 들어오면 set 이 overwrite.
+   - 폐기: has + delete 가 sync 한 두 줄 (await 그 사이 없음) — atomic. 중복 set 자체는 silent overwrite 이지만 race 라기보다 idempotency 결여. SDK 가 같은 requestId 재전송하는 정책 미확인 → false-positive 위험.
+
+3. **`OpenClawStdioClientTransport.close()` 의 동시 진입**
+   - 가설: 두 caller 가 동시 close() 호출 → 두 번째는 L113 에서 `this.process` 이미 undefined → if-branch skip → readBuffer.clear() 만. 첫 호출은 아직 `await Promise.race` 중 → readBuffer 에 마지막 chunk append + 두 번째 caller 의 clear → fragmented frame.
+   - 폐기: production caller 가 동시 close() 호출하는 경로 미확인. SDK Client 가 1회 close 호출 + 사용자 코드는 SDK 객체 close 1회 가 정상. 동시 호출 시나리오는 synthetic. CAL-003 hot-path-vs-test-path 의 함정 — production hot-path 에서 재현 가능한 패턴 아님.
+
+4. **`OpenClawStdioClientTransport.send()` 의 `this.process?.stdin` 체크 vs `close()` 의 stdin.end()**
+   - 가설: send 가 stdin 참조 잡은 직후 close 가 stdin.end → stdin.write 중 EPIPE.
+   - 폐기: L143 `stdin.write(json, (err) => { if (err) reject ...; else resolve ... })` 가 callback 으로 EPIPE 처리 (commit e1a7c5b860 #75602 명시적 fix). Promise 가 정상 reject. SDK Client 가 receive. **이미 방어됨 — unconditional guard**.
+
+5. **`start()` 의 'spawn' vs 'error' listener 등록 race**
+   - 가설: `this.process = child` (L67) 직후 'error' listener 등록 (L69) 사이에 child 가 'error' emit 하면 unhandled.
+   - 폐기: Node.js EventEmitter 의 'error' event 는 spawn(...) sync return 후 next tick 에 emit. `child.on("error", ...)` 가 같은 sync block 에 있으므로 등록 시점이 emit 시점보다 빠름 보장. 또한 spawn-error path 자체는 lifecycle 축이라 본 셀 외.
+
+6. **`channel-bridge.ts` `setServer`/`close` 와 `handleGatewayEvent` 의 server 참조 race**
+   - 가설: sendNotification (L336-349) 이 `if (!this.server || this.closed) return` 체크 후 `await this.server.server.notification(notification)` — 사이에 await 없음, 그러나 그 다음 line 의 await 사이 close() 호출되면? close() 는 `this.closed = true` 만 set, server 객체는 null 안 됨 → 추가 notification 시 closed check 가 다음 호출에서 차단.
+   - 폐기: 단일 호출 안에서 ! check + await server.notification 사이는 sync. server 가 close 되어 notification reject 하면 catch (L342-348) 가 silent. unhandledRejection 부재. **이미 방어됨**.
+
+**왜 mcp-memory PR #71648 의 axis 와 mcp-lifecycle CAND-026 의 axis 와 직교한 race 가 거의 없는가**:
+
+이 도메인은 channel-bridge 와 transport 두 큰 흐름으로 구성되어 있고, 둘 다 **strict ownership model**:
+- channel-bridge: 단일 OpenClawChannelBridge 인스턴스가 모든 state 보유. gateway client 가 onEvent 로 sync-fire-and-forget, body 가 sync 라 직렬화. read path (pollEvents, listPendingApprovals) 도 sync.
+- transport: 단일 OpenClawStdioClientTransport 인스턴스가 child_process 보유. SDK Client 가 transport API (start/close/send) 를 직렬 호출.
+
+**race 가 발생하려면**: (a) shared mutable state, (b) async interleaving point (await), (c) check-then-act 사이 await — 셋이 모두 같은 코드 경로에 있어야 함. 본 도메인은 (b) 가 있는 경로 (handleSessionMessageEvent, requestGateway, sendNotification) 에서 check-then-act 의 두 줄이 sync 인접 → (c) 부재. 따라서 race surface 가 codegen 차원에서 거의 닫혀 있음.
+
+**자체 한계 / 미확인 영역**:
+
+- GatewayClient (gateway 도메인, 본 셀 외) 가 한 이벤트-loop tick 안에 onEvent 를 여러 번 호출하는지 vs 각 호출 사이에 await 가 있는지 — 본 셀 file 안에서는 검증 불가. 만약 onEvent 호출 사이 await 가 있다면 handleSessionMessageEvent 의 await 중 다른 case 의 sync body 가 interleave 가능 — 그러나 그 경우라도 case 안의 mutation 이 sync 라 atomic.
+- SDK `@modelcontextprotocol/sdk` 의 Server / Client 내부 동시성 보호 — SDK 신뢰. setRequestHandler 등록 후 transport.start() 첫 message 도착 사이 race 가설은 SDK 내부에서 다뤄질 가능성 (확정 미확인).
+- `pi-bundle-mcp-runtime.ts` (agents 도메인, allowed_paths 외) 가 transport.close() 와 send() 를 동시 호출하는 경로가 있는지 — agents 도메인 셀에서 검증 필요.
+
+**다음 페르소나를 위한 힌트**:
+
+- **mcp-error-boundary**: `void this.handleGatewayEvent(event)` (L127-129) 의 sync throw 가 unhandledRejection 으로 전파될 수 있는 path 검증 — handleGatewayEvent body 가 sync only 라 throw 가능 지점 (예: `this.enqueue` 의 cursor overflow, `trackApproval` 의 normalizeApprovalId throw) 이 있는지. `processReadBuffer` (mcp-stdio-transport.ts:98-110) 의 onerror 가 등록 안 된 시점 silent path.
+- **agents 도메인 (pi-bundle-mcp-*)**: BundleMcpSession 이 같은 transport 인스턴스에 동시 callTool 호출하는 경우의 SDK requestId 충돌. 본 셀 file 영역엔 이 흐름이 없으므로 별 셀.
+
+### error-boundary-auditor (2026-05-14, upstream `af3d9333aa`)
+
+**셀**: `mcp-error-boundary` (allowed_paths 동일).
+**결론**: **FIND 0건** — error-boundary 축의 모든 후보가 unconditional 방어 (R-5) 또는 의도된 silent 패턴으로 닫힘.
+
+**검토한 후보 4건과 기각 사유**:
+
+**후보 A — `channel-bridge.ts:128 void this.handleGatewayEvent(event)` (floating promise)**
+- handleGatewayEvent 내부 (L422-467) 의 throw 가능 지점: `await this.handleSessionMessageEvent(...)` 만. handleSessionMessageEvent (L469-531) 의 throw 가능 코드는 `await this.sendNotification(...)` 두 곳 (L489, L517) 뿐.
+- sendNotification (L336-349) 자체에 `try/catch` 가 있어 reject 안함 (verbose 시 stderr log).
+- 추가 backstop: `src/cli/run-main.ts:669` 의 `installUnhandledRejectionHandler()` 가 mcp serve process 에도 적용 (process.exit(1) + fatal log + restoreTerminalState — `src/infra/unhandled-rejections.ts:511-545`).
+- 직전 페르소나의 hint 항목 (this.enqueue cursor overflow, trackApproval normalizeApprovalId throw) 도 재확인 — enqueue (L382-396) 와 trackApproval (L398-413) 모두 sync, throw 가능 지점 부재.
+- R-5 분류: sendNotification try/catch + global UR handler = **unconditional 2-layer**. FIND 금지.
+
+**후보 B — `tools-stdio-server.ts:39 void server.close()` (shutdown floating promise)**
+- 4 caller (stdin end/close, SIGINT, SIGTERM) 모두 동일 `shutdown` 함수 — CAL-001 single-behavior, 다른 caller throw 받음 부재.
+- SDK `StdioServerTransport.close()` (node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js:48-62) 는 listener off + buffer clear + onclose 호출 — async throw 거의 없음.
+- 결론: reject 발생 경로 없음 → cosmetic.
+
+**후보 C — `channel-server.ts:93 close().then(resolveClosed, resolveClosed)` (silent error swallow)**
+- 두 콜백 모두 success 콜백 → close() reject 가 swallow.
+- `close` 내부 (L66-69): `bridge.close() + server.close()` 둘 다 reject 거의 없음:
+  - `bridge.close()` (channel-bridge.ts:162-178) 자체가 `await gateway?.stopAndWait().catch(() => undefined)` swallow.
+  - `server.close()` → 후보 B 와 동일.
+- `channel-server.shutdown-unhandled-rejection.test.ts` 가 shutdown 시 close throw 시나리오를 명시적으로 테스트 — **의도된 silent swallow** 패턴.
+- counter_evidence 강함 → FIND 금지.
+
+**후보 D — `plugin-tools-handlers.ts:53-69 catch → error response 변환, server-side log/metric 0건** (visibility gap)
+- catch 가 client 에 `isError: true` 응답 반환 — client 가 인지함 (data loss 아님).
+- visibility gap 은 boundary gap 이 아님. severity P3 — confidence 낮음. FIND 금지.
+
+**추가 관찰 (참조용)**:
+
+- `mcp-stdio-transport.ts:98-110 processReadBuffer`: JSON.parse / Zod parse 실패 line 은 `onerror?.()` 통보 + buffer advance (no infinite loop). SDK Client 가 onerror 처리. data loss 강도 약함 (one bad line per error).
+- `mcp-stdio-transport.ts:142-158 send()`: callback-based write + try/catch 로 EPIPE 보호. 최근 PR `e1a7c5b860 fix: handle EPIPE errors on child process stdin writes (#75602)` 의 산물.
+- `openclaw-tools-serve.ts:33-36` / `plugin-tools-serve.ts:83-86` 의 standalone entry catch → `process.exit(1)` 직전 SIGINT/SIGTERM listener off 없음. 단 standalone process 라 OS 가 listener GC. 영향 약함.
+- channel-tools.ts (server.tool 등록 9개) 의 callback 들은 throw 시 SDK McpServer 가 JSON-RPC error response 로 변환 → client 가 인지. host-side log 없음은 visibility gap.
+
+**upstream 최근 6주 — 같은 축 활발히 보강 중**:
+
+`git log upstream/main --since="6 weeks ago" -- src/mcp/ src/agents/mcp-*` 발췌:
+- `e1a7c5b860 fix: handle EPIPE errors on child process stdin writes (#75602)` — send() callback 패턴 도입.
+- `5f7b44045d fix(mcp): tear down stdio process trees`
+- `e157c83c65 fix(runtime): avoid leaking detached cleanup promises`
+- `cc9dcd3d69 fix(gateway): prefer linux child OOM victims`
+
+→ error-boundary 축은 이미 메인테이너가 활발히 정리 중. 새 FIND 의 수용 가능성 낮음 (이미 fix flow 진행).
+
+**핵심 invariant**:
+
+mcp 도메인 error-boundary 축은 `installUnhandledRejectionHandler` (process global, 항상 활성) + `sendNotification` 내부 try/catch (모듈 local) + `shutdown-unhandled-rejection.test.ts` (의도 검증) 의 **3-layer 방어가 unconditional 로 작동**. R-5 분류상 모든 후보가 unconditional 방어 뒤편 → boundary gap 주장이 성립 안함.
+
+**다음 페르소나/세션을 위한 힌트**:
+
+- **mcp-error-boundary 재진입 시**: 위 4 후보와 다른 file/패턴이 되어야 하고, sendNotification try/catch + global UR handler 두 backstop 을 우회하는 경로여야 함. 예: child stderr 라인이 protocol-only stdout 으로 누출되는 misroute, signal-resolveReady race (handleHelloOk subscribe 실패 시 retry 후 readySettled 가 한 번만 호출 — 이미 protection 있음).
+- **다른 축 (lifecycle / channel-bridge memory)**: 이미 CAND-026 (mcp-lifecycle pending_gatekeeper) + PR #71648 (channel-bridge memory) 가 가 차지. 새 축 개발 시 axis 분리 검증 필수.
+

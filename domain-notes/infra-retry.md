@@ -145,3 +145,112 @@ openclaw 의 `src/infra/retry*.ts` + `src/infra/backoff.ts` 서브시스템에 �
     (해결책 제안 금지).
 - **Cross-cell 관찰**: FIND-infra-process-memory-001 과는 도메인·파일·root
   cause 모두 상이 (process listener vs retry delay). 완전 독립.
+
+---
+
+### memory-leak-hunter (2026-05-14, Phase 6 batch 2)
+
+셀: `infra-retry-memory`. allowed_paths: `src/infra/retry*.ts`, `src/infra/backoff.ts`.
+도메인: infra-retry. upstream HEAD: `af3d9333aa`.
+
+#### 결론: memory-axis FIND 0건 (no leak found)
+
+본 셀의 retry/backoff 코드는 **per-key 누적 상태도, 모듈 레벨 cache 도, 장기 timer
+도 보유하지 않는 함수형 stateless 유틸리티**다. 메모리 leak 패턴 5 카테고리
+(A. 무제한 자료구조 / B. EventEmitter 누수 / C. 강한 참조 체인 / D. 핸들 누수 /
+E. 캐시 TTL 부재) 모두 부재 확인.
+
+#### R-3 Grep 결과 — 모두 0 매치 또는 안전한 패턴만
+
+```
+rg -n "Map<|new Map\(|new Set\(|new WeakMap" src/infra/retry*.ts src/infra/backoff.ts
+  → 0 matches
+
+rg -n "setInterval|setTimeout" same
+  → src/infra/backoff.ts:20,44 (sleepWithAbort timer 단일)
+
+rg -n "clearTimeout|clearInterval" same
+  → src/infra/backoff.ts:27 (onAbort 경로)
+
+rg -n "TTL|expir|prun|sweep|evict" same
+  → 0 matches
+
+rg -n "delete |\.clear\(\)|\.shift\(|\.pop\(" same
+  → 0 matches
+
+rg -n "EventEmitter|\.on\(|\.addEventListener\(" same
+  → src/infra/backoff.ts:37 ("abort", onAbort, { once: true })
+
+rg -n "removeListener|\.off\(|removeEventListener" same
+  → src/infra/backoff.ts:31, 47 (양 분기 모두 cleanup)
+
+rg -n "\.push\(|\.set\(|\.add\(" same
+  → 0 matches
+```
+
+#### R-5 cleanup execution condition 분류표
+
+| 자료구조/리스너 | 위치 | cleanup 경로 | 실행 조건 |
+|---|---|---|---|
+| `setTimeout` timer | backoff.ts:44 | `clearTimeout(timer); timer=null` (L27-28) | abort 시: `conditional-edge`. 정상 완주 콜백 자체 (L45-50) 도 `timer=null` 대입으로 `unconditional` 종료. |
+| `addEventListener("abort", onAbort)` | backoff.ts:37 | `{once: true}` + L31 onAbort 경로 + L47 timer-callback 경로 | abort/정상 둘 다 `unconditional` (양 분기 모두 명시 removeEventListener). |
+| `lastErr` 참조 | retry.ts:92, 119, 125 | `lastErr = err` (다음 attempt 가 덮어씀) | `unconditional` — 매 attempt 마다 단일 ref 유지, 누적 없음. |
+| `retryConfig` closure | retry-policy.ts:62, 97 | runner instance lifetime | `unconditional` — runner 객체 GC 시 같이 해제. caller (gateway, agents) 가 runner 폐기 시. |
+
+**규율 R-3 적용**: 모든 자료구조/리스너에 `unconditional` cleanup 경로가 존재 → FIND 생성 금지.
+
+#### 카테고리별 적용/skip 보고
+
+- [x] applied — 무제한 자료구조 (A): 0건 (Map/Set/Array 자체 부재).
+- [x] applied — EventEmitter 누수 (B): backoff.ts:37 의 abort listener 만, `{once: true}` + 양 분기 명시 remove. 누수 없음.
+- [x] applied — 강한 참조 체인 (C): `retryAsync` 의 `lastErr` 는 매 attempt 덮어쓰기 단일 ref. `onRetry` callback 에 err 노출은 호출자 책임. retry 본체에 retain 없음.
+- [x] applied — 핸들 누수 (D): fs/http/db 핸들 미사용 (순수 timing 유틸).
+- [x] applied — 캐시 TTL 부재 (E): 캐시 자체 부재.
+- [x] applied — Timer 누수 (B 확장): `sleepWithAbort` 의 `setTimeout` 은 정상 완주/abort 양 분기 모두 timer=null + clearTimeout. retry.ts:174 의 `await sleep(delay)` 는 utils.sleep (셀 밖) 호출 후 return, retry.ts 측에서 retain 없음.
+
+#### CAL-008 — 6주 upstream fix 검사
+
+`git log --oneline --since="6 weeks ago"` (retry.ts, retry-policy.ts, backoff.ts):
+
+```
+b7fc2451e7 fix(infra): positive jitter 는 Math.ceil 로 ...
+a77bd213ce fix(infra): Retry-After 경계(===)에서 contract 우선 ...
+317e474b84 fix(infra): retryAfterMs === maxDelayMs 경계 ...
+62dff64700 fix(infra): retryAfterMs > maxDelayMs symmetric ...
+d49480527e fix(infra): retry-after 를 jitter 가 침범하지 않도록 ...
+c15b295a85 (context-engine 이외)
+1a08d23e09 refactor: dedupe finite number coercion
+e4b5027c5e refactor(plugins): move extension seams ...
+eecb36eff4 fix(ci): stabilize zero-delay retry ...
+```
+
+모두 jitter / Retry-After contract 경계 조정 (Phase 2 의 FIND-003 후속 fix
+연쇄). 메모리 영역 신규 결함 도입 commit 없음.
+
+#### 반증 — borderline P3 후보까지 점검했으나 없음
+
+- `retryAsync` 의 `options.onRetry?.({...err...})` (retry.ts:166-172) 는 호출자가
+  err 를 외부 array 에 push 하면 호출자 측 leak 가능. 그러나 retry 본체는 retain X
+  → 본 셀 도메인 범위 밖.
+- `createRateLimitRetryRunner` (retry-policy.ts:62-82) 가 closure 로 params 캡처.
+  per-call 이 아니라 셋업 1회당 1 closure. caller 가 runner 를 모듈 레벨 single-
+  ton 으로 보유해도 closure 크기 자체가 O(1) constant. 누수 패턴 아님.
+- `applyJitter` 의 `generateSecureFraction()` 호출 (retry.ts:73) 은 매 retry 마다
+  CSPRNG syscall — CPU 비용은 있으나 메모리 retain 없음.
+
+#### 확인 안 한 영역 (self-critique)
+
+- `utils.js` 의 `sleep` 구현 자체는 allowed_paths 밖이라 미점검. 호출 후 retry.ts
+  쪽에서 retain X 가 본 셀 결론이며, sleep 내부 leak 가 있다면 다른 셀의 도메인.
+- `secure-random.ts` 의 `generateSecureFraction` 동일.
+- production 에서 retry runner 가 long-lived singleton 으로 유지되는 caller 수
+  량 / err 객체의 외부 retention 여부는 caller 측 셀 (gateway-memory,
+  agents-memory 등) 의 책임.
+
+#### 산출
+
+- FIND-infra-retry-memory-NNN: **0건**. 사유: 메모리 leak 패턴 5 카테고리 모두
+  부재 + 모든 timer/listener 에 unconditional cleanup. borderline P3 후보도 closure
+  retention 분석에서 caller 책임으로 분리됨. R-3 규율상 unconditional cleanup 경로
+  발견 시 FIND 생성 금지.
+

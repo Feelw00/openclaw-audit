@@ -383,3 +383,140 @@ CONTRIBUTING.md "one thing per PR" 관점에서도 분리 우선.
 → refactor `60ec7ca0f1` (helper 추출) 만 race 관련. 실 fix 없음. CAL-004
 상황 아님.
 
+---
+
+### plugin-lifecycle-auditor (2026-05-14, 셀 `gateway-lifecycle`)
+
+HEAD: `af3d9333aa` (upstream/main fresh at audit time, CAL-007 staleness gate 통과).
+
+#### R-3 Grep 결과 (gateway-lifecycle 관점)
+
+```
+rg -n "dispose|teardown|cleanup|unregister|destroy" src/gateway/   → 40+ 파일.
+  핵심: server-close.ts (포괄적 shutdown), session-reset-service.ts, exec-approval-manager.ts,
+  chat-abort.ts, node-registry.ts.unregister, plugin-node-capability.ts.
+
+rg -n "EventEmitter|removeListener|removeAllListeners|\.off\(" src/gateway/
+  → http-common, mcp-http, ws-connection (.off("message", queueMessage) 1건),
+    http-listen, server-http. 모두 paired (.on/.off).
+
+rg -n "AbortController|AbortSignal" src/gateway/
+  → chat-abort.ts 가 핵심. agent.ts:1075 Promise.race + AbortController (loser 취소).
+    chatAbortControllers Map 의 ownerConnId 활용처 5건만 (권한 판정 + 등록).
+
+rg -n "setInterval|clearInterval|setTimeout|clearTimeout" src/gateway/
+  → 40+ 파일. server-close.ts 에 13+ clearInterval/clearTimeout 호출 (포괄적 cleanup).
+    pendingStop 핸들로 client.ts 측 graceful stop. server-runtime-services.ts:177-189
+    의 recoverPendingSessionDeliveries setTimeout 만 handle 미반환.
+```
+
+#### 적용 카테고리 (A~E)
+
+- [x] A. Load 실패 rollback 부재 — 확인. WS handshake (message-handler.ts:1304-1372) 는
+  `isClosed()` 가드 + `setClient` 실패 시 early return. setClientPluginNodeCapability 는 local
+  nextClient 객체에만 쓰여 setClient 실패 시 자동 폐기. partial registry pollution 가능성 없음.
+- [x] B. Dispose 경로 누락 — **FIND-001**: `chatAbortControllers` 의 owner disconnect cleanup 부재.
+  `ownerConnId` 가 권한 판정용으로만 쓰이고 ws-connection close 핸들러가 disconnect-trigger abort
+  를 발화하지 않음. error-boundary 셀 §3 의 "cancellation gap (lifecycle-auditor 범위)" 위임 수신.
+- [ ] C. Dynamic import 에러 격리 — skipped (clean): `attachGatewayWsMessageHandlerOnDemand`
+  (ws-connection.ts:160-194) 가 dynamic import 실패 시 1011 close + queue cleanup 적절. 큐 16
+  프레임 overflow 시 1008 close.
+- [ ] D. Manifest parse 실패 — skipped (셀 scope 아님, plugin manifest 는 plugins/ 셀).
+- [x] E. start/stop 비대칭 — **FIND-002**: `recoverPendingOutboundDeliveries` 즉시 IIFE 와
+  `recoverPendingSessionDeliveries` setTimeout(1250ms) 이 cancellation handle 미반환.
+  scheduleGatewayPostReadyMaintenance 의 isClosing 패턴이 같은 파일에 있음에도 미적용.
+
+#### R-5 Execution condition 분류표
+
+| 경로 | 조건 | 위치 | 비고 |
+|---|---|---|---|
+| WS close 핸들러 cleanup | unconditional | ws-connection.ts:351-421 | session/node/presence 만. chat-abort 미포함 = FIND-001 |
+| chatAbortControllers maintenance abort | unconditional (post-expiry) | server-maintenance.ts:153-174 | timeout 기반, 최소 2분 latency |
+| nodeRegistry.unregister cleanup chain | unconditional | node-registry.ts:197-221 | pendingInvokes reject + authorizedSystemRunEvents 정리 |
+| close()/releasePreauthBudget | unconditional | ws-connection.ts:282-333 | preauth budget 정상 release |
+| handshake setClient(closed)→early return | unconditional | message-handler.ts:1304-1370 | partial state 누락 가능성 없음 |
+| recoverPendingOutboundDeliveries 시작 | unconditional | server-runtime-services.ts:156-170 | shutdown signal 미수신 = FIND-002 |
+| recoverPendingSessionDeliveries setTimeout | conditional-edge | server-runtime-services.ts:172-190 | startup→shutdown short window 시 race = FIND-002 |
+| scheduleGatewayPostReadyMaintenance isClosing | unconditional guard | server-runtime-services.ts:118-149 | 대조 패턴 (보존) |
+| server-close.ts clearInterval/Timeout 일괄 | unconditional | server-close.ts:330-347 | maintenance 핸들 일괄 clear |
+| client.flushPendingErrors | unconditional | client.ts:971-979 | pending Map 일괄 reject — 깔끔 |
+| client.beginStop | unconditional | client.ts:434-468 | force terminate 250ms grace 후 강제 |
+
+#### 핵심 발견
+
+1. **chatAbortControllers cancellation gap (FIND-001)**: `ownerConnId` 가 entry 에 저장되어
+   abort 권한 체크에는 쓰이지만 (chat.ts:1577), WS disconnect 시 close 핸들러가 이 필드 매칭
+   abort 를 트리거하지 않음. AbortController 는 maintenance interval 의 expiresAtMs 기반 sweep
+   (server-maintenance.ts:153-174) 까지 살아있음 (최소 2분, 평균 5-30분). 그 동안 runner 가
+   파일/외부/LLM 부작용을 계속 발생.
+
+2. **Recovery 시작/정지 비대칭 (FIND-002)**: `activateGatewayScheduledServices` 의
+   `recoverPendingOutboundDeliveries` (즉시 IIFE) 와 `recoverPendingSessionDeliveries`
+   (setTimeout 1250ms) 모두 cancellation handle 미반환. 같은 파일의
+   `scheduleGatewayPostReadyMaintenance` 가 isClosing 가드를 가진 대조 패턴.
+
+3. **WS handshake partial init**: `message-handler.ts:1304-1372` 는 `isClosed()` 가드 두 곳 +
+   `setClient` 실패 시 early return + nextClient 객체 폐기로 깔끔. partial registry pollution
+   가능성 없음. FIND 대상 아님.
+
+4. **gateway client (client.ts) reconnect lifecycle**: pending Map 은 close 시 flushPendingErrors
+   로 일괄 reject (L971-979) + reconnect timer / connect challenge timer / tick timer 가
+   beginStop 에서 모두 clear (L434-468) + force terminate 250ms grace. 깔끔.
+
+5. **agent-event-assistant-text.ts**: 6-line pure helper. EventEmitter 와 무관. 스코프 오해
+   (브리프의 가설은 false positive).
+
+#### 탐색했으나 FIND 포기
+
+- **gateway_start hook의 fire-and-forget** (server-startup-post-attach.ts:836-852): `void
+  hookRunner.runGatewayStart(...).catch(...)`. 의도적 graceful (`server-startup-post-attach`
+  의 다른 hook runner 와 동일 패턴). gateway:shutdown hook (server-close.ts:78-105) 이
+  대칭으로 fire. 차이는 startup hook 이 cancellation 받지 않는 것인데 1초 timeout 도 없음 —
+  단, hook timeout 은 별개 fix 축이고 본 셀 범위 외 (hook 자체는 plugins/ 도메인).
+- **`createLazyGatewayCronState`의 race** (server-cron-lazy.ts:39-74): `stopped` flag 와
+  `loading` Promise 사이의 미세한 race (T1 start → T2 stop → T1 resume) 가능하나 cron.stop()
+  이 idempotent 라면 무해. concurrency-auditor 분류 (idempotency race) 에 가까우며
+  lifecycle-gap 으로 별도 FIND 가치 약함.
+- **`nodePresenceTimers` dead code** (memory 셀 노트에 이미 기록). server-close.ts:322-325 에서
+  iterate+clear 가 있음 (방어적). FIND 가치 없음.
+- **`ws-connection.ts` setSocketMaxPayload before setClient** (message-handler.ts:1364): closed
+  socket 에 호출되어도 harmless. 회수 불필요.
+- **agent.request 의 동일 ownerConnId pattern** (agent.ts:1322-1334): FIND-001 과 동일 fix 축
+  (close 핸들러에 ownerConnId match cleanup). 별도 FIND 분리 가치 약하므로 FIND-001 본문에서
+  cross-ref 로 명시.
+
+#### 산출물
+
+- FIND-gateway-lifecycle-001 (P3): WS close 가 ownerConnId 매칭 chatAbortControllers abort
+  를 발화 안 함. cancellation gap.
+- FIND-gateway-lifecycle-002 (P3): startup recovery 작업 (`recoverPendingOutboundDeliveries`,
+  `recoverPendingSessionDeliveries`) 이 cancellation handle 미반환. 같은 파일에 isClosing
+  대조 패턴 존재.
+
+#### Self-critique (미확인 영역)
+
+- `recoverPendingDeliveries` / `recoverPendingRestartContinuationDeliveries` 내부 (셀 밖,
+  `src/infra/outbound/**`) 에 자체 isClosing 가드 있는지 미확인. 시그니처 보면 abort signal
+  파라미터 없음 → 내부에서도 가드 없을 가능성 높음.
+- production frequency 정량 부재: chat owner disconnect 의 평균 ratio, abort 까지의 wasted
+  token cost 미측정.
+- subagent / agentRunCache 와 chatAbortControllers 사이의 cross-domain interaction 미조사.
+- `kind: "agent"` 와 `kind: "chat-send"` 의 maintenance reaper 동작 차이는 chat-abort.ts:36-69
+  의 maxMs (24h vs timeoutMs+grace) 차이로 분류됨. agent 는 cancellation latency 가 더 클 수
+  있음. P2 hint 가능하나 현 증거로는 P3 유지.
+
+#### 다음 페르소나를 위한 힌트 (lifecycle 이후)
+
+- **gatekeeper/clusterer**: 두 FIND 는 각각 독립 fix 축 (close 핸들러에 cleanup loop 추가 /
+  activate 함수 시그니처 변경 + isClosing 전달). 메모리/concurrency 셀의 single CAND 패턴과
+  동일. epic 지양.
+- **real-behavior-proof**: FIND-001 재현은 production-like env 에서 chat.send → ack 직후
+  WS terminate → owner-only broadcast 가 drop 되고 runner 가 토큰 소비를 계속하는지 측정. FIND-002
+  는 startup 직후 SIGTERM 으로 setTimeout(1250ms) 의 callback 이 fire 되는지 확인 — fake timer
+  단위 테스트로 정량 가능.
+- **memory-leak-hunter**: chatAbortControllers entry 가 owner-disconnect 후 expires 시점까지
+  잔류하는 메모리 비용은 entry 자체는 가벼우나 (controller + entry 메타), 동시 runner 의
+  chatRunBuffers / agentDeltaSentAt 등 부속 자료구조도 함께 남음. cancellation-trigger 추가로
+  메모리 정리 속도 향상 부수효과. memory 셀 영역으로는 P4 수준 (FIND 별도 만들 정도는 아님).
+
+
