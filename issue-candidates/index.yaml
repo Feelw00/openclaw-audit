@@ -390,6 +390,31 @@ candidates:
     onStopped 의 activeEntries.clear() 가 실행되면 wrapped entry 가 비어있던 Map 에 다시 등록되고 stopped 핸들러로는 finalize
     경로 미도달 → native binding orphan + 외부 자원 leak. file 내 동기화 원시 0건. caller (approval-native-runtime.ts, 셀 밖)
     의 in-flight delivery vs onStopped sequencing 미확인 — R-7 확인 후 P3 유지 또는 abandon. severity P3.
+- id: CAND-041
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-channels-concurrency-001 — typing-lifecycle.ts:38-45 stop() 이 tickInFlight=false 를 unconditional reset →
+    in-flight tick 의 ownership 토큰 가로채기 → 직후 start() 의 새 tick 이 concurrent onTick 발사. hot-path typing.ts:71-88
+    onReplyStart 의 stop→fireStart→start 시퀀스가 매 reply turn 트리거. PR #75403 은 typing.ts 측 race 만 다룸 (다른 file, 다른 axis). severity P3.
+- id: CAND-042
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-channels-concurrency-002 — message/receive.ts:69-82 ctx.ack() 의 check(L70)→await onAck(L73)→set(L74) race로
+    동시 ack 호출 시 platform onAck 가 2회 발사. in-flight token / atomic test-and-set 부재. borderline P3 — R-7 한계 (production caller 가
+    plugin SDK 통해 extensions/** allowed_paths 외). severity P3.
+- id: CAND-043
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: FIND-context-engine-concurrency-001 — context-engine/registry.ts:546-601 resolveContextEngine 의 entry snapshot (L546) 이
+    factory await (L563) 중 외부 clearContextEnginesForOwner 호출로 stale → L601 wrapResolvedContextEngine 이 stale entry.owner 사용 →
+    wrapped engine 의 owner metadata 가 unregistered pluginId 가리킴. WeakMap update 경로 없어 영구. hygienic P3 (functional 정상, attribution 손상).
+  cross_refs:
+    - CAND-035
+    - CAND-036
+    - CAND-037
 published:
 - cand_id: CAND-004
   issue: 68487

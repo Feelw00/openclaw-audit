@@ -1634,7 +1634,7 @@ items:
     updated_at: '2026-05-14T06:43:39+00:00'
   FIND-channels-concurrency-001:
     kind: find
-    state: rejected
+    state: discovered
     transitions:
     - from: null
       to: rejected
@@ -1642,15 +1642,20 @@ items:
       reason: 'gate rejection: B-1-2c: evidence mismatch at src/channels/typing-lifecycle.ts:38-45
         — whitespace or content differs'
       at: '2026-05-14T06:43:39+00:00'
+    - from: rejected
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T07:06:15+00:00'
     created_at: '2026-05-14T06:43:39+00:00'
-    updated_at: '2026-05-14T06:43:39+00:00'
+    updated_at: '2026-05-14T07:06:15+00:00'
     extras:
       errors:
       - 'B-1-2c: evidence mismatch at src/channels/typing-lifecycle.ts:38-45 — whitespace
         or content differs'
   FIND-channels-concurrency-002:
     kind: find
-    state: rejected
+    state: discovered
     transitions:
     - from: null
       to: rejected
@@ -1658,15 +1663,20 @@ items:
       reason: 'gate rejection: B-1-2c: evidence mismatch at src/channels/message/receive.ts:69-82
         — whitespace or content differs'
       at: '2026-05-14T06:43:40+00:00'
+    - from: rejected
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T07:06:15+00:00'
     created_at: '2026-05-14T06:43:40+00:00'
-    updated_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T07:06:15+00:00'
     extras:
       errors:
       - 'B-1-2c: evidence mismatch at src/channels/message/receive.ts:69-82 — whitespace
         or content differs'
   FIND-context-engine-concurrency-001:
     kind: find
-    state: rejected
+    state: discovered
     transitions:
     - from: null
       to: rejected
@@ -1678,8 +1688,13 @@ items:
         \ (registry.ts:427-435) 는 동기 함수지만  ... \n                                \
         \         ^"
       at: '2026-05-14T06:43:40+00:00'
+    - from: rejected
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-14T07:06:15+00:00'
     created_at: '2026-05-14T06:43:40+00:00'
-    updated_at: '2026-05-14T06:43:40+00:00'
+    updated_at: '2026-05-14T07:06:15+00:00'
     extras:
       errors:
       - "B-1-3: frontmatter YAML error: while parsing a block mapping\n  in \"<unicode\
@@ -1929,3 +1944,36 @@ items:
       at: '2026-05-14T06:55:23+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
     updated_at: '2026-05-14T06:55:23+00:00'
+  CAND-041:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from repaired FIND batch (041)
+      at: '2026-05-14T07:11:24+00:00'
+    created_at: '2026-05-14T07:11:24+00:00'
+    updated_at: '2026-05-14T07:11:24+00:00'
+  CAND-042:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from repaired FIND batch (042)
+      at: '2026-05-14T07:11:24+00:00'
+    created_at: '2026-05-14T07:11:24+00:00'
+    updated_at: '2026-05-14T07:11:24+00:00'
+  CAND-043:
+    kind: candidate
+    state: pending_gatekeeper
+    transitions:
+    - from: null
+      to: pending_gatekeeper
+      actor: clusterer
+      reason: cluster from repaired FIND batch (043)
+      at: '2026-05-14T07:11:24+00:00'
+    created_at: '2026-05-14T07:11:24+00:00'
+    updated_at: '2026-05-14T07:11:24+00:00'

@@ -4,12 +4,11 @@ cell: channels-concurrency
 title: MessageReceiveContext.ack() check-then-await-then-set race → onAck 중복 발사
 file: src/channels/message/receive.ts
 line_range: 69-82
-evidence: "```ts\n    shouldAckAfter: (stage) => shouldAckMessageAfterStage(ctx.ackPolicy,\
-  \ stage),\n    ack: async () => {\n      if (ctx.ackState === \"acked\") {\n   \
-  \     return;\n      }\n      await params.onAck?.();\n      ctx.ackState = \"acked\"\
-  ;\n      ctx.ackedAt = Date.now();\n      delete ctx.nackErrorMessage;\n    },\n\
-  \    nack: async (error) => {\n      await params.onNack?.(error);\n      ctx.ackState\
-  \ = \"nacked\";\n      ctx.nackErrorMessage = normalizeAckErrorMessage(error);\n\
+evidence: "```ts\n    ack: async () => {\n      if (ctx.ackState === \"acked\") {\n\
+  \        return;\n      }\n      await params.onAck?.();\n      ctx.ackState = \"\
+  acked\";\n      ctx.ackedAt = Date.now();\n      delete ctx.nackErrorMessage;\n\
+  \    },\n    nack: async (error) => {\n      await params.onNack?.(error);\n   \
+  \   ctx.ackState = \"nacked\";\n      ctx.nackErrorMessage = normalizeAckErrorMessage(error);\n\
   \    },\n```\n"
 symptom_type: concurrency-race
 problem: '`createMessageReceiveContext` 가 반환하는 `ctx.ack()` 는 `ctx.ackState === "acked"`
@@ -128,7 +127,7 @@ counter_evidence:
     \ 가짐\" → telegram 은 그러하나 slack/discord\n  interaction 류는 그렇지 않음.\n\nupstream 검사\
     \ (CAL-008):\n`git log upstream/main --since=\"6 weeks ago\" -- src/channels/message/receive.ts`\n\
     → 본 파일 직접 수정 0건. message/* 디렉터리 commit 은 send/types 위주.\nparallel work 위험 낮음.\n"
-status: rejected
+status: discovered
 discovered_by: concurrency-auditor
 discovered_at: 2026-05-14
 cross_refs: []

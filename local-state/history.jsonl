@@ -190,3 +190,9 @@
 {"item_id": "CAND-038", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from Phase 6 batch (038)", "at": "2026-05-14T06:55:23+00:00", "extras": {}}
 {"item_id": "CAND-039", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from Phase 6 batch (039)", "at": "2026-05-14T06:55:23+00:00", "extras": {}}
 {"item_id": "CAND-040", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from Phase 6 batch (040)", "at": "2026-05-14T06:55:23+00:00", "extras": {}}
+{"item_id": "FIND-channels-concurrency-001", "from": "rejected", "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-05-14T07:06:15+00:00", "extras": {}}
+{"item_id": "FIND-channels-concurrency-002", "from": "rejected", "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-05-14T07:06:15+00:00", "extras": {}}
+{"item_id": "FIND-context-engine-concurrency-001", "from": "rejected", "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-05-14T07:06:15+00:00", "extras": {}}
+{"item_id": "CAND-041", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from repaired FIND batch (041)", "at": "2026-05-14T07:11:24+00:00", "extras": {}}
+{"item_id": "CAND-042", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from repaired FIND batch (042)", "at": "2026-05-14T07:11:24+00:00", "extras": {}}
+{"item_id": "CAND-043", "from": null, "to": "pending_gatekeeper", "actor": "clusterer", "reason": "cluster from repaired FIND batch (043)", "at": "2026-05-14T07:11:24+00:00", "extras": {}}

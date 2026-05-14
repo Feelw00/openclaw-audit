@@ -4,13 +4,9 @@ cell: channels-concurrency
 title: typing-lifecycle stop() 이 tickInFlight 강제 reset → restart 시 concurrent onTick
 file: src/channels/typing-lifecycle.ts
 line_range: 38-45
-evidence: "```ts\n  const tick = async () => {\n    if (tickInFlight) {\n      return;\n\
-  \    }\n    tickInFlight = true;\n    try {\n      await params.onTick();\n    }\
-  \ finally {\n      tickInFlight = false;\n    }\n  };\n\n  const start = () => {\n\
-  \    if (params.intervalMs <= 0 || timer) {\n      return;\n    }\n    timer = setInterval(()\
-  \ => {\n      void tick();\n    }, params.intervalMs);\n  };\n\n  const stop = ()\
-  \ => {\n    if (!timer) {\n      return;\n    }\n    clearInterval(timer);\n   \
-  \ timer = undefined;\n    tickInFlight = false;\n  };\n```\n"
+evidence: "```ts\n  const stop = () => {\n    if (!timer) {\n      return;\n    }\n\
+  \    clearInterval(timer);\n    timer = undefined;\n    tickInFlight = false;\n\
+  \  };\n```\n"
 symptom_type: concurrency-race
 problem: '`createTypingKeepaliveLoop` 의 `stop()` (L38-45) 은 in-flight tick 의 await
   완료 여부와 무관하게
@@ -140,7 +136,7 @@ counter_evidence:
     \ 무해\" → typing API 자체는 보통\n  idempotent 이지만 rate-limit 카운터 / startGuard.consecutiveFailures\
     \ 가 정확\n  성 의존. P3 수준 영향 최소화는 인정.\n\n자체 한계:\n- typing-lifecycle 이 다른 keepalive\
     \ 용도로도 사용되는지 (out-of-scope) 미확인.\n  현재 production 호출처는 typing.ts 하나 (rg 확인).\n"
-status: rejected
+status: discovered
 discovered_by: concurrency-auditor
 discovered_at: 2026-05-14
 cross_refs: []
