@@ -78,3 +78,15 @@ gh pr list --repo openclaw/openclaw --search "<symbol_or_file>" --state all
 Cross-review 트리거 시:
 - [ ] 대상 CAND severity 가 P0/P1/P2 인가? (P3 면 기본 skip)
 - [ ] gatekeeper 의 upstream-dup 이미 수행 여부?
+
+## Outcome (2026-05-11 확정)
+
+upstream-competing PR #68341 (thesomewhatyou, head `fix-critical-bugs`) **MERGED 2026-05-11 23:10 KST** (UTC 14:10Z).
+이로써 CAND-021 / CAND-022 의 `retracted_reason` 에 명시됐던 *"close-without-merge 시 재오픈 검토"* 조건절은 무효화됨 — upstream 이 동일 race 를 동일 fix 축 (resolveGatewayInflightMap async→sync) 으로 흡수 완료.
+
+5-agent post-harness cross-review (2026-04-25, `metrics/cross-review-CAND-021-20260425-224410.jsonl`) 가 `primary_decision=upstream_wait` 로 retract 한 결정이 사후 검증됨 (real_count=3 이지만 upstream_dup 1건 우선 적용). gatekeeper 단독으로는 `approve@medium` 이었을 케이스라 CAL-008 의 cross-review 2중 안전장치 가치가 실측됨.
+
+후속 정리:
+- `NEXT.md §3` 의 "PR #68341 모니터" 액션 제거 (이 커밋 포함)
+- 트래커는 우리 PR 만 추적이므로 #68341 별도 항목 추가 없음
+- 동일 패턴 (upstream-competing OPEN PR 발견 → retract) 재발 시 본 outcome 을 prior art 로 참조 가능

@@ -104,10 +104,14 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   1. PR #68669 무대응 유지 — close 트리거 시 race fix 논거 제시 + reopen 또는 CAL-010 credit-only.
 #   2. PR #71648 메인테이너 리뷰 대기 — sufficient 자동평가 미부여 (fake timer 추정). real wall-clock 재시도는 mcp-pending-ttl
 #      scenario + TTL env override hook 도입에 의존.
-#   3. PR #68341 모니터 (CAL-008 upstream-competing) — close-without-merge 시 CAND-021/022 재오픈 검토.
-#   4. CAL-011 calibration 정식 문서 작성 — alternative-axis acceptance 패턴 (PR #71040 사례).
-#   5. real-behavior-proof skill end-to-end 검증 — 실제 SOL (예: SOL-0004) 진행 시 사용자 허락 받고 한 번 실행.
-#   6. Phase 5 후속 셀 — mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
+#   3. CAL-011 calibration 정식 문서 작성 — alternative-axis acceptance 패턴 (PR #71040 사례).
+#   4. real-behavior-proof skill end-to-end 검증 — 다음 drafted SOL 진입 시 사용자 허락 받고 한 번 실행
+#      (참고: SOL-0004 는 2026-04-21 PR #68842 로 머지 완료 — proof skill 도입 전이라 미적용).
+#   5. Phase 5 후속 셀 — mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
+#
+# CLOSED (이전 액션, 완료):
+#   • PR #68341 (CAL-008 upstream-competing) — 2026-05-11 MERGED. CAND-021/022 retract 결정 사후 검증.
+#     CAL-008 outcome 섹션 참조.
 #
 # 신규 셀 정의 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 ```

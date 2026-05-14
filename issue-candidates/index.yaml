@@ -128,11 +128,12 @@ candidates:
 - id: CAND-014
   type: single
   finding_count: 1
-  state: pr-opened
+  state: pr-merged
   note: FIND-gateway-memory-001 — costUsageCache (server-methods/usage.ts:65) 에 cap/prune
     부재. TTL on-read 만 존재. daily sliding window 로 distinct key 무한 누적. severity P3.
   openclaw_issue: 68841
   openclaw_pr: 68842
+  pr_merged_at: '2026-04-21'
 - id: CAND-015
   type: single
   finding_count: 1

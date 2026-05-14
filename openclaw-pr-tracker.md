@@ -60,7 +60,7 @@
 - **fix**: cron jobs.json 을 config (사람 편집) + runtime state (앱 기록) 로 분리
 - **관련 이슈**: Closes #53581 (@Daanvdplas 요청)
 
-### #68842 (CAND-014, **MERGED 2026-04-22**)
+### #68842 (CAND-014, **MERGED 2026-04-21**)
 - **결과**: merged — 파이프라인 **첫 merged PR**
 - **경로**: post-harness 5/5 real → SOL-0004 → issue #68841 + PR #68842 → Greptile 5/5 → Codex P2 CAL-009 반박 + thread resolved → 메인테이너 merge
 - **fix**: gateway costUsageCache MAX=256 + FIFO eviction (`src/gateway/server-methods/usage.ts`)
