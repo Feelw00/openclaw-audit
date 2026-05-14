@@ -102,67 +102,83 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #
 # 다음 세션 액션 우선순위 (잔여):
 #
-#   ## 0. 최우선 — 활성 9 CAND collected → SOL 작성 단계 (2026-05-14 완료)
+#   ## 0. 최우선 — 9 CAND production end-to-end re-verification (사용자 결정 2026-05-14)
 #
-#   2026-05-14 세션에서 활성 9 CAND 의 pre-sol real behavior proof 일괄 진행 — 9/9 모두 `collected`.
-#   가짜 문제 (false positive / unreproducible) 0건, blocked-env 0건. 결정 트리상 9 CAND 모두
-#   SOL 작성 자격.
+#   ### 배경: 2026-05-14 세션의 pre-sol 9/9 collected 는 unit-level isolation test 이지
+#   ### production 실제 실행 검증이 아님 (CAL-003 정직한 인정).
 #
-#   | CAND | proof status | 측정 핵심 |
-#   |---|---|---|
-#   | CAND-026 | collected | tools-stdio-server.ts:17 extra.signal 미전파 → tool.execute 3rd arg undefined |
-#   | CAND-030 | collected | markSubagentRunTerminated 후 pendingLifecycleTimeoutByRunId.size 1→1 (marker 잔존) |
-#   | CAND-031 | collected | drain.ts catch+finally self-recurse 14회 / 3s + queueSize=1 (head item 잔존) |
-#   | CAND-032 | collected | void backend.queueMessage 5/5 unhandledRejection escape |
-#   | CAND-033 | collected | collect-mode authGroups inner for 3/3 ['X','Y'] (clear 후에도 Y leak) |
-#   | CAND-037 | collected | resolveContextEngine contract-error branch dispose 미호출 (instantiated engine leak) |
-#   | CAND-038 | collected | ws close 후 두 chatAbortController 모두 abort 안 됨 (aAborted=false, bAborted=false) |
-#   | CAND-039 | collected | recover IIFE + setTimeout(1250) 모두 fire (outbound 2/2, session 2/2) |
-#   | CAND-040 | collected | deliverTarget/onStopped race — 5/5 unbind=0, leak=5/5 |
+#   2026-05-14 세션의 9 CAND pre-sol 결과 (`proofs/PROOF-CAND-*-pre-20260514-*.md`) 는 모두
+#   `collected` 였으나, 다음 한계가 있다:
 #
-#   영구 evidence: `proofs/PROOF-CAND-{026,030,031,032,033,037,038,039,040}-pre-*.md`.
-#   각 CAND frontmatter 의 `pre_sol_proof` 객체 자동 갱신, state transition `pending_gatekeeper →
-#   proof-collected-pre` 기록 (`local-state/history.jsonl`).
+#   - **production bundle (`openclaw.mjs`) 빌드 우회** (`--skip-build`). tsx + src ts 직접 import.
+#   - 시나리오가 production code 의 **일부 함수만 단위로 호출** (e.g. `createPluginToolsMcpHandlers`,
+#     `scheduleFollowupDrain`, `createChannelApprovalHandlerFromCapability` 등 entry function 만).
+#   - **나머지 의존성은 in-script mock** — gateway 전체 부팅 / cron / channel transport / OAuth / LLM /
+#     sqlite / WebSocketServer 등 production 실행 path 전혀 안 거침.
+#   - 모든 시나리오 `REQUIRES_EXTERNAL_DEP=False` + `isolated_home(require_oauth=False)`.
 #
-#   ### 인프라 부산물 (2026-05-14 세션)
+#   즉 "결함 메커니즘이 production code 그 함수 안에 그대로 존재함" 을 unit 수준으로 보였지,
+#   "production 실행 시 그 경로가 실제로 taken 되는가" 는 별도 미검증. CAL-003 위험 그대로 현재진행형.
 #
-#   - `harness/build.py` 에 `skip_build` 옵션 추가 + `harness/run.py --skip-build` CLI.
-#     tsdown bundle 이 entry-only output 이라 개별 모듈 import 불가했던 문제 우회 — 시나리오가
-#     src ts 직접 import (tsx 트랜스파일) 으로 빌드 30분 → install 5분.
-#   - 시나리오 9개 모두 dist→src + node→tsx 패턴 정착. 3건 (CAND-030, 032, 039) 만
-#     worktree-local instrumentation (`_apply_instrumentation`) 적용. 나머지 6건은 production API
-#     + minimal mock 만으로 결함 재현.
+#   ### 다음 세션 목표: 9 CAND production end-to-end re-verification
 #
-#   ### 다음 액션 (SOL 작성 단계)
+#   각 CAND 별 production execution path 식별 + `REQUIRES_EXTERNAL_DEP=True` 시나리오 작성 또는
+#   기존 시나리오를 production-faithful 로 재작성. `openclaw.mjs` 또는 dist 빌드 실행 +
+#   실 transport / SDK / sqlite / lifecycle 호출 + 실 시간 흐름 시뮬.
 #
-#   결정 트리상 `pre-sol collected → 사람 최종 검토 → SOL 작성 착수`. 9 collected CAND 중
-#   SOL 작성 우선순위 후보:
+#   #### 9 CAND production execution path (재검증 설계)
 #
-#   | 우선순위 | CAND | severity | 사유 |
+#   | CAND | production entry | 필요 실행 환경 | 결함 trigger 방법 |
 #   |---|---|---|---|
-#   | high | CAND-032 (auto-reply error-boundary) | P2 | XS 1-line fix, sister .catch pattern 존재, crash 위험 |
-#   | high | CAND-038 (gateway ws-connection) | P3 | XS helper 추가 + close handler 1-call, LLM 토큰 누적 영향 |
-#   | high | CAND-040 (infra/approval-handler) | P3 | deliverTarget stopped flag check, native resource leak |
-#   | mid | CAND-026 (mcp lifecycle, scope-down) | P3 | 시그니처 변경 + 1 call site, host cancel 전파 |
-#   | mid | CAND-030 (agents-registry lifecycle) | P3 | deps interface 1줄 + dispose loop 1줄 |
-#   | mid | CAND-037 (context-engine) | P3 | 3 fallback branch 에 dispose() 추가 |
-#   | low | CAND-031 / 033 (auto-reply queue) | P2/P3 | drain.ts 큰 손질 — design 결정 필요 |
-#   | low | CAND-039 (gateway runtime services) | P3 | isClosing guard + stop handle — 멀티 callsite 영향 |
+#   | CAND-026 | plugin-tools MCP server (`openclaw plugin-tools serve` 등 standalone) | 실 stdio MCP transport + SDK Server | host (probe-client) 가 callTool 발사 후 `notifications/cancelled` 송신 → tool.execute 가 signal 받는가 측정 |
+#   | CAND-030 | subagent registry + 실제 subagent lifecycle | 실 cli 부팅 + 실 subagent 생성 (또는 deps stub 하지만 production registry 모듈은 그대로) | listener 가 aborted timer schedule + 15s 이내 user kill → entry 의 marker map 측정 |
+#   | CAND-031 | auto-reply queue runner | 실 cli 부팅 + 실 channel adapter (no LLM) | enqueue + deterministic-fail backend (contextEngine.compact throw mock 만, 다른 stack production) → drain self-recurse 관측 |
+#   | CAND-032 | reply-run-registry + pi-embedded-runner | 실 cli 부팅 + 실 backend.queueMessage path | activeSession.steer reject 시 unhandledRejection escape + infra/unhandled-rejections classifier 동작 |
+#   | CAND-033 | collect-mode drain | 실 multi-account user 시뮬 + clearSessionQueues trigger | inner-for race window 에 clear 발사 후 Y group fire 여부 |
+#   | CAND-037 | plugin slot config 로 3rd-party engine 등록 | 실 plugin loader + factory 가 fake-but-instantiated engine 반환 | resolveContextEngine 호출 시 contract error fallback → dispose 호출 여부 |
+#   | CAND-038 | 실 gateway server + WebSocketServer | gateway 부팅 + 실 ws 클라이언트 connect + chatAbortController register | ws.close 후 controller.signal.aborted 측정 |
+#   | CAND-039 | 실 gateway bootstrap | gateway 부팅 + 즉시 SIGTERM | recover 함수의 dynamic import 실제 fire 됐는지 (log 또는 외부 observable) |
+#   | CAND-040 | 실 approval handler + capability nativeRuntime | gateway 부팅 + 실 approval flow + handler.stop() | deliverTarget 도중 stop → activeEntries 잔존 여부 측정 |
 #
-#   각 SOL 작성 진입 시 흐름:
-#     1. SOL 파일 (solutions/SOL-NNNN.md) 신규 작성 — finding_ids / option-A/B/C / chosen_fix / rationale
-#     2. (선택) post-harness cross-review 가능 — 5 agent verdict
-#     3. chosen_fix 결정 후 worktree 에 fix patch 작성 (PR worktree, 별도 fix/* branch)
-#     4. post-sol real-behavior-proof 실행 (with-fix vs without-fix 비교) → 6 필드 PR body section 자동
-#     5. pre-pr cross-review (CAL-003) → 합의 2/3 이상이면 PR 발행
-#     6. PR body 12 섹션 작성 + `proof: supplied` label, AI-assisted 표시
+#   #### 단계별 진행 권고
 #
-#   ### 잔여 cross-review 위험 (CAL-003)
+#   1. **인프라 준비**: build.py `skip_build=False` 로 다시 (실 production bundle 필요).
+#      pnpm build 30분 / per worktree. base+head 두 빌드 → 60분.
+#   2. **시나리오 재작성 또는 신규**: CAND 별로 `proof-CAND-NNN-e2e.py` 신규 작성 권장
+#      (기존 unit-level `proof-CAND-NNN.py` 보존). `REQUIRES_EXTERNAL_DEP=True`,
+#      `isolated_home(require_oauth=True if 필요)`.
+#   3. **실행 cost 큼**: CAND 당 5-30분 (cli 부팅 + setup + trial + cleanup). 9 CAND 전체
+#      예상 4-6시간 + 빌드 30분 × N. 다중 세션 진행 필요.
+#   4. **진행 순서** (production deps 크기 순):
+#        세션 M+1: CAND-026 (stdio MCP only, 작음)
+#        세션 M+2: CAND-032 + CAND-030 (auto-reply / agents-registry full)
+#        세션 M+3: CAND-031 + CAND-033 (queue full + multi-user)
+#        세션 M+4: CAND-037 (plugin loader + factory)
+#        세션 M+5: CAND-038 + CAND-040 (gateway + approval handler 부분 부팅)
+#        세션 M+6: CAND-039 (gateway full bootstrap + SIGTERM)
+#   5. **상태 enum**:
+#        - `collected` (e2e) — production 실행에서도 결함 재현 → SOL 작성 진입
+#        - `unreproducible` — unit-level 결함이 production path 에 실제로 안 나타남 → CAND abandon
+#                              (가장 가치 있는 결과 — false positive 의 마지막 안전망)
+#        - `blocked-external-dep` — OAuth / LLM / channel 의존이라 실 실행 못 함. unit-level 결과를
+#                                    final 로 채택할지 사람 판단.
+#   6. **각 CAND e2e collected → SOL 작성 진입 (decision tree 와 동일)**.
 #
-#   pre-sol 측정이 모두 `collected` 인데 false-positive 0건은 두 가지 해석:
-#     (긍정) gatekeeper + cross-review 가 이미 잘 걸러 9 CAND 가 모두 진짜
-#     (주의) probe 시나리오가 production hot-path 와 완전히 동일하지 않을 가능성
-#   → PR 발행 직전 pre-pr cross-review 의 `reproduction-realist` agent 가 재검증 필수.
+#   #### 각 세션 진입 첫 액션
+#
+#   1. 사용자 허락 (real-behavior-proof skill §Step 1 gate)
+#   2. `upstream/main` fetch + behind 확인 (§1.B)
+#   3. 해당 CAND 의 production execution path 재검토 (위 표)
+#   4. 시나리오 새로 작성 또는 기존 e2e 시나리오 수정
+#   5. **production bundle 빌드** (`--skip-build` 옵션 제거)
+#   6. `harness/run.py --target CAND-NNN --mode pre-sol --scenario proof-CAND-NNN-e2e` 실행
+#   7. status 평가 + transition 기록 (proofs/PROOF-CAND-NNN-pre-{ts}-e2e.md 같은 별도 파일명 권장)
+#   8. unit-level 결과 (`PROOF-CAND-NNN-pre-20260514-*.md`) 와 비교 — 일치 / 불일치 보고
+#
+#   #### SOL 작성은 e2e collected 결과를 받은 후 (보류)
+#
+#   2026-05-14 unit-level 9/9 collected 만으로 SOL 작성 진입 안 함. 사용자 결정:
+#   "실제 실행으로 다시 검증할거야" — e2e re-verification 완료 후 SOL 작성 단계.
 #
 #   ## 1-5. 기존 잔여 액션 (위 0번 이후)
 #
