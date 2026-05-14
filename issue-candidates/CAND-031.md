@@ -9,6 +9,8 @@ proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
 state: pending_gatekeeper
+cross_review_metric: metrics/cross-review-CAND-031-20260514-082000.jsonl
+cross_review_decision: 'proceed-with-caveat: avg 0.89, critical-devil medium proceed-with-caveat. fix surface (attempts counter) 는 정당, 단 evidence 의 deterministic source 예시는 잘못된 source (fs ENOENT 는 catch{} swallow). PR 본문 시 contextEngine.compact() / ensureRuntimePluginsLoaded / resolveCommandSecretRefsViaGateway plugin throw 로 교체 필요. severity P3 유지.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

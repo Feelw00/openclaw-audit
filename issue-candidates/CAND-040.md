@@ -9,6 +9,8 @@ proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
 state: pending_gatekeeper
+cross_review_metric: metrics/cross-review-CAND-040-20260514-082000.jsonl
+cross_review_decision: 'proceed-with-caveat: avg 0.81, critical-devil medium proceed-with-caveat. race mechanism 자체는 abandon 불가 (outer/inner 두 layer 모두 in-flight handleRequested promise 추적 부재). 단 FIND 가 outer approval-native-runtime.ts 만 지목하고 inner exec-approval-channel-runtime.ts:393-415 spawn detached + stop() inflight await 부재 (진짜 root enabler) 를 누락. PR 본문 시 fix surface 를 inner runtime stop() inflight tracking 으로 확장 권고. severity P3 유지.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

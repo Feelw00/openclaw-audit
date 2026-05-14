@@ -8,7 +8,9 @@ proposed_title: "context-engine/init: register-then-set ordering to allow retry 
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+cross_review_metric: metrics/cross-review-CAND-035-20260514-082000.jsonl
+retracted_reason: 'cross-review CAL-001 + synthetic-only: avg 0.51 abandon. critical-devil abandon/high — registerLegacyContextEngine() (legacy-engine.ts) 는 순수 sync 함수로 module-load 시 이미 검증된 path, 실제 throw 경로 부재. SQLite migration revert (694ca50e97, 2026-05-13) 는 register 의 async/IO surface 확장을 미실현. reproduction-realist synthetic-risk-high — register throw 시나리오는 production 미발현이라 회귀 테스트가 인공 mock 강제 throw 만으로 구성됨. future-fragility framing 만으로는 maintainer 가 frozen feature-work 규정으로 reject 가능.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

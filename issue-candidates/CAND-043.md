@@ -26,7 +26,9 @@ proposed_title: "fix(context-engine): resolveContextEngine entry snapshot leaks 
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+cross_review_metric: metrics/cross-review-CAND-043-20260514-082000.jsonl
+retracted_reason: 'cross-review CAL-001: avg 0.60 abandon. critical-devil abandon/high — plugins/loader.ts:491-494 runPluginRegisterSync 가 atomic sync frame (전체 register 가 한 micro-task 내 완료) + plugins/loader.ts:1489 loadOpenClawPlugins 가 sync 함수. clearContextEnginesForOwner 자체는 외부에서 호출 가능하나 resolveContextEngine 의 await entry.factory 와 인터리브 가능한 caller 가 production 에서 부재 — entry.owner=''plugin:X'' 는 provenance metadata 이지 registry membership 의 atomic 키가 아님. R-3 grep 5종이 context-engine/ scope 만 검사 + plugins/loader.ts atomicity model 누락. CAL-001 R-3 scope 누락 재발.'
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:

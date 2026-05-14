@@ -21,7 +21,9 @@ proposed_title: "fix(channels): typing keepalive stop() leaks tickInFlight reset
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+cross_review_metric: metrics/cross-review-CAND-041-20260514-082000.jsonl
+retracted_reason: 'cross-review CAL-001: avg 0.63 abandon. critical-devil abandon/high — hidden guards 2개 발견. (1) channels/typing.ts:72-74 `if (closed) return` (unconditional) — `fireStop` (L91) 이 `closed=true` 를 `keepaliveLoop.stop()` 호출 *이전* unconditional set, heartbeat 경로에서 stop 후 새 onReplyStart 진입 자체가 불가능. (2) auto-reply/reply/typing.ts:124-127 `triggerInFlight` mutex — inner `channels/typing.ts:71` onReplyStart 의 유일한 호출 경로를 직렬화, 두 inner stop→fireStart→start 시퀀스 인터리브 불가. 회귀 테스트 (typing.test.ts:201-217 "does not restart keepalive after idle cleanup") 가 closed 가드의 race-차단 동작을 이미 검증. FIND 의 R-3 grep 5종 (Mutex|Semaphore|AsyncLock 등) 이 closed 같은 simple state-flag mutex 와 outer wrapper (auto-reply/reply/*) 를 검사 범위에서 누락 — CAL-001 그대로 재발.'
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:

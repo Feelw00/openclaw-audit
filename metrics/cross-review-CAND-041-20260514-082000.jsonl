@@ -1,0 +1,6 @@
+{"target": "CAND-041", "mode": "post-harness", "timestamp": "20260514-082000", "agent_count": 5, "primary_decision": "abandon", "avg_score": 0.63}
+{"target": "CAND-041", "role": "positive-advocate", "raw_verdict": "merge", "normalized_verdict": "real-problem-real-fix", "score": 1.0, "confidence": "medium"}
+{"target": "CAND-041", "role": "critical-devil", "raw_verdict": "abandon", "normalized_verdict": "false-positive", "score": 0.0, "confidence": "high"}
+{"target": "CAND-041", "role": "reproduction-realist", "raw_verdict": "proceed-with-real-test", "normalized_verdict": "real-problem-real-fix", "score": 0.85, "confidence": "?"}
+{"target": "CAND-041", "role": "hot-path-tracer", "raw_verdict": "weak-evidence", "normalized_verdict": "real-problem-fix-insufficient", "score": 0.3, "confidence": 0.78}
+{"target": "CAND-041", "role": "upstream-dup-checker", "raw_verdict": "proceed", "normalized_verdict": "real-problem-real-fix", "score": 1.0, "confidence": "?"}

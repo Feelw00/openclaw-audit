@@ -8,7 +8,9 @@ proposed_title: "context-engine/registry: invokeWithLegacyCompat retries side-ef
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+cross_review_metric: metrics/cross-review-CAND-036-20260514-082000.jsonl
+retracted_reason: 'cross-review CAL-001 + low-impact + synthetic: avg 0.51 abandon. critical-devil weaken-or-abandon/high — production 활성 engine 이 LegacyContextEngine 단일, third-party engine 미도입 (263a190fc9 의 third-party 허용은 인프라만 추가, 실제 등록 0). hot-path-tracer valid-but-low-impact/high — retry 가 idempotent 가 아닌 method 에 fire 하더라도 LegacyContextEngine 의 compact()/ingest() 는 LLM API 호출이지만 raw error echo 매칭은 정규식 14패턴 중 매우 좁은 surface. reproduction-realist abandon-as-synthetic — third-party engine mock 없이 회귀 테스트 의미 불명.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

@@ -332,6 +332,8 @@ candidates:
   type: single
   finding_count: 1
   state: pending_gatekeeper
+  cross_review_metric: metrics/cross-review-CAND-031-20260514-082000.jsonl
+  cross_review_decision: 'proceed-with-caveat (avg 0.89): fix surface 정당, evidence 의 deterministic source 예시 (fs ENOENT) 만 교체 필요 — contextEngine.compact() / ensureRuntimePluginsLoaded / resolveCommandSecretRefsViaGateway plugin throw 가 정확. severity P3 유지.'
   note: FIND-auto-reply-error-boundary-001 — drain.ts:298-313 catch+finally 가 max-attempts/backoff 없이 scheduleFollowupDrain
     self-recurse → deterministic-fail 시 debounceMs=500ms 간격 무한 retry + typing keepalive 폭주. severity P3.
 - id: CAND-032
@@ -359,7 +361,9 @@ candidates:
 - id: CAND-035
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  cross_review_metric: metrics/cross-review-CAND-035-20260514-082000.jsonl
+  retracted_reason: 'cross-review CAL-001 + synthetic-only (avg 0.51): critical abandon/high — registerLegacyContextEngine 은 module-load 시 검증된 sync path, throw 경로 부재. SQLite migration revert (694ca50e97) 는 async surface 확장 미실현. repro synthetic-risk-high — register throw 시나리오는 production 미발현이라 회귀 테스트가 인공 mock 강제 throw. future-fragility framing 만으로는 frozen feature-work 규정으로 reject 가능.'
   note: FIND-context-engine-lifecycle-002 (FIND-context-engine-error-boundary-001 dedup-merged) — init.ts:13-23 의
     set-before-action ordering (initialized=true 가 registerLegacyContextEngine 전에 set) 으로 register throw 시 영구 lockout.
     동일 fix surface (ordering swap) 라 두 FIND 단일 CAND 로 통합, FIND-009 는 ready 잔존 + finding_ids 미포함. severity P3.
@@ -368,7 +372,9 @@ candidates:
 - id: CAND-036
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  cross_review_metric: metrics/cross-review-CAND-036-20260514-082000.jsonl
+  retracted_reason: 'cross-review CAL-001 + low-impact + synthetic (avg 0.51): critical weaken-or-abandon/high — production 활성 engine 이 LegacyContextEngine 단일, third-party engine 미도입 (263a190fc9 의 third-party 허용은 인프라만 추가). hot-path valid-but-low-impact — regex 14패턴 중 raw error echo 매칭은 매우 좁은 surface. repro abandon-as-synthetic — third-party engine mock 없이 회귀 테스트 의미 불명.'
   note: FIND-context-engine-error-boundary-002 — registry.ts:239-267 invokeWithLegacyCompat 의 정규식 매칭 기반 retry 가
     side-effectful method (compact/ingest) 의 LLM API 중복 호출 발사 (1-3회 청구). 현재 production 활성 0 (LegacyContextEngine 만),
     third-party plugin engine 도입 시 즉시 활성. severity P3 future-proofing.
@@ -398,6 +404,8 @@ candidates:
   type: single
   finding_count: 1
   state: pending_gatekeeper
+  cross_review_metric: metrics/cross-review-CAND-040-20260514-082000.jsonl
+  cross_review_decision: 'proceed-with-caveat (avg 0.81): race mechanism 실재 (outer/inner 두 layer 모두 in-flight handleRequested promise 추적 부재). 단 FIND 가 outer approval-native-runtime.ts 만 지목하고 inner exec-approval-channel-runtime.ts:393-415 spawn detached + stop() inflight await 부재 (진짜 root enabler) 누락. PR 본문 시 fix surface 를 inner runtime stop() inflight tracking 으로 확장 권고. severity P3 유지.'
   note: FIND-infra-process-concurrency-001 — approval-handler-runtime.ts:498-537 deliverTarget 의 두 await 사이에
     onStopped 의 activeEntries.clear() 가 실행되면 wrapped entry 가 비어있던 Map 에 다시 등록되고 stopped 핸들러로는 finalize
     경로 미도달 → native binding orphan + 외부 자원 leak. file 내 동기화 원시 0건. caller (approval-native-runtime.ts, 셀 밖)
@@ -405,7 +413,9 @@ candidates:
 - id: CAND-041
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  cross_review_metric: metrics/cross-review-CAND-041-20260514-082000.jsonl
+  retracted_reason: 'cross-review CAL-001 (avg 0.63): critical abandon/high — hidden guards 2개. (1) channels/typing.ts:72-74 `if (closed) return` (unconditional) — `fireStop` (L91) 이 closed=true 를 keepaliveLoop.stop() 호출 *이전* unconditional set, heartbeat 경로에서 race 발현 불가. (2) auto-reply/reply/typing.ts:124-127 triggerInFlight mutex — inner channels/typing.ts:71 onReplyStart 의 유일한 호출 경로 직렬화. 회귀 테스트 typing.test.ts:201-217 이 closed 가드 race-차단 이미 검증. FIND R-3 grep 5종이 simple state-flag mutex + outer wrapper 누락 — CAL-001 그대로 재발.'
   note: FIND-channels-concurrency-001 — typing-lifecycle.ts:38-45 stop() 이 tickInFlight=false 를 unconditional reset →
     in-flight tick 의 ownership 토큰 가로채기 → 직후 start() 의 새 tick 이 concurrent onTick 발사. hot-path typing.ts:71-88
     onReplyStart 의 stop→fireStart→start 시퀀스가 매 reply turn 트리거. PR #75403 은 typing.ts 측 race 만 다룸 (다른 file, 다른 axis). severity P3.
@@ -421,7 +431,9 @@ candidates:
 - id: CAND-043
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  cross_review_metric: metrics/cross-review-CAND-043-20260514-082000.jsonl
+  retracted_reason: 'cross-review CAL-001 (avg 0.60): critical abandon/high — plugins/loader.ts:491-494 runPluginRegisterSync 가 atomic sync frame (전체 register 가 한 micro-task 내 완료) + plugins/loader.ts:1489 loadOpenClawPlugins 가 sync 함수. resolveContextEngine 의 await entry.factory 와 인터리브 가능한 caller 가 production 부재. entry.owner=''plugin:X'' 는 provenance metadata 이지 registry membership 의 atomic 키 아님. R-3 grep 5종이 context-engine/ scope 만 검사 + plugins/loader.ts atomicity model 누락 — CAL-001 R-3 scope 누락 재발.'
   note: FIND-context-engine-concurrency-001 — context-engine/registry.ts:546-601 resolveContextEngine 의 entry snapshot (L546) 이
     factory await (L563) 중 외부 clearContextEnginesForOwner 호출로 stale → L601 wrapResolvedContextEngine 이 stale entry.owner 사용 →
     wrapped engine 의 owner metadata 가 unregistered pluginId 가리킴. WeakMap update 경로 없어 영구. hygienic P3 (functional 정상, attribution 손상).
