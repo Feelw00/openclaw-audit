@@ -1791,7 +1791,7 @@ items:
     created_at: '2026-05-14T06:55:21+00:00'
     updated_at: '2026-05-14T06:55:21+00:00'
   CAND-027:
-    kind: find
+    kind: candidate
     state: abandoned
     transitions:
     - from: null
@@ -1809,17 +1809,22 @@ items:
     updated_at: '2026-05-14T08:18:45+00:00'
   CAND-028:
     kind: candidate
-    state: pending_gatekeeper
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (028)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: gatekeeper-2026-05-14
+      reason: 'CAL-008 upstream-dup: PR #54765 OPEN restore latch reset 동일 fix'
+      at: '2026-05-14T08:24:49+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T08:24:49+00:00'
   CAND-029:
-    kind: find
+    kind: candidate
     state: abandoned
     transitions:
     - from: null
@@ -1881,15 +1886,20 @@ items:
     updated_at: '2026-05-14T06:55:22+00:00'
   CAND-034:
     kind: candidate
-    state: pending_gatekeeper
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (034)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: gatekeeper-2026-05-14
+      reason: 'CAL-008 upstream-dup: PR #46303 OPEN flushAll API 동일 fix'
+      at: '2026-05-14T08:24:49+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T08:24:49+00:00'
   CAND-035:
     kind: candidate
     state: pending_gatekeeper
@@ -1969,15 +1979,21 @@ items:
     updated_at: '2026-05-14T07:11:24+00:00'
   CAND-042:
     kind: candidate
-    state: pending_gatekeeper
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from repaired FIND batch (042)
       at: '2026-05-14T07:11:24+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: gatekeeper-2026-05-14
+      reason: 'CAL-001 primary-path inversion: 4-adapter fan-in 가정 무효 (3곳만 사용, stage
+        상호 배타)'
+      at: '2026-05-14T08:24:49+00:00'
     created_at: '2026-05-14T07:11:24+00:00'
-    updated_at: '2026-05-14T07:11:24+00:00'
+    updated_at: '2026-05-14T08:24:49+00:00'
   CAND-043:
     kind: candidate
     state: pending_gatekeeper

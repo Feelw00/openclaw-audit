@@ -303,7 +303,9 @@ candidates:
 - id: CAND-028
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'gatekeeper CAL-008 upstream-dup: PR #54765 "sessions: fix durable restore after recovery" (OPEN 2026-03-26) 가 file/symbol/intent 일치 fix 진행 중 — restore latch reset + snapshot-based retry.'
+  gatekeeper_verdict: reject_suspected/high
   note: FIND-agents-registry-error-boundary-002 — registry.ts:676-714 restoreSubagentRunsOnce 의 restoreAttempted=true
     set-before-action + silent catch + state.ts:31 in-place Map mutate 결합 → wire-up 부분 실패 시 entries 잔존 +
     listener/sweeper/resume 미완 영구 partial state. severity P3.
@@ -349,7 +351,9 @@ candidates:
 - id: CAND-034
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'gatekeeper CAL-008 upstream-dup: PR #46303 "fix: drain inbound debounce buffer and followup queues before SIGUSR1 reload" (OPEN 2026-03-14) 가 동일 file + root cause + fix surface (flushAll method, flushAllInboundDebouncers, run-loop.ts restart hook) 제안 중.'
+  gatekeeper_verdict: reject_suspected/high
   note: FIND-auto-reply-lifecycle-002 — inbound-debounce.ts:177-180 의 setTimeout unref + 반환 객체 (flushAll/dispose 부재)
     조합으로 SIGTERM 시 buffered inbound silent drop. severity P3.
 - id: CAND-035
@@ -408,7 +412,9 @@ candidates:
 - id: CAND-042
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'gatekeeper CAL-001 primary-path inversion: 4-adapter fan-in 가정 무효. production caller 는 telegram/bot-update-tracker.ts:160 + line/webhook.ts:91 + line/webhook-node.ts:126 단 3곳. slack/discord/whatsapp 은 createMessageReceiveContext 미사용 (grep 0). telegram stage 두 분기는 ackPolicy gate 로 상호 배타 (한 ctx 단일 stage). line/webhook 은 request 당 1회 sequential ack — concurrent fan-in path 부재.'
+  gatekeeper_verdict: reject_suspected/medium
   note: FIND-channels-concurrency-002 — message/receive.ts:69-82 ctx.ack() 의 check(L70)→await onAck(L73)→set(L74) race로
     동시 ack 호출 시 platform onAck 가 2회 발사. in-flight token / atomic test-and-set 부재. borderline P3 — R-7 한계 (production caller 가
     plugin SDK 통해 extensions/** allowed_paths 외). severity P3.

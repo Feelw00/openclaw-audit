@@ -8,7 +8,10 @@ proposed_title: "auto-reply/inbound-debounce: drain buffered inbound on shutdown
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+gatekeeper_verdict: reject_suspected/high
+gatekeeper_metric: metrics/shadow-runs.jsonl
+retracted_reason: 'gatekeeper CAL-008 upstream-dup: PR #46303 "fix: drain inbound debounce buffer and followup queues before SIGUSR1 reload" (2026-03-14 OPEN, 2026-05-13 updated) 가 동일 file (inbound-debounce.ts) + 동일 root cause (setTimeout.unref + flushAll API 부재) + 동일 fix surface (flushAll method, flushAllInboundDebouncers, run-loop.ts restart hook) 제안 중. 정확한 중복.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

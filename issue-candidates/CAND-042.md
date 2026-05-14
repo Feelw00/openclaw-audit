@@ -27,7 +27,10 @@ proposed_title: "fix(channels): MessageReceiveContext.ack() check-then-await-the
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+gatekeeper_verdict: reject_suspected/medium
+gatekeeper_metric: metrics/shadow-runs.jsonl
+retracted_reason: 'gatekeeper CAL-001 primary-path inversion: 4-adapter concurrent fan-in 가정 무효. production caller 는 telegram/bot-update-tracker.ts:160 + line/webhook.ts:91 + line/webhook-node.ts:126 단 3곳, slack/discord/whatsapp 은 createMessageReceiveContext 미사용. telegram 의 두 stage 분기는 ackPolicy gate 로 상호 배타 (한 ctx 단일 stage), line/webhook 은 request 당 1회 sequential ack — concurrent fan-in path 부재.'
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:

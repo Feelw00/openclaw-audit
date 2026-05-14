@@ -8,7 +8,10 @@ proposed_title: "agents/subagent-registry: restore wire-up failures leave runs w
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+gatekeeper_verdict: reject_suspected/high
+gatekeeper_metric: metrics/shadow-runs.jsonl
+retracted_reason: 'gatekeeper CAL-008 upstream-dup: PR #54765 "sessions: fix durable restore after recovery" (CyberSpencer, OPEN 2026-03-26) 가 동일 axis 직접 fix 중 — (a) restore latch reset (b) snapshot-based retry. file/symbol/intent 완전 일치. 별도 PR 노이즈 회피.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa
