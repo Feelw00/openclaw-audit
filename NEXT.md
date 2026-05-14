@@ -119,36 +119,46 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   • CAND-039 — gateway/server-runtime-services recovery IIFE SIGTERM 미가드
 #   • CAND-040 — infra/approval-handler-runtime activeEntries deliverTarget 중 onStopped race
 #
-#   feasibility 평가 (2026-05-14 점검):
+#   사전 작성 완료 (2026-05-14, 직전 세션):
+#     skills/real-behavior-proof/scenarios/proof-CAND-{026,030,031,032,033,037,038,039,040}.py
+#     — 각 CAND 의 측정 binary, 필요 __test hook 목록, evaluate_pre/post 규칙, render_pr_evidence
+#       6 필드를 docstring 에 명시.
+#     — 모두 REQUIRES_EXTERNAL_DEP=False (in-process measurement).
+#     — harness/run.py 가 file-stem 으로 동적 import 하므로 `--scenario proof-CAND-NNN` 즉시 작동.
+#     — hook 미존재 시 시나리오가 stdout 에 `{"skipped": "..."}` 출력 → blocked-env 로 분류.
 #
-#   | 유형 | CAND | 필요 작업 | 1건당 추정 |
+#   잔여 작업 분류 (2026-05-14 시나리오 사전작성 후):
+#
+#   | 유형 | CAND | 잔여 작업 | 1건당 추정 |
 #   |---|---|---|---|
-#   | hook 있음 / 시나리오만 작성 | 026, 032 | 시나리오 작성 + 빌드 + 실행 | 1-2h |
-#   | __test export hook 추가 필요 | 030, 031, 033, 037, 040 | hook 1-2줄 (측정 instrumentation, fix 아님) + 시나리오 + 빌드 + 실행 | 2-3h |
-#   | LLM/SIGTERM/외부 메시지 mock 인프라 필요 | 038, 039 | mock + scenario + spawn 인프라 + 실행 | 3-5h |
+#   | hook 기존 가정 | 026, 032 | 빌드 + pre-sol 실행 (skipped 잡히면 hook 1-2줄 추가) | 0.5-1.5h |
+#   | __test export hook 추가 필요 | 030, 031, 033, 037, 040 | hook 1-2줄 instrumentation + 빌드 + 실행 | 1-2h |
+#   | gateway fake-deps 인프라 필요 | 038, 039 | __test.installFakeDeps / setRecoveryProbe stub + 빌드 + 실행 | 2-3h |
 #
-#   총 추정: 20-35시간 → 다중 세션. blocked-env 는 적용 안 함 (실제로는 작성 가능, hook 추가는 instrumentation
-#   이지 fix 가 아님 — pre-sol 단계에서 worktree-local 으로 추가 후 측정만, 커밋하지 않음).
+#   총 잔여 추정: 약 12-20시간 → 다중 세션. blocked-env 는 적용 안 함 (hook 추가는 instrumentation
+#   이지 fix 가 아님 — worktree-local 만, 커밋 안 함).
 #
-#   진행 순서:
-#     세션 N+1: CAND-026 + CAND-032 (hook 기존, 시나리오 신규) — end-to-end 파이프라인 검증 우선
-#     세션 N+2: CAND-030/031/033 (auto-reply / agents 도메인 hook 추가) — 도메인 묶음
+#   진행 순서 (순차 proof 테스트):
+#     세션 N+1: CAND-026 + CAND-032 — end-to-end 파이프라인 검증 우선 (skipped 잡으면 hook 추가)
+#     세션 N+2: CAND-030/031/033 (auto-reply / agents 도메인 hook 추가)
 #     세션 N+3: CAND-037/040 (context-engine / infra 도메인 hook 추가)
-#     세션 N+4-5: CAND-038/039 (gateway 외부 mock 인프라)
+#     세션 N+4-5: CAND-038/039 (gateway fake-deps 인프라)
 #
 #   각 세션 진입 시 첫 액션:
-#     1. 사용자 허락 받기 (skills/real-behavior-proof/SKILL.md §Step 1 gate)
-#     2. upstream/main fetch + behind 확인 (§1.B)
-#     3. 해당 CAND 의 file:line 재확인 (upstream HEAD 변경으로 CAL-007 stale risk)
-#     4. worktree 생성 (/Users/lucas/Project/openclaw-worktrees/proof-CAND-NNN)
-#     5. __test export hook 추가 (해당하는 경우, instrumentation only)
-#     6. scenarios/proof-CAND-NNN.py 작성 (gateway-map-size.py 패턴 차용)
-#     7. harness/run.py --mode pre-sol 실행
-#     8. status 평가 (collected / unreproducible / blocked-*)
-#     9. local-state + SOL 영역 transition (proofs/PROOF-CAND-NNN-pre-*.md 생성)
+#     1. 사용자 허락 받기 (skills/real-behavior-proof/SKILL.md §Step 1 gate).
+#     2. upstream/main fetch + behind 확인 (§1.B). 변경 있으면 git pull upstream main --ff-only.
+#     3. 해당 CAND 의 file:line 재확인 (upstream HEAD 변경 → CAL-007 stale risk).
+#     4. 시나리오 docstring 의 필요 hook 목록 확인:
+#          /Users/lucas/Project/openclaw-audit/skills/real-behavior-proof/scenarios/proof-CAND-NNN.py
+#     5. worktree 생성 (/Users/lucas/Project/openclaw-worktrees/proof-CAND-NNN).
+#     6. __test export hook 추가 (worktree-local instrumentation only, 커밋 안 함).
+#     7. pnpm build → harness/run.py --target CAND-NNN --mode pre-sol --scenario proof-CAND-NNN.
+#     8. status 평가 (collected / unreproducible / blocked-*).
+#     9. local-state + SOL 영역 transition (proofs/PROOF-CAND-NNN-pre-*.md 생성).
 #     10. unreproducible → CAND abandon. collected → SOL 작성 단계 진입.
 #
-#   참고: SOL 작성은 pre-sol collected 결과를 받은 후. proof 가 정직한 게이트.
+#   참고: 시나리오는 사전 작성됨 (이번 세션 산출물). SOL 작성은 pre-sol collected 결과를 받은
+#   후 — proof 가 정직한 게이트.
 #
 #   ## 1-5. 기존 잔여 액션 (위 0번 이후)
 #
@@ -156,7 +166,8 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   2. PR #71648 메인테이너 리뷰 대기 — sufficient 자동평가 미부여 (fake timer 추정). real wall-clock 재시도는 mcp-pending-ttl
 #      scenario + TTL env override hook 도입에 의존.
 #   3. CAL-011 calibration 정식 문서 작성 — alternative-axis acceptance 패턴 (PR #71040 사례).
-#   4. real-behavior-proof skill end-to-end 검증 — §0 의 CAND-026 + CAND-032 진행이 첫 end-to-end 검증 케이스.
+#   4. real-behavior-proof skill end-to-end 검증 — §0 의 CAND-026 + CAND-032 진행이 첫 end-to-end 검증 케이스
+#      (9 CAND 시나리오 사전작성 완료 2026-05-14, 다음 세션부터 순차 실행).
 #      (참고: SOL-0004 는 2026-04-21 PR #68842 로 머지 완료 — proof skill 도입 전이라 미적용).
 #   5. Phase 5 후속 셀 — mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
 #
