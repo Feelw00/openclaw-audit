@@ -60,9 +60,14 @@ open PR worktree 는 `fix/*` 브랜치라 main 업데이트와 독립. rebase �
 | `findings/ready/` ≥ 2 건 (같은 도메인 누적) | clusterer 페르소나 호출 |
 | `issue-candidates/` 에 gatekeeper 미평가 CAND 있음 (`state: pending_gatekeeper`) | gatekeep 3-step (sanitize → agent → apply --shadow) |
 | gatekeeper 판정 끝난 CAND + 사용자 허락 | **R-11 post-harness cross-review** — `skills/cross-review/` 스킬 사용. `harness/run.py --target CAND-NNN --mode post-harness` 로 프롬프트 렌더 → Agent tool 로 병렬 실행 → `aggregate.py` 로 집계. 허락 없이 자동 실행 금지. 아래 §7.1 참조 |
-| gatekeeper `approve` + cross-review 2/3 이상 real | 사람 최종 검토 → SOL 작성 착수 |
+| gatekeeper `approve` + cross-review 2/3 이상 real | **R-12 pre-sol real behavior proof** — `skills/real-behavior-proof/` 스킬 (mode: pre-sol). without-fix 빌드 단독으로 production-like 환경 결함 재현. 모든 severity 적용. 아래 §7.5 참조 |
+| pre-sol `collected` / `blocked-external-dep` / `blocked-env` | 사람 최종 검토 → SOL 작성 착수 (blocked 사유는 SOL frontmatter `pre_sol_proof.status` 에 trace) |
+| pre-sol `unreproducible` | CAND abandon (false-positive-by-reproduction). cross-review 가 놓친 false positive 의 마지막 안전망 |
 | gatekeeper `uncertain` / `needs-human-review` | cross-review 결과로 approve/scope-축소/abandon 결정 |
-| `solutions/` 에 `status: drafted` SOL 있음 | worktree 에서 재현 테스트 + fix → PR 경로 |
+| `solutions/` 에 `status: drafted` SOL + `chosen_fix` 결정 + 사용자 허락 | **R-13 post-sol real behavior proof** — `skills/real-behavior-proof/` 스킬 (mode: post-sol). with-fix vs without-fix 비교 + 6 필드 PR body evidence 산출. §7.5 참조 |
+| post-sol `collected` | pre-pr cross-review (§7.2) → PR 발행 (PR body 에 `pr_body_section` paste, `proof: supplied` 자동 부여) |
+| post-sol `blocked-external-dep` / `blocked-env` | 회귀 테스트만으로 PR 발행 + PR body 에 blocked 사유 명시 (`proof: sufficient` 미부여 수용) |
+| post-sol `unreproducible` | fix 효과 없음 → SOL abandon 또는 `chosen_fix` 재선택 |
 | 위 전부 없음 | 새 셀 선택 (아래 §3) |
 
 ## 3. 새 셀 선택
@@ -257,6 +262,56 @@ PR 제출 **직전** 3 agent 병렬 재검증. fix 포함 최종 diff 기준.
 메인테이너 CHANGES_REQUESTED / COMMENT 받으면 답변 전 `skills/cross-review/harness/run.py --target PR#NNNNN --mode maintainer-response --maintainer-quote "..." --invariant "..." --pr-reference "PR#NNNNN @<sha>"` 실행.
 기본 5 agent: critical-devil, maintainer-invariant-hunter, schema-boundary-fuzzer, caller-surface-auditor, reproduction-realist.
 톤 체크리스트: `modes/maintainer-response.yaml` 의 `tone_checklist`.
+
+## 7.5 Real behavior proof (R-12 pre-sol / R-13 post-sol)
+
+**스킬**: `skills/real-behavior-proof/` (별도 — cross-review 와 분리. build/run/measure 가 본질).
+
+openclaw 의 외부 PR 라벨 정책 (`triage: needs-real-behavior-proof` / `proof: supplied` / `proof: sufficient`,
+출처 `scripts/github/real-behavior-proof-policy.mjs`) 에 맞춰 SOL 작성 전/후 production-like 환경에서
+실제 결함 재현/검증을 자동화. 머지된 5 PR 의 V2/V3/V4 사후 evidence 강화 패턴을 SOL 단계로 forward-shift.
+
+**모드 2개**:
+- `pre-sol` (R-12): gatekeeper approve + cross-review proceed 직후. without-fix 빌드 단독.
+  목적: false positive 사전 차단 + post-sol baseline 확보.
+- `post-sol` (R-13): SOL chosen_fix 결정 후. with-fix vs without-fix 두 빌드 비교.
+  산출물: openclaw 6 필드 PR body 텍스트 (`pr_body_section`).
+
+**모든 severity 적용 (P3 포함)**. 재현 불가능은 강등 없이 별도 상태 (`blocked-external-dep` 등).
+
+**호출 (사용자 허락 필수)**:
+```bash
+# pre-sol (single build, scenario 1회)
+/tmp/openclaw-audit-venv/bin/python skills/real-behavior-proof/harness/run.py \
+  --target SOL-0004 --mode pre-sol --scenario gateway-map-size \
+  --base-sha <upstream/main HEAD> --trials 100
+
+# post-sol (build pair + scenario × 2)
+/tmp/openclaw-audit-venv/bin/python skills/real-behavior-proof/harness/run.py \
+  --target SOL-0004 --mode post-sol --scenario gateway-map-size \
+  --base-sha <upstream/main HEAD> --head-sha <fix HEAD> --trials 100
+```
+
+**산출물 위치**:
+- `proofs/PROOF-{target}-{pre|post}-{ts}.md` — 영구 evidence + PR body section
+- `solutions/SOL-NNNN.md` frontmatter 의 `pre_sol_proof` / `post_sol_proof` 객체
+- `local-state/state.yaml` + `history.jsonl` transition (`proof-{collected|unreproducible|blocked|skipped}-{pre|post}`)
+
+**status enum** (둘 다 동일): `pending | collected | unreproducible | blocked-external-dep | blocked-env | skipped-by-user`
+
+**시나리오 카탈로그** (`skills/real-behavior-proof/scenarios/`):
+- `cron-manual-run` — PR #78243 baseline. sqlite task_runs status='lost' 측정. `REQUIRES_EXTERNAL_DEP=True` (OAuth + LLM 호출).
+- `gateway-map-size` — SOL-0004 패턴. Map.size 측정. 외부 의존 없음.
+- `mcp-pending-ttl` — PR #71648 패턴. real wall clock TTL (fake timer 회피, sufficient 라벨 노림).
+
+**격리**: `env_isolate.isolated_home()` 가 `OPENCLAW_HOME=/tmp/proof-{uuid}/.openclaw` redirect.
+production `~/.openclaw/` 손상 0. OAuth profile 만 read-only 복사 (LLM 호출 가능).
+
+**openclaw policy 호환 검증**: `harness/render_proof.py` 가 6 필드 형식 정확 mirror.
+검증: `node -e` 로 `evaluateRealBehaviorProof()` 직접 호출 → `status: "passed"` 확인.
+guard `_check_no_inline_heading` 가 line-start `# ` 패턴 (policy 가 거기서 break) 자동 raise.
+
+**상세**: `skills/real-behavior-proof/SKILL.md` (5 단계 호출 규약 + 시나리오 작성 규약).
 
 ## 8. 긴급 참조
 

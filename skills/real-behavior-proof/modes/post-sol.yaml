@@ -1,0 +1,45 @@
+# post-sol mode
+# SOL chosen_fix 결정 후, with-fix vs without-fix 두 빌드 비교 측정.
+# 산출물: openclaw `## Real behavior proof` 섹션 6 필드 PR body 텍스트.
+# 모든 severity 에 적용. 재현 불가능은 별도 상태.
+
+description: "SOL chosen_fix 검증: with/without 빌드 비교 + PR body 6 필드 evidence 산출"
+phase: post
+target_types: [SOL]
+
+build_strategy: pair  # base + head 두 worktree
+
+status_values:
+  - pending
+  - collected               # fix 효과 입증 (without 결함 → with 정상)
+  - unreproducible          # without 에서 결함 미발현 OR with 에서 fix 효과 없음 → SOL abandon 검토
+  - blocked-external-dep    # 회귀 테스트만으로 PR 발행 (proof: sufficient 미부여 수용)
+  - blocked-env             # build/run 환경 사유
+  - skipped-by-user
+
+# scenario 가 evaluate_post(without_fix, with_fix) 반환 + render_pr_evidence 제공.
+# render_pr_evidence 는 6 필드 dict (behavior/environment/steps/evidence/observed_result/not_tested) 반환.
+# render_proof.render_pr_body_section 이 그것을 openclaw policy 호환 마크다운으로 변환.
+
+next_action_by_status:
+  collected: "pre-pr cross-review → PR 발행 (PR body 에 pr_body_section paste)"
+  unreproducible: "fix 효과 없음 → SOL abandon 또는 fix_approach_candidates 재검토"
+  blocked-external-dep: "회귀 테스트만으로 PR 발행 + PR body 에 blocked 사유 명시 (sufficient 미부여 수용)"
+  blocked-env: "환경 setup 재시도 또는 시나리오 변경"
+  skipped-by-user: "사용자 책임"
+
+user_permission_gate: required
+permission_prompt: |
+  SOL 에 대해 post-sol real behavior proof:
+  - openclaw worktree 2개 (base + head), 각각 pnpm build (~10-30분 each)
+  - isolated OPENCLAW_HOME 두 개에서 scenario 각각 실행
+  - 결과 → SOL frontmatter post_sol_proof + proofs/PROOF-*.md + PR body section
+  실행 시간: build 20-60분 + scenario × 2.
+  진행할까? (y/n)
+
+# openclaw policy 통과 보장
+policy_compliance:
+  source_of_truth: /Users/lucas/Project/openclaw/scripts/github/real-behavior-proof-policy.mjs
+  required_fields_mirror: [behavior, environment, steps, evidence, observedResult, notTested]
+  validation: "harness/render_proof.py:render_pr_body_section 가 _passes_real_evidence_check 통과 보장"
+  smoke_test: "node -e 로 evaluateRealBehaviorProof() 호출, status='passed' 확인"

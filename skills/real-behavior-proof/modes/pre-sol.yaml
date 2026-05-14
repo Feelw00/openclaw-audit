@@ -1,0 +1,44 @@
+# pre-sol mode
+# SOL 작성 **전**, gatekeeper approve + post-harness cross-review proceed 직후 실행.
+# 목적: without-fix 빌드 단독으로 production 환경에서 결함 재현. false positive 사전 차단.
+# 모든 severity 에 적용 (P3 포함, 사용자 정정 반영).
+# 재현 불가능한 경우 별도 상태로 마킹 (강등 X, abandon X).
+
+description: "SOL 작성 전 production-like 환경 결함 재현 (without-fix 빌드만)"
+phase: pre
+target_types: [SOL, CAND]
+
+# build pair 가 아닌 single build (without-fix base sha 만)
+build_strategy: single
+
+# 결정 enum (scenario.evaluate_pre 가 반환)
+status_values:
+  - pending
+  - collected               # 결함 발현 확인 → SOL 작성 진행
+  - unreproducible          # 발현 안 됨 → false positive 신호 → CAND abandon 검토
+  - blocked-external-dep    # OAuth/채널 외부 의존 차단 → SOL 진행 가능 (별도 상태)
+  - blocked-env             # build/host 환경 setup 실패
+  - skipped-by-user
+
+# 결정 로직은 시나리오에 위임 (scenarios/<name>.py 의 evaluate_pre).
+# scenario 카탈로그 (run.py 가 동적 import):
+#   - cron-manual-run        (PR #78243 baseline, requires_external_dep=True)
+#   - gateway-map-size       (SOL-0004 패턴, requires_external_dep=False)
+#   - mcp-pending-ttl        (PR #71648 패턴, real wall clock)
+
+# 다음 액션 매핑 (NEXT.md §2 결정 트리에 반영)
+next_action_by_status:
+  collected: "사람 최종 검토 → SOL 작성 착수"
+  unreproducible: "CAND abandon (false-positive-by-reproduction) 또는 scope 재검토"
+  blocked-external-dep: "SOL 작성 진행 (post-sol 도 blocked 가능성 인지)"
+  blocked-env: "환경 setup 재시도 또는 시나리오 변경"
+  skipped-by-user: "SOL 작성 진행 (사용자 책임)"
+
+user_permission_gate: required
+permission_prompt: |
+  CAND/SOL 에 대해 pre-sol real behavior proof 실행:
+  - openclaw worktree base 빌드 + isolated OPENCLAW_HOME
+  - scenario 실행 (trials 기본 1)
+  - 결과 → CAND/SOL frontmatter pre_sol_proof 갱신
+  실행 시간: scenario 별 5분~30분 (cron-manual-run 은 trial 당 ~7분).
+  진행할까? (y/n)

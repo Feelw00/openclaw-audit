@@ -109,6 +109,25 @@ python skills/openclaw-audit/harness/gatekeep.py apply CAND-001 \
   --verdict-json /tmp/gk-CAND-001-verdict.json
 ```
 
+### Step 6.5 Pre-sol real behavior proof (gatekeeper approve + cross-review proceed 직후)
+
+**모든 severity 적용 (P3 포함).** without-fix 빌드 단독으로 production-like 환경에서 결함 재현.
+SOL 작성 전 false positive 사전 차단 + post-sol baseline 확보.
+
+```bash
+# 사용자 허락 필수
+/tmp/openclaw-audit-venv/bin/python skills/real-behavior-proof/harness/run.py \
+  --target CAND-NNN --mode pre-sol --scenario <name> \
+  --base-sha <upstream/main HEAD> --trials <N>
+```
+
+결과:
+- `collected` → SOL 작성 착수
+- `blocked-external-dep` / `blocked-env` → SOL 작성 진행 (status frontmatter 에 trace)
+- `unreproducible` → CAND abandon (false-positive-by-reproduction)
+
+상세: `skills/real-behavior-proof/SKILL.md`. 시나리오: `skills/real-behavior-proof/scenarios/`.
+
 ### Step 7. 재현 테스트 드래프트 (사람 + Claude)
 MVP 에서는 `solution-drafter` 페르소나를 쓰지 않고, 사람이 SOL 카드를 수동 작성:
 
@@ -116,6 +135,7 @@ MVP 에서는 `solution-drafter` 페르소나를 쓰지 않고, 사람이 SOL �
 2. `repro_test_draft` 에 vitest 테스트 코드 블록 — 수정 전에는 실패, 수정 후에는 성공해야 함
 3. `fix_approach_candidates` 최대 3개 + tradeoff
 4. `chosen_fix` 선택
+5. `pre_sol_proof.measurements` (Step 6.5 산출) 를 참조하여 repro_test_draft 가 실제 production branch 와 일치하는지 확인
 
 ### Step 8. Drafter-gate (drift 체크)
 ```bash
@@ -140,6 +160,25 @@ pnpm test <path>      # 성공
 pnpm check            # lint/type OK
 pnpm build            # build OK
 ```
+
+### Step 9.5 Post-sol real behavior proof (chosen_fix commit 후, PR 발행 전)
+
+**모든 severity 적용.** with-fix vs without-fix 두 빌드 비교. 산출물: openclaw 6 필드 PR body 텍스트.
+
+```bash
+# 사용자 허락 필수
+/tmp/openclaw-audit-venv/bin/python skills/real-behavior-proof/harness/run.py \
+  --target SOL-NNNN --mode post-sol --scenario <name> \
+  --base-sha <upstream/main HEAD> --head-sha <fix commit HEAD> \
+  --trials <N>
+```
+
+결과:
+- `collected` → pre-pr cross-review (cross-review skill, mode: pre-pr) → PR 발행. PR body 에 SOL frontmatter 의 `post_sol_proof.pr_body_section` 그대로 paste → `proof: supplied` 자동 부여.
+- `blocked-external-dep` / `blocked-env` → 회귀 테스트만으로 PR 발행 + PR body 에 blocked 사유 명시 (`proof: sufficient` 미부여 수용).
+- `unreproducible` → fix 효과 없음 → SOL abandon 또는 `chosen_fix` 재선택.
+
+검증: `node -e "import('./scripts/github/real-behavior-proof-policy.mjs').then(m => m.evaluateRealBehaviorProof({pullRequest: {body, user: {type: 'User'}, author_association: 'NONE'}}))"` → `status: "passed"`.
 
 ### Step 10. Upstream 중복 검사 (필수)
 ```bash

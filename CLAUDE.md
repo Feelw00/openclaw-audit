@@ -23,10 +23,13 @@ openclaw 프로젝트의 신뢰성 감사 파이프라인 홈.
 | `issue-candidates/` | clusterer 출력 (ephemeral) |
 | `solutions/` | Solution Card (영구) |
 | `test-drafts/` | 재현 테스트 드래프트 (openclaw/ 이식 대기) |
+| `proofs/` | real behavior proof evidence (PROOF-{target}-{pre\|post}-{ts}.md, 영구) |
 | `local-state/` | FSM 상태 (state.yaml + history.jsonl) |
 | `metrics/` | shadow/human/consistency JSONL |
 | `domain-notes/` | 영구 도메인 지식 |
 | `skills/openclaw-audit/` | 파이프라인 skill + harness |
+| `skills/cross-review/` | 다중 agent cross-review skill (post-harness/pre-pr/maintainer-response) |
+| `skills/real-behavior-proof/` | SOL 전/후 production env 결함 재현/검증 skill (pre-sol/post-sol) |
 
 ## openclaw 기여 규칙 필독
 

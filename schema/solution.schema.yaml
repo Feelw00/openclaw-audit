@@ -132,6 +132,64 @@ optional_fields:
     description: |
       "pnpm test <path>" 실행 결과 요약. 수정 전 실패 / 수정 후 성공 증명.
 
+  pre_sol_proof:
+    type: object
+    description: |
+      SOL 작성 **전** (gatekeeper approve + post-harness cross-review proceed 직후) production-like 환경에서
+      without-fix 빌드만으로 결함 재현. false positive 사전 차단 + post-sol baseline 확보.
+      모든 severity 에 적용 (P3 포함). 재현 불가능한 경우 강등하지 않고 별도 상태로 마킹.
+      작성: skills/real-behavior-proof/harness/state.py
+    fields:
+      status:
+        type: enum
+        values:
+          - pending                  # 실행 전
+          - collected                # 재현 성공 (without-fix 빌드에서 결함 발현)
+          - unreproducible           # 재현 실패 → false positive 신호 → CAND abandon
+          - blocked-external-dep     # OAuth/채널/외부 provider 의존 (강등 X, 진행 가능)
+          - blocked-env              # build/host 환경 setup 불가
+          - skipped-by-user          # 사용자 명시적 skip
+      proof_record:
+        type: string
+        description: 'proofs/PROOF-{cand}-pre-{YYYYMMDD-HHMMSS}.md 경로'
+      measurements:
+        type: object
+        description: '시나리오별 raw 결과. 예: {trials, observed_failures, sqlite_status_distribution}'
+      scenario:
+        type: string
+        description: 'skills/real-behavior-proof/scenarios/<name> (예: cron-manual-run)'
+
+  post_sol_proof:
+    type: object
+    description: |
+      SOL chosen_fix 결정 후, with-fix vs without-fix 두 빌드를 비교 측정.
+      산출물: openclaw 의 `## Real behavior proof` 섹션 6 필드 (behavior/environment/steps/evidence/observedResult/notTested)
+      를 채운 PR body 텍스트. PR 발행 시점부터 `proof: supplied` 자동 부여.
+      참조: openclaw scripts/github/real-behavior-proof-policy.mjs L9-46 requiredProofFields, L207-281 evaluateRealBehaviorProof.
+    fields:
+      status:
+        type: enum
+        values:                      # pre_sol_proof.status 와 동일 enum
+          - pending
+          - collected
+          - unreproducible           # fix 가 효과 없음 → SOL abandon
+          - blocked-external-dep     # 회귀 테스트만으로 PR 발행 (sufficient 미부여 수용)
+          - blocked-env
+          - skipped-by-user
+      proof_record:
+        type: string
+        description: 'proofs/PROOF-{sol}-post-{YYYYMMDD-HHMMSS}.md 경로'
+      measurements:
+        type: object
+        description: '{with_fix: {...}, without_fix: {...}, delta: {...}}'
+      scenario:
+        type: string
+      pr_body_section:
+        type: string
+        description: |
+          openclaw policy 6 필드 형식의 PR body 섹션 텍스트.
+          render_proof.py 가 생성. PR 발행 시 그대로 paste.
+
 # ────────────────────────────────────────────────────────────
 # 본문 섹션
 # ────────────────────────────────────────────────────────────
