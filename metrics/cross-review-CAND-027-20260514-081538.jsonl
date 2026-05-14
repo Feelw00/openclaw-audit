@@ -1,0 +1,6 @@
+{"target": "CAND-027", "mode": "post-harness", "timestamp": "20260514-081538", "agent_count": 5, "primary_decision": "abandon", "avg_score": 0.75}
+{"target": "CAND-027", "role": "positive-advocate", "raw_verdict": "advance", "normalized_verdict": "real-problem-real-fix", "score": 1.0, "confidence": "high"}
+{"target": "CAND-027", "role": "critical-devil", "raw_verdict": "abandon-or-scope-down", "normalized_verdict": "false-positive", "score": 0.15, "confidence": "high"}
+{"target": "CAND-027", "role": "reproduction-realist", "raw_verdict": "proceed", "normalized_verdict": "real-problem-real-fix", "score": 1.0, "confidence": "?"}
+{"target": "CAND-027", "role": "hot-path-tracer", "raw_verdict": "agree-with-scope", "normalized_verdict": "real-problem-fix-insufficient", "score": 0.6, "confidence": 0.78}
+{"target": "CAND-027", "role": "upstream-dup-checker", "raw_verdict": "real-problem-real-fix", "normalized_verdict": "real-problem-real-fix", "score": 1.0, "confidence": "high"}

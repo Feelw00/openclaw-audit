@@ -1,0 +1,335 @@
+[
+  {
+    "cand": "026",
+    "avg_score": 0.84,
+    "decision": "scope-down",
+    "per_role": {
+      "positive-advocate": [
+        "should-merge",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "critical-devil": [
+        "scope-down",
+        "real-problem-fix-insufficient",
+        0.35,
+        "high"
+      ],
+      "reproduction-realist": [
+        "proceed-with-real-test",
+        "real-problem-real-fix",
+        0.85,
+        "?"
+      ],
+      "hot-path-tracer": [
+        "should-merge",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "upstream-dup-checker": [
+        "should-merge",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ]
+    }
+  },
+  {
+    "cand": "027",
+    "avg_score": 0.75,
+    "decision": "abandon",
+    "per_role": {
+      "positive-advocate": [
+        "advance",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "critical-devil": [
+        "abandon-or-scope-down",
+        "false-positive",
+        0.15,
+        "high"
+      ],
+      "reproduction-realist": [
+        "proceed",
+        "real-problem-real-fix",
+        1.0,
+        "?"
+      ],
+      "hot-path-tracer": [
+        "agree-with-scope",
+        "real-problem-fix-insufficient",
+        0.6,
+        0.78
+      ],
+      "upstream-dup-checker": [
+        "real-problem-real-fix",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ]
+    }
+  },
+  {
+    "cand": "029",
+    "avg_score": 0.6,
+    "decision": "abandon",
+    "per_role": {
+      "positive-advocate": [
+        "proceed",
+        "real-problem-real-fix",
+        1.0,
+        "?"
+      ],
+      "critical-devil": [
+        "abandon",
+        "false-positive",
+        0.0,
+        "high"
+      ],
+      "reproduction-realist": [
+        "proceed-with-caveats",
+        "real-problem-fix-insufficient",
+        0.6,
+        0.62
+      ],
+      "hot-path-tracer": [
+        "medium-impact-scope-down",
+        "real-problem-fix-insufficient",
+        0.4,
+        0.75
+      ],
+      "upstream-dup-checker": [
+        "proceed",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ]
+    }
+  },
+  {
+    "cand": "030",
+    "avg_score": 0.87,
+    "decision": "scope-down",
+    "per_role": {
+      "positive-advocate": [
+        "real-problem-real-fix",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "critical-devil": [
+        "scope-down",
+        "real-problem-fix-insufficient",
+        0.35,
+        "high"
+      ],
+      "reproduction-realist": [
+        "real-real",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "hot-path-tracer": [
+        "real-problem-real-fix",
+        "real-problem-real-fix",
+        1.0,
+        "medium"
+      ],
+      "upstream-dup-checker": [
+        "real-problem-real-fix",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ]
+    }
+  },
+  {
+    "cand": "032",
+    "avg_score": 0.69,
+    "decision": "proceed-with-caveat",
+    "per_role": {
+      "positive-advocate": [
+        "merge",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "critical-devil": [
+        "proceed-with-caveat",
+        "real-problem-fix-insufficient",
+        0.6,
+        "medium"
+      ],
+      "reproduction-realist": [
+        "real-fix-warranted-with-test-caveats",
+        "real-problem-fix-insufficient",
+        0.65,
+        "?"
+      ],
+      "hot-path-tracer": [
+        "valid-but-narrower-than-claimed",
+        "real-problem-fix-insufficient",
+        0.55,
+        "high"
+      ],
+      "upstream-dup-checker": [
+        "support-with-conditions",
+        "real-problem-fix-insufficient",
+        0.65,
+        "?"
+      ]
+    }
+  },
+  {
+    "cand": "033",
+    "avg_score": 0.75,
+    "decision": "proceed",
+    "per_role": {
+      "positive-advocate": [
+        "real-problem-real-fix",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "critical-devil": [
+        "no-show-stopper-found",
+        "unknown",
+        0.5,
+        "high"
+      ],
+      "reproduction-realist": [
+        "proceed-with-real-test",
+        "real-problem-real-fix",
+        0.85,
+        "high"
+      ],
+      "hot-path-tracer": [
+        "insufficient",
+        "real-problem-fix-insufficient",
+        0.4,
+        0.6
+      ],
+      "upstream-dup-checker": [
+        "real-problem-real-fix",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ]
+    }
+  },
+  {
+    "cand": "037",
+    "avg_score": 0.67,
+    "decision": "proceed-with-caveat",
+    "per_role": {
+      "positive-advocate": [
+        "advance",
+        "real-problem-real-fix",
+        1.0,
+        "?"
+      ],
+      "critical-devil": [
+        "abandon-or-scope-down",
+        "false-positive",
+        0.15,
+        "?"
+      ],
+      "reproduction-realist": [
+        "real-test-feasible-but-resource-assertion-needs-strengthening",
+        "real-problem-real-fix",
+        0.8,
+        "high"
+      ],
+      "hot-path-tracer": [
+        "insufficient",
+        "real-problem-fix-insufficient",
+        0.4,
+        0.7
+      ],
+      "upstream-dup-checker": [
+        "real-problem-real-fix",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ]
+    }
+  },
+  {
+    "cand": "038",
+    "avg_score": 0.82,
+    "decision": "proceed",
+    "per_role": {
+      "positive-advocate": [
+        "advance",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "critical-devil": [
+        "proceed-with-caveat",
+        "real-problem-fix-insufficient",
+        0.6,
+        "high"
+      ],
+      "reproduction-realist": [
+        "proceed-with-real-test",
+        "real-problem-real-fix",
+        0.85,
+        "high"
+      ],
+      "hot-path-tracer": [
+        "support",
+        "real-problem-real-fix",
+        1.0,
+        "?"
+      ],
+      "upstream-dup-checker": [
+        "support-with-conditions",
+        "real-problem-fix-insufficient",
+        0.65,
+        "?"
+      ]
+    }
+  },
+  {
+    "cand": "039",
+    "avg_score": 0.7,
+    "decision": "proceed-with-caveat",
+    "per_role": {
+      "positive-advocate": [
+        "merge",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ],
+      "critical-devil": [
+        "scope-down",
+        "real-problem-fix-insufficient",
+        0.35,
+        "?"
+      ],
+      "reproduction-realist": [
+        "proceed-with-real-test-with-scope-down",
+        "real-problem-fix-insufficient",
+        0.55,
+        "?"
+      ],
+      "hot-path-tracer": [
+        "agree-with-caveats",
+        "real-problem-fix-insufficient",
+        0.6,
+        0.78
+      ],
+      "upstream-dup-checker": [
+        "proceed",
+        "real-problem-real-fix",
+        1.0,
+        "high"
+      ]
+    }
+  }
+]

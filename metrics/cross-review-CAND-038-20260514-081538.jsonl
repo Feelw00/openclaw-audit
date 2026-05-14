@@ -1,0 +1,6 @@
+{"target": "CAND-038", "mode": "post-harness", "timestamp": "20260514-081538", "agent_count": 5, "primary_decision": "proceed", "avg_score": 0.82}
+{"target": "CAND-038", "role": "positive-advocate", "raw_verdict": "advance", "normalized_verdict": "real-problem-real-fix", "score": 1.0, "confidence": "high"}
+{"target": "CAND-038", "role": "critical-devil", "raw_verdict": "proceed-with-caveat", "normalized_verdict": "real-problem-fix-insufficient", "score": 0.6, "confidence": "high"}
+{"target": "CAND-038", "role": "reproduction-realist", "raw_verdict": "proceed-with-real-test", "normalized_verdict": "real-problem-real-fix", "score": 0.85, "confidence": "high"}
+{"target": "CAND-038", "role": "hot-path-tracer", "raw_verdict": "support", "normalized_verdict": "real-problem-real-fix", "score": 1.0, "confidence": "?"}
+{"target": "CAND-038", "role": "upstream-dup-checker", "raw_verdict": "support-with-conditions", "normalized_verdict": "real-problem-fix-insufficient", "score": 0.65, "confidence": "?"}
