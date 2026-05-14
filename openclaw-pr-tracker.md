@@ -4,53 +4,55 @@
 
 ## 내 active PR (Feelw00)
 
-### #68543 — fix(infra): keep retryAsync delays above server-supplied Retry-After
-
-- **유형**: 파이프라인 CAND-009, cross-review 3/3 real
-- **상태**: OPEN, 체크 green, 2026-04-22 upstream rebase 2회 (head `acc85fe0ff`)
-- **Greptile**: **5/5 safe-to-merge** (초기), 이후 Math.round → Math.ceil follow-up fix `11430f641c`
-- **steipete 재점검 (2026-04-22)**: steipete 가 리뷰한 commit_id `60ad4714c0` = (rebase 전) `032532ecae` = "Retry-After 경계(===)에서 contract 우선, symmetric 은 >만 (codex override)" **= 이미 steipete 지적이 반영된 수정 commit**. 시퀀스: `3429270354` 에서 `===` 를 symmetric 으로 확장 (문제 발생, 14:41 UTC) → `032532ecae`/60ad4714 에서 `<=` 로 되돌림 + boundary test `toBe(1_000)` (수정, 14:53 UTC) → steipete review (16:02 UTC) → `71c24d731a` Math.ceil 추가 (16:21 UTC). steipete 텍스트 "deliberately falls back to symmetric jitter" 는 `60ad4714` 실제 코드 (`canHonorRetryAfter = ... && retryAfterMs <= maxDelayMs`) 와 불일치 → **메인테이너가 수정 후 diff 를 수정 전으로 오독한 정황**. 답변은 R-10 cross-review 경로로 별도 준비 (`60ad4714` 실제 diff 인용)
-- **대기**: 메인테이너 @steipete 답변
-- **관련**: issue #68541
-
 ### #68669 — fix(agents): dedupe subagent browser session cleanup wrapper with dispatch flag
 
 - **유형**: 파이프라인 CAND-011, post-harness + pre-pr + post-commit cross-review (총 11 agent) 모두 real
-- **상태**: OPEN, 체크 green (parity 포함 93/93), 2026-04-22 upstream rebase 3회 (head `00cab4264f`)
-- **Greptile**: 자동 summary 완료
-- **Codex 1라운드 (2026-04-21)**: P2 "Reset dispatch flag when browser cleanup fails" (before-await set → throw 시 영구 skip 우려) → CAL-009 병렬 2-agent 검증: `runBestEffortCleanup` wrap 으로 throw 구조적 차단 근거로 반박. reply + thread resolved. reply 에서 sibling `endedHookEmittedAt` timing 이 실제로는 after-await 임을 솔직히 인정 (커밋 메시지 overclaim 수정)
-- **Codex 2라운드 (2026-04-22)**: "lazy `import()` reject pre-wrapper" 재반박 (`subagent-registry.ts:114-115` fresh evidence) → CAL-009 2라운드 5-agent post-harness cross-review (positive/critical/repro-realist/hot-path-tracer/upstream-dup) → **production bundle 에 lazy import 자체가 부재** 확인 (`dist/subagent-registry-Zhtu8A2W.js:835, 2183, 2495, 2666` 에 tsdown/rollup inline). reply 에 dist 번들 line 직접 인용하며 source-level-only 임을 증명, defense-in-depth 수정조차 불필요 근거 제시 → thread resolved, 코드 변경 없음
-- **대기**: 메인테이너 리뷰
+- **상태**: OPEN (2026-05-14 기준), head `7067f30ab2`. 2026-05-11 force-push 후 신규 코멘트 없음
+- **라벨**: `proof: supplied + sufficient`, `triage: refactor-only` (vincentkoc 일괄 부여, 우리 PR 도 영향)
+- **steipete 코멘트 (2026-04-25)**: "Codex deep review: this looks correct and worth landing" — Bug/behavior 인정
+- **결정**: 무대응 유지. close 트리거 시 (a) race fix 논거 제시 + reopen 또는 (b) CAL-010 credit-only.
 - **관련**: issue #68668
-- **특이사항**: cross-review 가 narrative overclaim 을 조기 탐지 → "IPC 중복" → "wrapper overhead + defense-in-depth" 로 정직하게 scope-down. 2라운드에서 설계 과잉 확장 (옵션 c sibling 완전 동형) 제안이 올라왔으나 dist 번들 실측으로 production 효용 0 확인 → "근본 해결은 반박으로 이미 완료" 로 정정
 
-### #68839 — fix(auto-reply): guard FOLLOWUP_QUEUES delete against late drain finally
+### #71648 — fix(mcp): bound pendingClaudePermissions / pendingApprovals via TTL sweeper + close clear
 
-- **유형**: 파이프라인 CAND-012, post-harness 5/5 + pre-pr v2 3/3 real
-- **상태**: OPEN, 체크 green (parity 포함), 2026-04-22 upstream rebase (head `1236d56668`)
-- **대기**: Greptile/Codex 리뷰 + 메인테이너 리뷰
-- **관련**: issue #68838
-- **특이사항**: pre-pr v1 에서 repro import 경로 + assertion 버그 발견 → repro v2 재작성 (restartIfIdle=false 패턴으로 D2 kick 억제 → D1 finally 만 유일 mutator 로 격리)
-
-
-### #68848 — fix(gateway): clear nodeWakeById on no-registration early-return
-
-- **유형**: 파이프라인 CAND-015, post-harness 5/5 + pre-pr 3/3 real
-- **상태**: OPEN, 체크 green (parity 포함 93/93), 2026-04-22 upstream rebase 2회 (head `5b9103c7e0`)
-- **대기**: Greptile/Codex 리뷰 + 메인테이너 리뷰
-- **관련**: issue #68847
-- **특이사항**: PR #63709 (clearNodeWakeState on WS close) 과 scope 구분 명시 — 이 PR 은 unregistered-nodeId early-return path 처리 (complementary). 최소한의 `__testing` seam 추가 (agent-wait-dedupe.ts:223 / agents.ts:78 house style 미러)
-
-### #71040 — fix(cron): mirror active-jobs mark/clear on startup catchup and manual run
-
-- **유형**: 파이프라인 CAND-024 epic → SOL-0007, pre-pr 3-agent cross-review (real=2 / fix-insufficient=1 → **scope_down 반영**)
-- **상태**: OPEN, 2026-04-24 발행, head `c2cf00742e` (fix/cron-active-jobs-symmetry), +219/-73, 3 files, MERGEABLE
-- **fix**: `runStartupCatchupCandidate` (timer.ts:1043-1081) 과 `prepareManualRun`/`finishPreparedManualRun` (ops.ts:548-686) 에 `markCronJobActive` + `try/finally` `clearCronJobActive` 주입. upstream 7d1575b5df (#60310) 의 4 callsite 중 누락된 2 개 완성
-- **관련**: Related #68157 (partial — task-registry misclassification 축만 해결, runningAtMs persistence 축은 별도 state machine), Related #68191 (hclsys 의 broader 제안), Related #69313 (tryRecoverTaskBeforeMarkLost hook, 본 PR 과 complementary)
-- **pre-PR cross-review 결과 반영**: critical-devil 이 `ops.ts:100-106` 의 startup 무조건 `runningAtMs` clear 발견 → #68157 의 "already-running survives restart" 증상은 gateway restart 로 self-heal 됨을 지적. 이에 `Fixes #68157` → `Related #68157 (partial)` 로 scope-down. mechanism + fix 정합성은 3/3 인정
-- **특이사항**: 첫 시도 `pnpm build` 가 runtime-postbuild (bundled-plugin staging) ENOENT 로 실패 (환경 race), 재시도 green. 본 fix 와 무관
+- **유형**: 파이프라인 CAND-025 → SOL-0008, pre-pr 3/3 real (round 2)
+- **상태**: OPEN (2026-05-14 기준), head `eb69de7135`. 2026-05-11 force-push 후 신규 코멘트 없음
+- **라벨**: `proof: supplied` 만 (sufficient 미부여). 추정 원인: V4 evidence 가 `vi.useFakeTimers` 사용 → real wall-clock 측정과 차이 (다른 5 PR 은 sufficient 자동 부여)
+- **fix scope**: A (sweeper+ttl-only). cap/FIFO 의도적 후속 PR 분리
+- **CI**: tsgo + 8/8 unit + check-test-types green (eef0be2a2e 에서 BridgeInternals intersection type 좁힘)
+- **결정**: 메인테이너 리뷰 대기. real wall-clock 재시도 가치는 mcp-pending-ttl scenario 의 TTL env override hook 도입에 의존
+- **관련**: Closes #71646
 
 ## 종결된 PR
+
+### #78243 (CAND-024 → SOL-0009, **MERGED 2026-05-11** — cron manual-run mark/clear)
+- **결과**: merged — SOL-0007 (PR #71040 closed CAL-011) 의 manual-only scope-down 후속이 채택됨
+- **fix**: ops.ts `prepareManualRun` (markCronJobActive) + `finishPreparedManualRun` (try/finally clearCronJobActive). timer.ts 미수정 (1fae716a04 sweeper recovery axis 회피)
+- **evidence**: real wall-clock with/without 빌드 sqlite `task_runs.status` 비교 (lost vs failed). V2 → V4 강화 모두 통과 → `proof: supplied + sufficient`
+- **관련**: Fixes #78233 (이전 #71040 close 시 우리가 발행한 follow-up issue)
+
+### #68543 (CAND-009, **MERGED 2026-05-11** — infra-retry retryAsync retry-after lower bound)
+- **결과**: merged — steipete 의 "deliberately falls back to symmetric jitter" 오독 정황 + commit `60ad4714` 실제 diff 인용 답변 후
+- **fix**: `retryAsync` 가 server-supplied Retry-After 헤더를 하방으로 위반하지 않도록 boundary check
+- **evidence**: V3 (50 trial real `node:http` server timing) — without 23/50 (46%) below 1000ms (worst 508ms), with 0/50 (min 1037ms)
+- **Greptile**: 5/5 safe-to-merge (초기). Math.round → Math.ceil follow-up fix `11430f641c`
+- **관련**: Closes #68541
+
+### #68839 (CAND-012 → SOL-0003, **MERGED 2026-05-11** — auto-reply drain identity guard)
+- **결과**: merged. V1 (회귀 테스트 1/1 drain.identity-guard) 만으로도 sufficient 자동 부여 패턴
+- **fix**: drain IIFE finally 의 `FOLLOWUP_QUEUES.delete(key)` 가 자신의 queue 와 map 의 entry 가 같은지 identity 검증 후 삭제
+- **관련**: Closes #68838
+
+### #68848 (CAND-015 → SOL-0005, **MERGED 2026-05-11** — gateway nodeWakeById cleanup)
+- **결과**: merged. V4 (100 unregistered RPC Map size) — without 100 / with 0
+- **fix**: `maybeWakeNodeWithApns` no-registration early-return path 에 cleanup. 새 main 이 wake state 를 nodes-wake-state.ts 별도 모듈로 분리 → fix 이식 매끄럽게 진행
+- **관련**: Closes #68847
+
+### #71040 (CAND-024 → SOL-0007, **CLOSED 2026-05-06 — alternative-axis acceptance, CAL-011**)
+- **결과**: closed (잔여 manual-run 영역만 follow-up #78233 + SOL-0009 + PR #78243 으로 분리되어 MERGED)
+- **사유**: 메인테이너 commit `1fae716a04` (fix: recover stale cron task records, 2026-04-26, PR 발행 2일 후) 가 task-registry.maintenance.ts 에 sweeper-side 사후 복구 함수 (resolveDurableCronTaskRecovery / resolveCronRunLogRecovery / resolveCronJobStateRecovery) 추가 — 우리 PR 의 producer-side mark/clear 와 다른 axis 채택. 같은 axis PR #71968 메인테이너 close. #68191 (sweeper 입장) OPEN. 새 main `deferAgentTurnJobs:true` (7877182b6f) 가 핵심 isolated agentTurn 시나리오 차단
+- **cross-review 결과**: pre-pr 5-agent (metrics/cross-review-PR71040-20260506-030011.jsonl) → 4/5 scope-down + 1/5 merge-as-is
+- **교훈 (CAL-011)**: alternative-axis 메인테이너 fix → 우리 PR close + follow-up issue 로 좁은 잔여 영역 분리. CAL-008 (dup-axis 선제) + CAL-010 (indirect-merge with credit) 의 hybrid. 사용자가 cross-review 능동 트리거 (PR 작성 2주+ 후 잔존 검증) 한 운영 패턴 신설
 
 ### #63105 (파이프라인 외 본인 feature PR, **MERGED 2026-04-20**)
 - **결과**: merged — feat(cron): split jobs.json into config and runtime state files

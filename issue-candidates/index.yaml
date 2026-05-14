@@ -76,12 +76,13 @@ candidates:
 - id: CAND-009
   type: single
   finding_count: 1
-  state: published
+  state: pr-merged
   note: FIND-infra-retry-concurrency-003 — retryAsync retryAfterMs 하방 위반
   openclaw_issue: 68541
   openclaw_pr: 68543
   openclaw_branch: fix/retry-after-lower-bound
   openclaw_commit: 0fd08a0fd0
+  pr_merged_at: "2026-05-11"
 - id: CAND-010
   type: epic
   finding_count: 2
@@ -107,11 +108,14 @@ candidates:
 - id: CAND-012
   type: single
   finding_count: 1
-  state: pr-opened
+  state: pr-merged
   note: FIND-auto-reply-concurrency-001 — drain finally 의 FOLLOWUP_QUEUES.delete 가
     identity 검증 없어 `/stop` 직후 enqueue 된 Q2 를 orphan. severity P2.
   openclaw_issue: 68838
   openclaw_pr: 68839
+  pr_merged_at: "2026-05-11"
+  solution_refs:
+    - SOL-0003
 - id: CAND-013
   type: single
   finding_count: 1
@@ -132,12 +136,15 @@ candidates:
 - id: CAND-015
   type: single
   finding_count: 1
-  state: pr-opened
+  state: pr-merged
   note: FIND-gateway-memory-002 — maybeWakeNodeWithApns 가 loadApnsRegistration 체크
     전에 nodeWakeById.set 수행. no-registration 분기에 cleanup 부재 → 미등록 nodeId 호출
     시 누수. severity P3.
   openclaw_issue: 68847
   openclaw_pr: 68848
+  pr_merged_at: "2026-05-11"
+  solution_refs:
+    - SOL-0005
 - id: CAND-016
   type: single
   finding_count: 1
@@ -168,17 +175,19 @@ candidates:
 - id: CAND-019
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-channels-error-boundary-001 — draft-stream-loop.ts:60,75 의 `void flush()`
     가 `.catch` 부재로 adapter throw 시 pendingText 유실 + unhandledRejection propagate.
     severity P2 (streaming reply hot-path).
+  retracted_reason: "primary-path inversion: 4 adapter (telegram/slack/discord/whatsapp) 모두 flush 내부에서 throw 를 swallow. void 호출 자체가 결함이 아님."
 - id: CAND-020
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-channels-error-boundary-002 — ack-reactions.ts:97-102 의 `.then(onFulfilled)`
     에 onRejected 부재 → ack-add reject 시 stale emoji + unhandledRejection. onError
     가 remove() 전용으로 오배선. severity P3.
+  retracted_reason: "primary-path inversion: 3 caller 의 2-arg .then 에 onRejected 별도 핸들러 또는 outer try/catch. ack reject 가 propagate 안 됨."
 - id: CAND-021
   type: single
   finding_count: 1
@@ -211,15 +220,21 @@ candidates:
 - id: CAND-023
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   note: FIND-gateway-concurrency-003 — chat.send attachment branch 에서 chatAbortControllers
     check(L1920) 과 set(L1960) 사이 resolveGatewayModelSupportsImages + parseMessageWithAttachments
     real I/O await. 동일 clientRunId 로 중복 agent run spawn. no-attachment branch
     는 race 없음 (CAL-001 올바른 guard). severity P1.
+  openclaw_issue: 70139
+  openclaw_pr: 70142
+  pr_closed_at: "2026-04-26"
+  solution_refs:
+    - SOL-0006
+  retracted_reason: "CAL-010 indirect-merge with credit. 메인테이너 commit 8bc4d4bcd4 가 atomic helper 반환 contract 활용한 우월한 fix 로 직접 commit. clawsweeper 자동 close. changelog 'Fixes #70139. Thanks @Feelw00.' credit."
 - id: CAND-024
   type: epic
   finding_count: 2
-  state: published
+  state: pr-merged
   note: FIND-cron-lifecycle-001/002 — upstream 7d1575b5df (#60310, 2026-04-04) activeJobIds
     도입 시 timer.ts 의 runDueJob/executeJob 2개 경로에만 mark/clear 주입하고 runStartupCatchupCandidate
     (timer.ts:1043) 와 prepareManualRun/finishPreparedManualRun (ops.ts:548-686) 경로 간과한
@@ -228,8 +243,12 @@ candidates:
     issue #68157 이 정확한 증상 보고 (OPEN 2026-04-23). severity P2.
   related_issue: 68157
   solution_refs:
-    - SOL-0007
-  openclaw_pr: 71040
+    - SOL-0007  # abandoned (CAL-011 alternative-axis): 메인테이너 1fae716a04 sweeper-side 사후복구 채택, PR #71040 close
+    - SOL-0009  # pr-merged: SOL-0007 의 manual-run 잔여 영역만 좁게 분리 → PR #78243 + issue #78233 MERGED 2026-05-11
+  openclaw_pr: 78243
+  openclaw_issue: 78233
+  prior_pr: 71040  # closed 2026-05-06 (CAL-011, SOL-0007 superseded by SOL-0009)
+  pr_merged_at: "2026-05-11"
 - id: CAND-025
   type: epic
   finding_count: 2

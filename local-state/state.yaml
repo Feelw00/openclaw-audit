@@ -472,8 +472,8 @@ items:
         \ 12:\n      because: `??=` (nullish assignment) 는 lef ... \n            \
         \   ^"
   CAND-009:
-    kind: candidate
-    state: published
+    kind: cand
+    state: pr-merged
     transitions:
     - from: null
       to: published
@@ -481,8 +481,13 @@ items:
       reason: 'issue #68541 + PR #68543 (approve@medium shadow + human review + repro/fix
         PASS)'
       at: '2026-04-18T12:27:01+00:00'
+    - from: published
+      to: pr-merged
+      actor: housekeeping-2026-05-14
+      reason: 'PR #68543 MERGED 2026-05-11'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-18T12:27:01+00:00'
-    updated_at: '2026-04-18T12:27:01+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
   CAND-007:
     kind: candidate
     state: abandoned
@@ -683,8 +688,8 @@ items:
     created_at: '2026-04-18T21:02:16+00:00'
     updated_at: '2026-04-18T21:02:16+00:00'
   CAND-012:
-    kind: candidate
-    state: pr-opened
+    kind: cand
+    state: pr-merged
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -716,8 +721,13 @@ items:
       actor: human
       reason: 'PR #68839 opened (auto-reply drain identity guard)'
       at: '2026-04-19T07:09:57+00:00'
+    - from: pr-opened
+      to: pr-merged
+      actor: housekeeping-2026-05-14
+      reason: 'PR #68839 MERGED 2026-05-11'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-18T21:06:59+00:00'
-    updated_at: '2026-04-19T07:09:57+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
     extras:
       openclaw_repo: openclaw/openclaw
       openclaw_issue_number: 68838
@@ -789,8 +799,8 @@ items:
       openclaw_issue_url: https://github.com/openclaw/openclaw/issues/68841
       published_at: '2026-04-19T06:30:42+00:00'
   CAND-015:
-    kind: candidate
-    state: pr-opened
+    kind: cand
+    state: pr-merged
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -822,8 +832,13 @@ items:
       actor: human
       reason: 'PR #68848 opened (nodeWakeById cleanup)'
       at: '2026-04-19T07:09:57+00:00'
+    - from: pr-opened
+      to: pr-merged
+      actor: housekeeping-2026-05-14
+      reason: 'PR #68848 MERGED 2026-05-11'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-18T21:07:02+00:00'
-    updated_at: '2026-04-19T07:09:57+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
     extras:
       openclaw_repo: openclaw/openclaw
       openclaw_issue_number: 68847
@@ -882,8 +897,8 @@ items:
     created_at: '2026-04-18T21:07:06+00:00'
     updated_at: '2026-04-19T07:09:58+00:00'
   SOL-0003:
-    kind: find
-    state: pr-opened
+    kind: sol
+    state: pr-merged
     transitions:
     - from: null
       to: drafted
@@ -895,8 +910,13 @@ items:
       actor: human
       reason: 'PR #68839 opened'
       at: '2026-04-19T06:24:14+00:00'
+    - from: pr-opened
+      to: pr-merged
+      actor: housekeeping-2026-05-14
+      reason: 'CAND-012 PR #68839 MERGED 2026-05-11'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-19T05:30:04+00:00'
-    updated_at: '2026-04-19T06:24:14+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
   SOL-0004:
     kind: find
     state: merged
@@ -920,8 +940,8 @@ items:
     created_at: '2026-04-19T05:34:10+00:00'
     updated_at: '2026-04-22T00:13:37+00:00'
   SOL-0005:
-    kind: find
-    state: pr-opened
+    kind: sol
+    state: pr-merged
     transitions:
     - from: null
       to: drafted
@@ -934,8 +954,13 @@ items:
       actor: human
       reason: 'PR #68848 opened'
       at: '2026-04-19T06:37:13+00:00'
+    - from: pr-opened
+      to: pr-merged
+      actor: housekeeping-2026-05-14
+      reason: 'CAND-015 PR #68848 MERGED 2026-05-11'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-19T05:38:20+00:00'
-    updated_at: '2026-04-19T06:37:13+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
   FIND-channels-error-boundary-001:
     kind: find
     state: discovered
@@ -1038,7 +1063,7 @@ items:
     created_at: '2026-04-22T10:12:14+00:00'
     updated_at: '2026-04-22T10:12:14+00:00'
   CAND-019:
-    kind: candidate
+    kind: cand
     state: abandoned
     transitions:
     - from: null
@@ -1054,10 +1079,15 @@ items:
         로 throw swallow. production hot-path 에서 flush reject 경로 실효 0. P2→P3 하향, 계약
         hardening 가치 낮음'
       at: '2026-04-22T10:26:00+00:00'
+    - from: abandoned
+      to: abandoned
+      actor: housekeeping-2026-05-14
+      reason: 'primary-path inversion: 4 adapter swallow flush throw'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-22T10:25:45+00:00'
-    updated_at: '2026-04-22T10:26:00+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
   CAND-020:
-    kind: candidate
+    kind: cand
     state: abandoned
     transitions:
     - from: null
@@ -1073,8 +1103,13 @@ items:
         전부 .then(_, err) 2-arg form 으로 reject 소비 → removeAckReactionAfterReply 에 도달하는
         promise never rejects'
       at: '2026-04-22T10:26:00+00:00'
+    - from: abandoned
+      to: abandoned
+      actor: housekeeping-2026-05-14
+      reason: 'primary-path inversion: 3 caller 2-arg .then onRejected separate handler'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-22T10:25:45+00:00'
-    updated_at: '2026-04-22T10:26:00+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
   CAND-021:
     kind: candidate
     state: abandoned
@@ -1113,8 +1148,8 @@ items:
     created_at: '2026-04-22T10:25:45+00:00'
     updated_at: '2026-04-22T10:26:00+00:00'
   CAND-023:
-    kind: candidate
-    state: pr-opened
+    kind: cand
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -1144,16 +1179,21 @@ items:
       reason: 'issue #70139 + PR #70142 opened (fix/chat-send-attachment-race-recheck,
         head 45ca656630)'
       at: '2026-04-22T11:24:37+00:00'
+    - from: pr-opened
+      to: abandoned
+      actor: housekeeping-2026-05-14
+      reason: 'PR #70142 closed 2026-04-26 — CAL-010 indirect-merge with credit'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-22T10:25:45+00:00'
-    updated_at: '2026-04-22T11:24:37+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
     extras:
       openclaw_repo: openclaw/openclaw
       openclaw_issue_number: 70139
       openclaw_issue_url: https://github.com/openclaw/openclaw/issues/70139
       published_at: '2026-04-22T11:23:18+00:00'
   SOL-0006:
-    kind: find
-    state: pr-opened
+    kind: sol
+    state: abandoned
     transitions:
     - from: null
       to: drafted
@@ -1167,8 +1207,13 @@ items:
       actor: human
       reason: 'PR #70142 opened'
       at: '2026-04-22T11:24:31+00:00'
+    - from: pr-opened
+      to: abandoned
+      actor: housekeeping-2026-05-14
+      reason: 'PR #70142 closed CAL-010 indirect-merge with credit'
+      at: '2026-05-14T02:06:36+00:00'
     created_at: '2026-04-22T11:00:12+00:00'
-    updated_at: '2026-04-22T11:24:31+00:00'
+    updated_at: '2026-05-14T02:06:36+00:00'
   FIND-cron-lifecycle-001:
     kind: find
     state: discovered
@@ -1192,8 +1237,8 @@ items:
     created_at: '2026-04-24T05:05:06+00:00'
     updated_at: '2026-04-24T05:05:06+00:00'
   CAND-024:
-    kind: candidate
-    state: published
+    kind: cand
+    state: pr-merged
     transitions:
     - from: null
       to: gatekeeper-approved
@@ -1215,8 +1260,14 @@ items:
       reason: 'PR #71040 발행 (head c2cf00742e, 2026-04-24). Greptile 5/5 자동 통과. 메인테이너
         리뷰 대기'
       at: '2026-04-25T13:47:29+00:00'
+    - from: published
+      to: pr-merged
+      actor: housekeeping-2026-05-14
+      reason: 'PR #78243 MERGED 2026-05-11 via SOL-0009; SOL-0007/PR #71040 superseded
+        (CAL-011)'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-04-24T05:36:38+00:00'
-    updated_at: '2026-04-25T13:47:29+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
     extras:
       gatekeeper:
         verdict: approve
@@ -1402,7 +1453,7 @@ items:
           sha: sha256:c1b295d9217e83d6
         computed_at: '2026-04-25T14:17:07+00:00'
   SOL-0007:
-    kind: solution
+    kind: sol
     state: abandoned
     transitions:
     - from: null
@@ -1411,11 +1462,17 @@ items:
       reason: 'alternative-axis acceptance: 1fae716a04 sweeper recovery + deferAgentTurnJobs:true.
         PR #71040 closed. SOL-0009 supersedes (manual-only).'
       at: '2026-05-06T03:16:56+00:00'
+    - from: abandoned
+      to: abandoned
+      actor: housekeeping-2026-05-14
+      reason: 'PR #71040 closed 2026-05-06 CAL-011 alternative-axis acceptance, superseded
+        by SOL-0009'
+      at: '2026-05-14T02:06:36+00:00'
     created_at: '2026-05-06T03:16:56+00:00'
-    updated_at: '2026-05-06T03:16:56+00:00'
+    updated_at: '2026-05-14T02:06:36+00:00'
   SOL-0009:
-    kind: solution
-    state: published
+    kind: sol
+    state: pr-merged
     transitions:
     - from: null
       to: published
@@ -1423,5 +1480,10 @@ items:
       reason: 'manual-only scope. PR #78243 발행 (Fixes issue #78233). 회귀 테스트 2/2 +
         tsgo green.'
       at: '2026-05-06T03:16:56+00:00'
+    - from: published
+      to: pr-merged
+      actor: housekeeping-2026-05-14
+      reason: 'CAND-024 PR #78243 MERGED 2026-05-11'
+      at: '2026-05-14T02:06:35+00:00'
     created_at: '2026-05-06T03:16:56+00:00'
-    updated_at: '2026-05-06T03:16:56+00:00'
+    updated_at: '2026-05-14T02:06:35+00:00'
