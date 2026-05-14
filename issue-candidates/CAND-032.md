@@ -2,9 +2,14 @@
 candidate_id: CAND-032
 type: single
 finding_ids:
-  - FIND-auto-reply-error-boundary-002
-cluster_rationale: "단일 결함 — reply-run-registry.ts:505 `void backend.queueMessage(text)` 가 .catch 부재. backend (pi-embedded-runner 의 activeSession.steer) reject 시 unhandled rejection → infra/unhandled-rejections.ts 의 non-transient 분류 시 process.exit(1) 위험. 자매 경로 (pi-embedded-runner/runs.ts:148-154) 는 `.catch(err => diag.debug(...))` 로 보호 — 비대칭 누락. crash 가능성 (P2) 으로 다른 auto-reply FIND 들과 분리."
-proposed_title: "auto-reply/reply-run-registry: catch floating backend.queueMessage to avoid unhandled rejection"
+- FIND-auto-reply-error-boundary-002
+cluster_rationale: 단일 결함 — reply-run-registry.ts:505 `void backend.queueMessage(text)`
+  가 .catch 부재. backend (pi-embedded-runner 의 activeSession.steer) reject 시 unhandled
+  rejection → infra/unhandled-rejections.ts 의 non-transient 분류 시 process.exit(1) 위험.
+  자매 경로 (pi-embedded-runner/runs.ts:148-154) 는 `.catch(err => diag.debug(...))` 로
+  보호 — 비대칭 누락. crash 가능성 (P2) 으로 다른 auto-reply FIND 들과 분리.
+proposed_title: 'auto-reply/reply-run-registry: catch floating backend.queueMessage
+  to avoid unhandled rejection'
 proposed_severity: P2
 existing_issue: null
 created_at: 2026-05-14
@@ -13,16 +18,38 @@ upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:
-    - "3d3a2399b5 fix(logging): track reply runs in diagnostics"
-    - "8a23485472 fix(reply): preserve queue metadata after perf cherry-picks"
-    - "0909df1a4f refactor: centralize reply followup drain lifecycle"
-  finding: "6주 reply-run-registry.ts 영역 commit 어디에도 queueReplyRunMessage 의 catch chain 추가 0건. 자매 경로 (pi-embedded-runner/runs.ts:148-154) 의 .catch 패턴은 별 위치에서 유지."
-  pr_search: "gh pr list --search 'queueReplyRunMessage OR backend.queueMessage' → 0 매치."
+  - '3d3a2399b5 fix(logging): track reply runs in diagnostics'
+  - '8a23485472 fix(reply): preserve queue metadata after perf cherry-picks'
+  - '0909df1a4f refactor: centralize reply followup drain lifecycle'
+  finding: 6주 reply-run-registry.ts 영역 commit 어디에도 queueReplyRunMessage 의 catch chain
+    추가 0건. 자매 경로 (pi-embedded-runner/runs.ts:148-154) 의 .catch 패턴은 별 위치에서 유지.
+  pr_search: gh pr list --search 'queueReplyRunMessage OR backend.queueMessage' →
+    0 매치.
   related_open_pr: null
   related_open_pr_notes: null
   duplicate_decision: not-duplicate
   cross_refs_other_cells: []
 cross_refs: []
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-032-pre-20260514-100639.md
+  measurements:
+    scenario: proof-CAND-032
+    trials: 5
+    unhandledCount: 5
+    graceMs: 500
+    results:
+    - sessionId: proof-session-0-1778753193032
+      queued: true
+    - sessionId: proof-session-1-1778753193032
+      queued: true
+    - sessionId: proof-session-2-1778753193032
+      queued: true
+    - sessionId: proof-session-3-1778753193032
+      queued: true
+    - sessionId: proof-session-4-1778753193032
+      queued: true
+  scenario: proof-CAND-032
 ---
 
 # auto-reply/reply-run-registry: catch floating backend.queueMessage to avoid unhandled rejection

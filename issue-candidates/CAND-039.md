@@ -2,9 +2,16 @@
 candidate_id: CAND-039
 type: single
 finding_ids:
-  - FIND-gateway-lifecycle-002
-cluster_rationale: "단일 결함 — server-runtime-services.ts:156-190 의 두 recovery 함수 (recoverPendingOutboundDeliveries 즉시 IIFE, recoverPendingSessionDeliveries setTimeout(1250ms)) 가 stop handle 반환 부재 + caller (server.impl.ts:1366-1389) 가 cancellation 통로 미보유. timer.unref() 는 event-loop alive 만 막을 뿐 callback fire 차단 아님. boot 직후 1250ms 이내 SIGTERM 시 tearing-down state 에서 recovery 가 dynamic import + dispose 된 deps 사용 시도 → error log 노이즈 + 의도치 않은 외부 메시지 발사 + partial state 디스크 잔존. 같은 file 의 scheduleGatewayPostReadyMaintenance (L103-154) 가 isClosing 가드 + clearGatewayMaintenanceHandles 패턴 보유 — 비대칭 누락. 다른 gateway FIND 와 axis 다름."
-proposed_title: "gateway/runtime-services: cancel startup recovery jobs on shutdown"
+- FIND-gateway-lifecycle-002
+cluster_rationale: 단일 결함 — server-runtime-services.ts:156-190 의 두 recovery 함수 (recoverPendingOutboundDeliveries
+  즉시 IIFE, recoverPendingSessionDeliveries setTimeout(1250ms)) 가 stop handle 반환 부재
+  + caller (server.impl.ts:1366-1389) 가 cancellation 통로 미보유. timer.unref() 는 event-loop
+  alive 만 막을 뿐 callback fire 차단 아님. boot 직후 1250ms 이내 SIGTERM 시 tearing-down state
+  에서 recovery 가 dynamic import + dispose 된 deps 사용 시도 → error log 노이즈 + 의도치 않은 외부
+  메시지 발사 + partial state 디스크 잔존. 같은 file 의 scheduleGatewayPostReadyMaintenance (L103-154)
+  가 isClosing 가드 + clearGatewayMaintenanceHandles 패턴 보유 — 비대칭 누락. 다른 gateway FIND
+  와 axis 다름.
+proposed_title: 'gateway/runtime-services: cancel startup recovery jobs on shutdown'
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
@@ -13,19 +20,39 @@ upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:
-    - "f4f98f45c7 fix(gateway): cancel post-ready maintenance on close"
-    - "654b70dde8 fix(gateway): keep cron startup after maintenance failure"
-    - "0b1fbeabed perf(gateway): defer cron and sentinel startup work"
-    - "a903df02f5 fix(gateway): bound restart continuation recovery"
-    - "0ac81d41b6 fix(gateway): durably hand off restart continuations"
-  finding: "f4f98f45c7 가 post-ready maintenance 에 cancellation 추가하면서 같은 파일의 recovery 함수에는 동일 패턴 미적용. a903df02f5 / 0ac81d41b6 (restart continuation) 는 recovery 의 다른 axis (bound semantics, hand-off durability). cancellation handle 부재 fix 0건."
-  pr_search: "gh pr list --search 'recoverPendingOutboundDeliveries OR recoverPendingSessionDeliveries' → 0 매치."
+  - 'f4f98f45c7 fix(gateway): cancel post-ready maintenance on close'
+  - '654b70dde8 fix(gateway): keep cron startup after maintenance failure'
+  - '0b1fbeabed perf(gateway): defer cron and sentinel startup work'
+  - 'a903df02f5 fix(gateway): bound restart continuation recovery'
+  - '0ac81d41b6 fix(gateway): durably hand off restart continuations'
+  finding: f4f98f45c7 가 post-ready maintenance 에 cancellation 추가하면서 같은 파일의 recovery
+    함수에는 동일 패턴 미적용. a903df02f5 / 0ac81d41b6 (restart continuation) 는 recovery 의 다른
+    axis (bound semantics, hand-off durability). cancellation handle 부재 fix 0건.
+  pr_search: gh pr list --search 'recoverPendingOutboundDeliveries OR recoverPendingSessionDeliveries'
+    → 0 매치.
   related_open_pr: null
   related_open_pr_notes: null
   duplicate_decision: not-duplicate
   cross_refs_other_cells: []
 cross_refs:
-  - CAND-038  # 같은 도메인 (gateway lifecycle)
+- CAND-038
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-039-pre-20260514-102655.md
+  measurements:
+    scenario: proof-CAND-039
+    trials: 2
+    trialResults:
+    - trial: 0
+      outboundFired: true
+      sessionFired: true
+    - trial: 1
+      outboundFired: true
+      sessionFired: true
+    outboundCount: 2
+    sessionCount: 2
+    totalFired: 4
+  scenario: proof-CAND-039
 ---
 
 # gateway/runtime-services: cancel startup recovery jobs on shutdown

@@ -2,31 +2,70 @@
 candidate_id: CAND-040
 type: single
 finding_ids:
-  - FIND-infra-process-concurrency-001
-cluster_rationale: "단일 결함 — approval-handler-runtime.ts:498-537 deliverTarget 의 두 await (deliverPending L505, bindPending L517) 사이에 onStopped (L656-672) 가 실행되어 activeEntries.clear() 호출 시, deliverTarget resume 후 L529-535 에서 wrapped entry 가 비어있던 Map 에 다시 등록되고 stopped 핸들러로는 finalizeResolved/Expired 가 호출 안 됨 → native binding orphan + leak. Map operation 자체는 atomic 이지만 await sync block 분리가 read-modify-write 를 외부 mutation 에 노출. file 내 동기화 원시 0건 (Mutex/Semaphore/AsyncLock/AbortController/Promise.race/once/microtask 모두 grep 0). 다른 FIND 와 file/axis 다름."
-proposed_title: "infra/approval-handler-runtime: stopped handler does not abort in-flight deliverTarget"
+- FIND-infra-process-concurrency-001
+cluster_rationale: 단일 결함 — approval-handler-runtime.ts:498-537 deliverTarget 의 두 await
+  (deliverPending L505, bindPending L517) 사이에 onStopped (L656-672) 가 실행되어 activeEntries.clear()
+  호출 시, deliverTarget resume 후 L529-535 에서 wrapped entry 가 비어있던 Map 에 다시 등록되고 stopped
+  핸들러로는 finalizeResolved/Expired 가 호출 안 됨 → native binding orphan + leak. Map operation
+  자체는 atomic 이지만 await sync block 분리가 read-modify-write 를 외부 mutation 에 노출. file 내
+  동기화 원시 0건 (Mutex/Semaphore/AsyncLock/AbortController/Promise.race/once/microtask
+  모두 grep 0). 다른 FIND 와 file/axis 다름.
+proposed_title: 'infra/approval-handler-runtime: stopped handler does not abort in-flight
+  deliverTarget'
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
 state: pending_gatekeeper
 cross_review_metric: metrics/cross-review-CAND-040-20260514-082000.jsonl
-cross_review_decision: 'proceed-with-caveat: avg 0.81, critical-devil medium proceed-with-caveat. race mechanism 자체는 abandon 불가 (outer/inner 두 layer 모두 in-flight handleRequested promise 추적 부재). 단 FIND 가 outer approval-native-runtime.ts 만 지목하고 inner exec-approval-channel-runtime.ts:393-415 spawn detached + stop() inflight await 부재 (진짜 root enabler) 를 누락. PR 본문 시 fix surface 를 inner runtime stop() inflight tracking 으로 확장 권고. severity P3 유지.'
+cross_review_decision: 'proceed-with-caveat: avg 0.81, critical-devil medium proceed-with-caveat.
+  race mechanism 자체는 abandon 불가 (outer/inner 두 layer 모두 in-flight handleRequested
+  promise 추적 부재). 단 FIND 가 outer approval-native-runtime.ts 만 지목하고 inner exec-approval-channel-runtime.ts:393-415
+  spawn detached + stop() inflight await 부재 (진짜 root enabler) 를 누락. PR 본문 시 fix surface
+  를 inner runtime stop() inflight tracking 으로 확장 권고. severity P3 유지.'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:
-    - "566cbb24aa refactor: trim approval infra exports"
-    - "ce73e6647c refactor: trim approval runtime reexports"
-    - "194c516957 (확인 필요)"
-    - "0f7d9c9570 fix(runtime): split approval and gateway client seams"
-    - "d78512b09d Refactor: centralize native approval lifecycle assembly (#62135)"
-  finding: "6주 approval-handler-runtime.ts commit 모두 type/export refactor 또는 lifecycle assembly centralize. race/concurrent/lock 키워드 commit 0건. d78512b09d (#62135) 가 lifecycle assembly 정리하면서 in-flight delivery vs onStopped race 영역 미터치."
-  pr_search: "gh pr list --search 'approval-handler-runtime race deliverTarget' → 0 매치."
+  - '566cbb24aa refactor: trim approval infra exports'
+  - 'ce73e6647c refactor: trim approval runtime reexports'
+  - 194c516957 (확인 필요)
+  - '0f7d9c9570 fix(runtime): split approval and gateway client seams'
+  - 'd78512b09d Refactor: centralize native approval lifecycle assembly (#62135)'
+  finding: 6주 approval-handler-runtime.ts commit 모두 type/export refactor 또는 lifecycle
+    assembly centralize. race/concurrent/lock 키워드 commit 0건. d78512b09d (#62135) 가
+    lifecycle assembly 정리하면서 in-flight delivery vs onStopped race 영역 미터치.
+  pr_search: gh pr list --search 'approval-handler-runtime race deliverTarget' → 0
+    매치.
   related_open_pr: null
   related_open_pr_notes: null
   duplicate_decision: not-duplicate
   cross_refs_other_cells: []
 cross_refs: []
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-040-pre-20260514-102041.md
+  measurements:
+    scenario: proof-CAND-040
+    trials: 5
+    trialResults:
+    - trial: 0
+      unbindCalled: 0
+      leak: true
+    - trial: 1
+      unbindCalled: 0
+      leak: true
+    - trial: 2
+      unbindCalled: 0
+      leak: true
+    - trial: 3
+      unbindCalled: 0
+      leak: true
+    - trial: 4
+      unbindCalled: 0
+      leak: true
+    totalUnbind: 0
+    totalLeak: 5
+  scenario: proof-CAND-040
 ---
 
 # infra/approval-handler-runtime: stopped handler does not abort in-flight deliverTarget

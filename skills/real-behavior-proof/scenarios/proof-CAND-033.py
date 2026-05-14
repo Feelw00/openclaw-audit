@@ -17,12 +17,10 @@ pre-captured group 이 모델로 전달됨.
 
 REQUIRES_EXTERNAL_DEP=False.
 
-필요 hook (instrumentation, fix 자체에 비포함):
-- __test.setEffectiveRunFollowup(fn)
-- __test.enqueueItems(key, items)
-- __test.triggerCollectDrain(key)        — collect mode 분기 직접 진입
-- __test.clearSessionQueues(key)
-- __test.peekFollowupQueuesIdentity(key) — fix 측 identity guard 검증용
+필요 hook: 없음. production 의 scheduleFollowupDrain + getFollowupQueue('collect' mode)
++ clearFollowupQueue 만으로 collect-mode authGroups inner-for race 재현 가능.
+forceIndividualCollect=false + originating* 필드 미설정 → drainCollectQueueStep='skipped'
+→ authGroups 진입. tsx 로 src ts 직접 실행 (--skip-build).
 
 without-fix: callList = ['X', 'Y'] (inner for 가 면역, Y 가 model 호출됨)
 with-fix:    callList = ['X']      (identity guard 추가 → Y iteration 시 break)
@@ -47,16 +45,8 @@ DEFAULT_TRIALS = 3
 
 def _build_probe_script(*, trials: int) -> str:
     return f"""\
-import {{ __test }} from './dist/auto-reply/reply/queue/drain.js';
-
-if (!__test
-    || typeof __test.setEffectiveRunFollowup !== 'function'
-    || typeof __test.enqueueItems !== 'function'
-    || typeof __test.triggerCollectDrain !== 'function'
-    || typeof __test.clearSessionQueues !== 'function') {{
-  console.log(JSON.stringify({{ skipped: '__test hooks missing (setEffectiveRunFollowup / enqueueItems / triggerCollectDrain / clearSessionQueues)' }}));
-  process.exit(0);
-}}
+import {{ scheduleFollowupDrain }} from './src/auto-reply/reply/queue/drain.ts';
+import {{ getFollowupQueue, clearFollowupQueue }} from './src/auto-reply/reply/queue/state.ts';
 
 const trialResults = [];
 
@@ -65,25 +55,42 @@ for (let i = 0; i < {trials}; i++) {{
   let releaseFirst;
   const firstPark = new Promise(r => {{ releaseFirst = r; }});
 
-  __test.setEffectiveRunFollowup(async (_key, items) => {{
-    const authKey = items[0]?.authKey ?? '(none)';
-    callList.push(authKey);
+  const mockRunFollowup = async (followup: any) => {{
+    const sid = followup?.run?.senderId ?? '(none)';
+    callList.push(sid);
     if (callList.length === 1) await firstPark;
+  }};
+
+  const key = 'proof-' + i + '-' + Date.now();
+  const queue = getFollowupQueue(key, {{
+    mode: 'collect',
+    debounceMs: 20,
+    cap: 20,
+    dropPolicy: 'summarize',
   }});
 
-  const key = 'proof-key-' + i;
-  __test.enqueueItems(key, [
-    {{ id: 'A-' + i, authKey: 'X' }},
-    {{ id: 'B-' + i, authKey: 'X' }},
-    {{ id: 'C-' + i, authKey: 'Y' }},
-  ]);
+  const makeRun = (id: string, senderId: string): any => ({{
+    prompt: `probe-${{id}}`,
+    enqueuedAt: Date.now(),
+    run: {{
+      agentId: 'probe',
+      agentDir: '/tmp/probe',
+      sessionId: 'probe-session-' + i,
+      senderId,
+      senderIsOwner: false,
+    }},
+  }});
 
-  const drainPromise = __test.triggerCollectDrain(key);
-  await new Promise(r => setTimeout(r, 80));  // let first followup enter the await
+  queue.items.push(makeRun('A' + i, 'X'), makeRun('B' + i, 'X'), makeRun('C' + i, 'Y'));
+  queue.lastRun = queue.items[0].run;
+  queue.lastEnqueuedAt = Date.now() - 1000;  // pass debounce immediately
 
-  __test.clearSessionQueues(key);
+  scheduleFollowupDrain(key, mockRunFollowup);
+  await new Promise(r => setTimeout(r, 150));  // let first followup enter the park
+
+  clearFollowupQueue(key);
   releaseFirst();
-  try {{ await drainPromise; }} catch {{}}
+  await new Promise(r => setTimeout(r, 200));  // drain to finish
 
   trialResults.push({{ trial: i, callList }});
 }}
@@ -94,6 +101,7 @@ console.log(JSON.stringify({{
   trialResults,
   yLeakCount,
 }}));
+process.exit(0);
 """
 
 
@@ -106,27 +114,23 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "auto-reply" / "reply" / "queue" / "drain.js"
-    if not dist_target.exists():
-        return {
-            "scenario": SCENARIO_NAME,
-            "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
-        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": f"tsx missing: {tsx_bin}"}
 
     script = _build_probe_script(trials=trials)
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=120,
         )
         if proc.returncode != 0:
             return {

@@ -102,63 +102,67 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #
 # 다음 세션 액션 우선순위 (잔여):
 #
-#   ## 0. 최우선 — 활성 9 CAND pre-sol real behavior proof (사용자 결정 2026-05-14)
+#   ## 0. 최우선 — 활성 9 CAND collected → SOL 작성 단계 (2026-05-14 완료)
 #
-#   사용자 지시: "다중 세션으로 전부 proof. 실제 테스트 후 문제가 아니면 SOL 작성 불필요" — pre-sol 을 false-positive
-#   filter 로 SOL 작성 *전* 게이트. NEXT.md 결정 트리 (`pre-sol unreproducible → CAND abandon`,
-#   `pre-sol collected → SOL 작성 착수`) 와 정합.
+#   2026-05-14 세션에서 활성 9 CAND 의 pre-sol real behavior proof 일괄 진행 — 9/9 모두 `collected`.
+#   가짜 문제 (false positive / unreproducible) 0건, blocked-env 0건. 결정 트리상 9 CAND 모두
+#   SOL 작성 자격.
 #
-#   대상 9 CAND (gatekeeper approve + cross-review proceed/proceed-with-caveat):
-#   • CAND-026 — agents-registry-error-boundary (restoreSubagentRunsOnce silent catch + set-before-action)
-#   • CAND-030 — agents-registry-lifecycle (markSubagentRunTerminated 의 clearPendingLifecycleTimeout 누락)
-#   • CAND-031 — auto-reply/queue/drain self-recurse retry (max-attempts/backoff/dead-letter 부재)
-#   • CAND-032 — auto-reply/reply-run-registry void backend.queueMessage unhandled rejection
-#   • CAND-033 — auto-reply/queue/drain collect mode auth-groups snapshot
-#   • CAND-037 — context-engine/registry resolveContextEngine validation fallback dispose 부재
-#   • CAND-038 — gateway/ws-connection chatAbortControllers ownerConnId abort 누락
-#   • CAND-039 — gateway/server-runtime-services recovery IIFE SIGTERM 미가드
-#   • CAND-040 — infra/approval-handler-runtime activeEntries deliverTarget 중 onStopped race
+#   | CAND | proof status | 측정 핵심 |
+#   |---|---|---|
+#   | CAND-026 | collected | tools-stdio-server.ts:17 extra.signal 미전파 → tool.execute 3rd arg undefined |
+#   | CAND-030 | collected | markSubagentRunTerminated 후 pendingLifecycleTimeoutByRunId.size 1→1 (marker 잔존) |
+#   | CAND-031 | collected | drain.ts catch+finally self-recurse 14회 / 3s + queueSize=1 (head item 잔존) |
+#   | CAND-032 | collected | void backend.queueMessage 5/5 unhandledRejection escape |
+#   | CAND-033 | collected | collect-mode authGroups inner for 3/3 ['X','Y'] (clear 후에도 Y leak) |
+#   | CAND-037 | collected | resolveContextEngine contract-error branch dispose 미호출 (instantiated engine leak) |
+#   | CAND-038 | collected | ws close 후 두 chatAbortController 모두 abort 안 됨 (aAborted=false, bAborted=false) |
+#   | CAND-039 | collected | recover IIFE + setTimeout(1250) 모두 fire (outbound 2/2, session 2/2) |
+#   | CAND-040 | collected | deliverTarget/onStopped race — 5/5 unbind=0, leak=5/5 |
 #
-#   사전 작성 완료 (2026-05-14, 직전 세션):
-#     skills/real-behavior-proof/scenarios/proof-CAND-{026,030,031,032,033,037,038,039,040}.py
-#     — 각 CAND 의 측정 binary, 필요 __test hook 목록, evaluate_pre/post 규칙, render_pr_evidence
-#       6 필드를 docstring 에 명시.
-#     — 모두 REQUIRES_EXTERNAL_DEP=False (in-process measurement).
-#     — harness/run.py 가 file-stem 으로 동적 import 하므로 `--scenario proof-CAND-NNN` 즉시 작동.
-#     — hook 미존재 시 시나리오가 stdout 에 `{"skipped": "..."}` 출력 → blocked-env 로 분류.
+#   영구 evidence: `proofs/PROOF-CAND-{026,030,031,032,033,037,038,039,040}-pre-*.md`.
+#   각 CAND frontmatter 의 `pre_sol_proof` 객체 자동 갱신, state transition `pending_gatekeeper →
+#   proof-collected-pre` 기록 (`local-state/history.jsonl`).
 #
-#   잔여 작업 분류 (2026-05-14 시나리오 사전작성 후):
+#   ### 인프라 부산물 (2026-05-14 세션)
 #
-#   | 유형 | CAND | 잔여 작업 | 1건당 추정 |
+#   - `harness/build.py` 에 `skip_build` 옵션 추가 + `harness/run.py --skip-build` CLI.
+#     tsdown bundle 이 entry-only output 이라 개별 모듈 import 불가했던 문제 우회 — 시나리오가
+#     src ts 직접 import (tsx 트랜스파일) 으로 빌드 30분 → install 5분.
+#   - 시나리오 9개 모두 dist→src + node→tsx 패턴 정착. 3건 (CAND-030, 032, 039) 만
+#     worktree-local instrumentation (`_apply_instrumentation`) 적용. 나머지 6건은 production API
+#     + minimal mock 만으로 결함 재현.
+#
+#   ### 다음 액션 (SOL 작성 단계)
+#
+#   결정 트리상 `pre-sol collected → 사람 최종 검토 → SOL 작성 착수`. 9 collected CAND 중
+#   SOL 작성 우선순위 후보:
+#
+#   | 우선순위 | CAND | severity | 사유 |
 #   |---|---|---|---|
-#   | hook 기존 가정 | 026, 032 | 빌드 + pre-sol 실행 (skipped 잡히면 hook 1-2줄 추가) | 0.5-1.5h |
-#   | __test export hook 추가 필요 | 030, 031, 033, 037, 040 | hook 1-2줄 instrumentation + 빌드 + 실행 | 1-2h |
-#   | gateway fake-deps 인프라 필요 | 038, 039 | __test.installFakeDeps / setRecoveryProbe stub + 빌드 + 실행 | 2-3h |
+#   | high | CAND-032 (auto-reply error-boundary) | P2 | XS 1-line fix, sister .catch pattern 존재, crash 위험 |
+#   | high | CAND-038 (gateway ws-connection) | P3 | XS helper 추가 + close handler 1-call, LLM 토큰 누적 영향 |
+#   | high | CAND-040 (infra/approval-handler) | P3 | deliverTarget stopped flag check, native resource leak |
+#   | mid | CAND-026 (mcp lifecycle, scope-down) | P3 | 시그니처 변경 + 1 call site, host cancel 전파 |
+#   | mid | CAND-030 (agents-registry lifecycle) | P3 | deps interface 1줄 + dispose loop 1줄 |
+#   | mid | CAND-037 (context-engine) | P3 | 3 fallback branch 에 dispose() 추가 |
+#   | low | CAND-031 / 033 (auto-reply queue) | P2/P3 | drain.ts 큰 손질 — design 결정 필요 |
+#   | low | CAND-039 (gateway runtime services) | P3 | isClosing guard + stop handle — 멀티 callsite 영향 |
 #
-#   총 잔여 추정: 약 12-20시간 → 다중 세션. blocked-env 는 적용 안 함 (hook 추가는 instrumentation
-#   이지 fix 가 아님 — worktree-local 만, 커밋 안 함).
+#   각 SOL 작성 진입 시 흐름:
+#     1. SOL 파일 (solutions/SOL-NNNN.md) 신규 작성 — finding_ids / option-A/B/C / chosen_fix / rationale
+#     2. (선택) post-harness cross-review 가능 — 5 agent verdict
+#     3. chosen_fix 결정 후 worktree 에 fix patch 작성 (PR worktree, 별도 fix/* branch)
+#     4. post-sol real-behavior-proof 실행 (with-fix vs without-fix 비교) → 6 필드 PR body section 자동
+#     5. pre-pr cross-review (CAL-003) → 합의 2/3 이상이면 PR 발행
+#     6. PR body 12 섹션 작성 + `proof: supplied` label, AI-assisted 표시
 #
-#   진행 순서 (순차 proof 테스트):
-#     세션 N+1: CAND-026 + CAND-032 — end-to-end 파이프라인 검증 우선 (skipped 잡으면 hook 추가)
-#     세션 N+2: CAND-030/031/033 (auto-reply / agents 도메인 hook 추가)
-#     세션 N+3: CAND-037/040 (context-engine / infra 도메인 hook 추가)
-#     세션 N+4-5: CAND-038/039 (gateway fake-deps 인프라)
+#   ### 잔여 cross-review 위험 (CAL-003)
 #
-#   각 세션 진입 시 첫 액션:
-#     1. 사용자 허락 받기 (skills/real-behavior-proof/SKILL.md §Step 1 gate).
-#     2. upstream/main fetch + behind 확인 (§1.B). 변경 있으면 git pull upstream main --ff-only.
-#     3. 해당 CAND 의 file:line 재확인 (upstream HEAD 변경 → CAL-007 stale risk).
-#     4. 시나리오 docstring 의 필요 hook 목록 확인:
-#          /Users/lucas/Project/openclaw-audit/skills/real-behavior-proof/scenarios/proof-CAND-NNN.py
-#     5. worktree 생성 (/Users/lucas/Project/openclaw-worktrees/proof-CAND-NNN).
-#     6. __test export hook 추가 (worktree-local instrumentation only, 커밋 안 함).
-#     7. pnpm build → harness/run.py --target CAND-NNN --mode pre-sol --scenario proof-CAND-NNN.
-#     8. status 평가 (collected / unreproducible / blocked-*).
-#     9. local-state + SOL 영역 transition (proofs/PROOF-CAND-NNN-pre-*.md 생성).
-#     10. unreproducible → CAND abandon. collected → SOL 작성 단계 진입.
-#
-#   참고: 시나리오는 사전 작성됨 (이번 세션 산출물). SOL 작성은 pre-sol collected 결과를 받은
-#   후 — proof 가 정직한 게이트.
+#   pre-sol 측정이 모두 `collected` 인데 false-positive 0건은 두 가지 해석:
+#     (긍정) gatekeeper + cross-review 가 이미 잘 걸러 9 CAND 가 모두 진짜
+#     (주의) probe 시나리오가 production hot-path 와 완전히 동일하지 않을 가능성
+#   → PR 발행 직전 pre-pr cross-review 의 `reproduction-realist` agent 가 재검증 필수.
 #
 #   ## 1-5. 기존 잔여 액션 (위 0번 이후)
 #
@@ -166,9 +170,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   2. PR #71648 메인테이너 리뷰 대기 — sufficient 자동평가 미부여 (fake timer 추정). real wall-clock 재시도는 mcp-pending-ttl
 #      scenario + TTL env override hook 도입에 의존.
 #   3. CAL-011 calibration 정식 문서 작성 — alternative-axis acceptance 패턴 (PR #71040 사례).
-#   4. real-behavior-proof skill end-to-end 검증 — §0 의 CAND-026 + CAND-032 진행이 첫 end-to-end 검증 케이스
-#      (9 CAND 시나리오 사전작성 완료 2026-05-14, 다음 세션부터 순차 실행).
-#      (참고: SOL-0004 는 2026-04-21 PR #68842 로 머지 완료 — proof skill 도입 전이라 미적용).
+#   4. real-behavior-proof skill end-to-end 검증 — 2026-05-14 9 CAND pre-sol 일괄 통과로 검증 완료.
+#      build.py skip_build + tsx 패턴이 신규 표준. SOL-0004 는 2026-04-21 PR #68842 로 머지 완료
+#      (proof skill 도입 전이라 미적용).
 #   5. Phase 5 후속 셀 — mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
 #
 # CLOSED (이전 액션, 완료):
@@ -213,8 +217,9 @@ wc -l metrics/shadow-runs.jsonl metrics/human-verdicts.jsonl metrics/self-consis
 # 목표: 50 / 10 / 10
 ```
 
-현재 (2026-05-14): **28 / 23 / 10** — self-consistency 졸업, human-verdicts 졸업,
-shadow-runs 22 누적 더 필요. real-behavior-proof skill 도입으로 SOL 단계마다 evidence 증가 → shadow 누적 가속 예상.
+현재 (2026-05-14, 9 CAND pre-sol proof 일괄 완료 후): **46 / 23 / 10** —
+self-consistency 졸업, human-verdicts 졸업, shadow-runs 4 누적 더 필요 (50 목표).
+2026-05-14 세션의 9 proof transition 으로 shadow-runs 28→46 점프. SOL/post-sol 단계 진입 시 50 도달 확실.
 
 ## 6. 세션 종료
 

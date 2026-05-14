@@ -89,7 +89,11 @@ def _run_pre_sol(args, mode_cfg: dict, scenario_mod) -> dict[str, Any]:
     with env_isolate.isolated_home(require_oauth=require_oauth) as env:
         try:
             built = build.build_single(
-                sha=args.base_sha, label="base", proof_id=env["proof_id"], skip_install=args.skip_install
+                sha=args.base_sha,
+                label="base",
+                proof_id=env["proof_id"],
+                skip_install=args.skip_install,
+                skip_build=args.skip_build,
             )
         except Exception as e:
             return {
@@ -145,7 +149,10 @@ def _run_post_sol(args, mode_cfg: dict, scenario_mod) -> dict[str, Any]:
         # 한 isolated_home 두 빌드 같이 쓰면 cron jobs/state 가 섞이므로 빌드별 격리.
         # 시간 비용을 줄이려면 build 는 둘 다 먼저 만들고, scenario 만 isolated_home 반복.
         pair = build.build_pair(
-            base_sha=args.base_sha, head_sha=args.head_sha, skip_install=args.skip_install
+            base_sha=args.base_sha,
+            head_sha=args.head_sha,
+            skip_install=args.skip_install,
+            skip_build=args.skip_build,
         )
     except Exception as e:
         return {
@@ -275,6 +282,11 @@ def main() -> None:
     ap.add_argument("--sleep-seconds", type=int)
     ap.add_argument("--timeout-seconds", type=int)
     ap.add_argument("--skip-install", action="store_true", help="pnpm install 생략 (디버그)")
+    ap.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="pnpm build 생략 — 시나리오가 src ts 직접 import (tsx) 시 30분 빌드 우회",
+    )
     ap.add_argument("--keep-worktrees", action="store_true", help="실행 후 worktree 보존 (디버그)")
     ap.add_argument("--dry-run", action="store_true", help="build/run 생략, persist 만 (테스트)")
     ap.add_argument(

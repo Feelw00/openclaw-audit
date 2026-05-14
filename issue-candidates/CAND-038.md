@@ -2,9 +2,14 @@
 candidate_id: CAND-038
 type: single
 finding_ids:
-  - FIND-gateway-lifecycle-001
-cluster_rationale: "단일 결함 — ws-connection.ts:351-421 의 WS close 핸들러가 session/node/presence/nodeWake state 만 cleanup 하고 chatAbortControllers 의 ownerConnId 매칭 entry 는 abort 안 함. registerChatAbortController (chat-abort.ts:71-109) 의 ownerConnId 필드는 abort RPC 권한 판정 (canRequesterAbortChatRun) 에만 사용. user disconnect 후 maintenance interval 의 expiresAtMs sweep (최소 2분 floor) 까지 runner 가 abort 없이 계속 진행 — LLM 토큰 과금 + tool 실행 + 외부 API call 누적. 다른 gateway FIND 와 file/axis 다름."
-proposed_title: "gateway/server: abort chat runs owned by disconnecting WS connection"
+- FIND-gateway-lifecycle-001
+cluster_rationale: 단일 결함 — ws-connection.ts:351-421 의 WS close 핸들러가 session/node/presence/nodeWake
+  state 만 cleanup 하고 chatAbortControllers 의 ownerConnId 매칭 entry 는 abort 안 함. registerChatAbortController
+  (chat-abort.ts:71-109) 의 ownerConnId 필드는 abort RPC 권한 판정 (canRequesterAbortChatRun)
+  에만 사용. user disconnect 후 maintenance interval 의 expiresAtMs sweep (최소 2분 floor)
+  까지 runner 가 abort 없이 계속 진행 — LLM 토큰 과금 + tool 실행 + 외부 API call 누적. 다른 gateway FIND
+  와 file/axis 다름.
+proposed_title: 'gateway/server: abort chat runs owned by disconnecting WS connection'
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
@@ -13,19 +18,33 @@ upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:
-    - "1819e41d26 fix(gateway): preserve node reconnect state (#78351)"
-    - "8cae2ed645 fix(gateway): allow chat.abort to stop agent RPC runs"
-    - "047c03cc88 fix(gateway): drop stale webchat handshakes"
-    - "1f1f70a23f fix(gateway): align sessions abort wait semantics (#74751)"
-  finding: "6주 ws-connection.ts / chat-abort.ts commit 어디에도 close 핸들러의 ownerConnId 매칭 cleanup 추가 0건. 1819e41d26 는 node reconnect axis, 8cae2ed645 는 chat.abort RPC 의 agent RPC 까지 확장 (다른 axis), 1f1f70a23f 는 abort wait semantics 의 timing 정합성 (다른 axis)."
-  pr_search: "gh pr list --search 'chatAbortControllers ws disconnect ownerConnId' → 0 매치."
+  - '1819e41d26 fix(gateway): preserve node reconnect state (#78351)'
+  - '8cae2ed645 fix(gateway): allow chat.abort to stop agent RPC runs'
+  - '047c03cc88 fix(gateway): drop stale webchat handshakes'
+  - '1f1f70a23f fix(gateway): align sessions abort wait semantics (#74751)'
+  finding: 6주 ws-connection.ts / chat-abort.ts commit 어디에도 close 핸들러의 ownerConnId
+    매칭 cleanup 추가 0건. 1819e41d26 는 node reconnect axis, 8cae2ed645 는 chat.abort RPC
+    의 agent RPC 까지 확장 (다른 axis), 1f1f70a23f 는 abort wait semantics 의 timing 정합성 (다른
+    axis).
+  pr_search: gh pr list --search 'chatAbortControllers ws disconnect ownerConnId'
+    → 0 매치.
   related_open_pr: null
   related_open_pr_notes: null
   duplicate_decision: not-duplicate
   cross_refs_other_cells: []
 cross_refs:
-  - CAND-017  # gateway-error-boundary, 다른 file 다른 axis 이지만 같은 disconnect/cancel 가족 시나리오
-  - CAND-018
+- CAND-017
+- CAND-018
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-038-pre-20260514-102353.md
+  measurements:
+    scenario: proof-CAND-038
+    trials: 1
+    aAborted: false
+    bAborted: false
+    abortReasonA: null
+  scenario: proof-CAND-038
 ---
 
 # gateway/server: abort chat runs owned by disconnecting WS connection

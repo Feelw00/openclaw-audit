@@ -16,16 +16,12 @@ scheduleFollowupDrain self-recurse 무한 재시도. deterministic-fail 시 동�
 
 REQUIRES_EXTERNAL_DEP=False.
 
-필요 hook (instrumentation, fix 아님 — measurement-only):
-- src/auto-reply/reply/queue/drain.ts 또는 state.ts 에 __test export 추가:
-  - __test.setEffectiveRunFollowup(fn)  — DI seam
-  - __test.enqueueItem(key, item)
-  - __test.scheduleFollowupDrainNow(key)
-  - __test.peekAttempts(key)            — fix 후 attempts 필드 추적용
-- with-fix 단계의 attempts 필드 자체는 fix 의 일부 (state.ts 신규 필드).
+필요 hook: 없음. production 의 scheduleFollowupDrain(key, runFollowup) 이 runFollowup 을
+DI 인자로 받음. FOLLOWUP_QUEUES Map + getFollowupQueue(key, settings) 가 export — queue 직접 조작 가능.
+tsx 로 src ts 직접 실행 (--skip-build).
 
-without-fix: 10초 후 callCount ≥ 15 (debounceMs=500 → 약 20). queue.items[0] 여전히 잔존.
-with-fix:    callCount ≤ MAX_ATTEMPTS (e.g. 5). queue.items[0] dead-letter 처리되어 shift.
+without-fix: observe_ms (=3000) 동안 callCount ≥ 5 (debounceMs=200 → 약 15). queue.items[0] 잔존.
+with-fix:    callCount ≤ MAX_ATTEMPTS (e.g. 5). queue.items[0] dead-letter 처리.
 
 caveat: 실제 production 의 deterministic source 는 contextEngine.compact() throw 또는
 ensureRuntimePluginsLoaded throw (cross-review 가 fs ENOENT 예시 잘못 지목한 점 반영).
@@ -45,43 +41,50 @@ from typing import Any
 REQUIRES_EXTERNAL_DEP = False
 SCENARIO_NAME = "proof-CAND-031"
 DEFAULT_TRIALS = 1
-DEFAULT_OBSERVE_MS = 10_000
+DEFAULT_OBSERVE_MS = 3_000  # 3s → debounceMs=200 → ~15 retries 예상
 DEFAULT_MAX_EXPECTED_ATTEMPTS = 5  # fix 후 기대 상한
 
 
 def _build_probe_script(*, observe_ms: int) -> str:
     return f"""\
-import {{ scheduleFollowupDrain, __test }} from './dist/auto-reply/reply/queue/drain.js';
-
-if (!__test
-    || typeof __test.setEffectiveRunFollowup !== 'function'
-    || typeof __test.enqueueItem !== 'function'
-    || typeof __test.scheduleFollowupDrainNow !== 'function') {{
-  console.log(JSON.stringify({{ skipped: '__test hooks missing (setEffectiveRunFollowup / enqueueItem / scheduleFollowupDrainNow)' }}));
-  process.exit(0);
-}}
-
-let callCount = 0;
-__test.setEffectiveRunFollowup(async () => {{
-  callCount++;
-  throw new Error('deterministic-fail probe');
-}});
+import {{ scheduleFollowupDrain }} from './src/auto-reply/reply/queue/drain.ts';
+import {{ FOLLOWUP_QUEUES, getFollowupQueue }} from './src/auto-reply/reply/queue/state.ts';
 
 const key = 'proof-key-' + Date.now();
-__test.enqueueItem(key, {{ id: 'probe-item', message: 'hi' }});
-__test.scheduleFollowupDrainNow(key);
+const queue = getFollowupQueue(key, {{
+  mode: 'followup',
+  debounceMs: 200,
+  cap: 20,
+  dropPolicy: 'summarize',
+}});
 
+const fakeRun: any = {{
+  prompt: 'probe-prompt',
+  enqueuedAt: Date.now(),
+  run: {{ agentId: 'probe-agent', agentDir: '/tmp/probe', sessionId: 'probe-session' }},
+}};
+queue.items.push(fakeRun);
+queue.lastRun = fakeRun.run;
+queue.lastEnqueuedAt = Date.now();
+
+let callCount = 0;
+const mockRunFollowup = async () => {{
+  callCount++;
+  throw new Error('deterministic-fail probe');
+}};
+
+scheduleFollowupDrain(key, mockRunFollowup);
 await new Promise(r => setTimeout(r, {observe_ms}));
 
-const attempts = typeof __test.peekAttempts === 'function' ? __test.peekAttempts(key) : null;
-const queueSize = typeof __test.peekQueueSize === 'function' ? __test.peekQueueSize(key) : null;
+const q = FOLLOWUP_QUEUES.get(key);
+const queueSize = q ? q.items.length : 0;
 
 console.log(JSON.stringify({{
   callCount,
-  attempts,
   queueSize,
   observeMs: {observe_ms},
 }}));
+process.exit(0);
 """
 
 
@@ -95,27 +98,23 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "auto-reply" / "reply" / "queue" / "drain.js"
-    if not dist_target.exists():
-        return {
-            "scenario": SCENARIO_NAME,
-            "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
-        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": f"tsx missing: {tsx_bin}"}
 
     script = _build_probe_script(observe_ms=observe_ms)
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
             text=True,
-            timeout=(observe_ms // 1000) + 30,
+            timeout=(observe_ms // 1000) + 60,
         )
         if proc.returncode != 0:
             return {

@@ -1780,16 +1780,26 @@ items:
     created_at: '2026-05-14T06:43:41+00:00'
     updated_at: '2026-05-14T06:43:41+00:00'
   CAND-026:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (026)
       at: '2026-05-14T06:55:21+00:00'
+    - from: pending_gatekeeper
+      to: proof-blocked-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-026 mode=pre-sol
+      at: '2026-05-14T09:26:49+00:00'
+    - from: proof-blocked-pre
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-026 mode=pre-sol
+      at: '2026-05-14T09:30:47+00:00'
     created_at: '2026-05-14T06:55:21+00:00'
-    updated_at: '2026-05-14T06:55:21+00:00'
+    updated_at: '2026-05-14T09:30:47+00:00'
   CAND-027:
     kind: candidate
     state: abandoned
@@ -1841,49 +1851,74 @@ items:
     created_at: '2026-05-14T06:55:22+00:00'
     updated_at: '2026-05-14T08:18:45+00:00'
   CAND-030:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (030)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: proof-blocked-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-030 mode=pre-sol
+      at: '2026-05-14T10:09:51+00:00'
+    - from: proof-blocked-pre
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-030 mode=pre-sol
+      at: '2026-05-14T10:10:46+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T10:10:46+00:00'
   CAND-031:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (031)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-031 mode=pre-sol
+      at: '2026-05-14T10:12:25+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T10:12:25+00:00'
   CAND-032:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (032)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-032 mode=pre-sol
+      at: '2026-05-14T10:06:39+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T10:06:39+00:00'
   CAND-033:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (033)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-033 mode=pre-sol
+      at: '2026-05-14T10:14:25+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T10:14:25+00:00'
   CAND-034:
     kind: candidate
     state: abandoned
@@ -1923,49 +1958,69 @@ items:
     created_at: '2026-05-14T06:55:22+00:00'
     updated_at: '2026-05-14T06:55:22+00:00'
   CAND-037:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (037)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-037 mode=pre-sol
+      at: '2026-05-14T10:16:20+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-14T10:16:20+00:00'
   CAND-038:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (038)
       at: '2026-05-14T06:55:23+00:00'
+    - from: pending_gatekeeper
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-038 mode=pre-sol
+      at: '2026-05-14T10:23:53+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-14T06:55:23+00:00'
+    updated_at: '2026-05-14T10:23:53+00:00'
   CAND-039:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (039)
       at: '2026-05-14T06:55:23+00:00'
+    - from: pending_gatekeeper
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-039 mode=pre-sol
+      at: '2026-05-14T10:26:55+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-14T06:55:23+00:00'
+    updated_at: '2026-05-14T10:26:55+00:00'
   CAND-040:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: cand
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (040)
       at: '2026-05-14T06:55:23+00:00'
+    - from: pending_gatekeeper
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-040 mode=pre-sol
+      at: '2026-05-14T10:20:41+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-14T06:55:23+00:00'
+    updated_at: '2026-05-14T10:20:41+00:00'
   CAND-041:
     kind: candidate
     state: pending_gatekeeper

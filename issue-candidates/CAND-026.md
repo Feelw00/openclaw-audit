@@ -2,98 +2,96 @@
 candidate_id: CAND-026
 type: epic
 finding_ids:
-  - FIND-mcp-lifecycle-001
-  - FIND-mcp-lifecycle-002
-cluster_rationale: |
-  공통 원인: standalone tools MCP server (plugin-tools / openclaw-tools 가
-  공유하는 `connectToolsMcpServerToStdio`) 가 **in-flight callTool 의 lifecycle
-  처리를 양 끝점에서 동시에 결여**. (1) shutdown 시 in-flight handler drain
-  보장 부재 (server.close() 가 floating void), (2) host cancellation /
-  transport close 시 abort signal 을 handler 와 tool.execute 로 전파할 channel
-  부재. 두 결함은 같은 lifecycle 계약 ("host 가 종료/취소를 신호하면 server
-  는 in-flight 작업을 정리하고 응답 또는 abort 한다") 의 두 측면이며, FIND
-  텍스트 자체가 서로를 명시적으로 cross-reference.
-
-  근거 인용:
-  - FIND-mcp-lifecycle-001 root_cause_chain[3] (evidence_ref):
-    "src/mcp/plugin-tools-handlers.ts:54 (tool.execute 가 await 인데 cancel
-    signal 없음 — FIND-mcp-lifecycle-002 와 연결)" — 001 의 마지막 step 이
-    자체적으로 002 가 동반 원인임을 인용.
-  - FIND-mcp-lifecycle-001 root_cause_chain[1]:
-    "SDK 의 `Server.close()` 는 transport 와 protocol layer 를 동기적으로
-    invalidate. handler.callTool 의 `await tool.execute(...)` 가 동시에 진행
-    중이면 ... transport 가 닫혀 있어 ... response 를 send 시도해도 stdout
-    가 EOF" — drain 부재가 1차 발현 경로.
-  - FIND-mcp-lifecycle-002 mechanism:
-    "host 가 cancel: (a) MCP `notifications/cancelled` 송신 → SDK 가 internal
-    AbortController.abort() 호출 → extra.signal 의 listener 가 trigger 되지만
-    handler 가 무시했으므로 tool.execute 는 모름. (b) host 가 child stdin
-    close 또는 SIGTERM → tools-stdio-server.ts shutdown → server.close()
-    floating (FIND-mcp-lifecycle-001) — 마찬가지로 in-flight 미통보." — 002
-    가 001 의 transport close 경로와 동일 mechanism 임을 인용.
-  - FIND-mcp-lifecycle-002 root_cause_chain[0]:
-    "tools-stdio-server.ts:17 의 setRequestHandler callback 시그니처가
-    `async (request)` 로 작성됨. SDK 의 setRequestHandler 두 번째 인자
-    `extra: RequestHandlerExtra` 를 통째로 무시." — 002 의 1차 결함이
-    001 과 동일 file (tools-stdio-server.ts) 의 동일 wiring 함수 안에서 발생.
-
-  Epic 으로 묶는 이유: fix surface 가 두 file (tools-stdio-server.ts +
-  plugin-tools-handlers.ts) 에 걸쳐 있으나 **단일 wiring 변경으로 함께
-  resolve** 된다. tools-stdio-server.ts:17 의 setRequestHandler callback 을
-  `async (request, extra) => handlers.callTool(request.params, extra.signal)`
-  로 변경하면서 plugin-tools-handlers.ts:45 callTool 시그니처도
-  `(params, signal?: AbortSignal)` 로 확장, L54 tool.execute 의 3번째 인자에
-  signal 전달 — 이 한 셋의 변경으로 002 가 해결. FIND-001 의 drain 측은
-  같은 tools-stdio-server.ts 의 shutdown (L30-41) 에서 (a) await close 패턴
-  도입 또는 (b) in-flight Set 추적 + drain 으로 resolve. **두 fix 가 같은
-  파일 (tools-stdio-server.ts) 의 인접 함수 본문 + plugin-tools-handlers.ts
-  callTool 시그니처 한 라인** 으로 한 PR XS-S 범위. 분리 PR 로 처리하면
-  같은 file/같은 함수를 두 번 건드리고 두 PR 모두 동일 회귀 테스트
-  (실제 SDK Server + 실제 stdio transport + SIGTERM/cancel 시나리오) 를
-  중복 구축해야 함. one-thing-per-PR 원칙은 "MCP server in-flight tool call
-  lifecycle handling" 한 축으로 본다.
-
-  메인테이너 시각도 동일 예상: tools-stdio-server.ts 의 shutdown wiring 과
-  setRequestHandler wiring 은 같은 함수 (`connectToolsMcpServerToStdio`,
-  L24-48) 안에 있어 결함도 같은 함수 책임 (host lifecycle contract
-  honoring) 에 귀속된다.
-proposed_title: "fix(mcp): drain in-flight callTool on shutdown and propagate host cancellation signal"
-proposed_severity: P3  # cross-review scope-down 2026-05-14: SDK Protocol._onclose 가 unconditional abort 함을 critical-devil 가 발견 → FIND-001 mechanism 부정확. P3 강등 + FIND-002 (signal propagation) 만 단독 진행 권고.
+- FIND-mcp-lifecycle-001
+- FIND-mcp-lifecycle-002
+cluster_rationale: "공통 원인: standalone tools MCP server (plugin-tools / openclaw-tools\
+  \ 가\n공유하는 `connectToolsMcpServerToStdio`) 가 **in-flight callTool 의 lifecycle\n처리를\
+  \ 양 끝점에서 동시에 결여**. (1) shutdown 시 in-flight handler drain\n보장 부재 (server.close()\
+  \ 가 floating void), (2) host cancellation /\ntransport close 시 abort signal 을 handler\
+  \ 와 tool.execute 로 전파할 channel\n부재. 두 결함은 같은 lifecycle 계약 (\"host 가 종료/취소를 신호하면\
+  \ server\n는 in-flight 작업을 정리하고 응답 또는 abort 한다\") 의 두 측면이며, FIND\n텍스트 자체가 서로를 명시적으로\
+  \ cross-reference.\n\n근거 인용:\n- FIND-mcp-lifecycle-001 root_cause_chain[3] (evidence_ref):\n\
+  \  \"src/mcp/plugin-tools-handlers.ts:54 (tool.execute 가 await 인데 cancel\n  signal\
+  \ 없음 — FIND-mcp-lifecycle-002 와 연결)\" — 001 의 마지막 step 이\n  자체적으로 002 가 동반 원인임을\
+  \ 인용.\n- FIND-mcp-lifecycle-001 root_cause_chain[1]:\n  \"SDK 의 `Server.close()`\
+  \ 는 transport 와 protocol layer 를 동기적으로\n  invalidate. handler.callTool 의 `await\
+  \ tool.execute(...)` 가 동시에 진행\n  중이면 ... transport 가 닫혀 있어 ... response 를 send 시도해도\
+  \ stdout\n  가 EOF\" — drain 부재가 1차 발현 경로.\n- FIND-mcp-lifecycle-002 mechanism:\n\
+  \  \"host 가 cancel: (a) MCP `notifications/cancelled` 송신 → SDK 가 internal\n  AbortController.abort()\
+  \ 호출 → extra.signal 의 listener 가 trigger 되지만\n  handler 가 무시했으므로 tool.execute 는\
+  \ 모름. (b) host 가 child stdin\n  close 또는 SIGTERM → tools-stdio-server.ts shutdown\
+  \ → server.close()\n  floating (FIND-mcp-lifecycle-001) — 마찬가지로 in-flight 미통보.\"\
+  \ — 002\n  가 001 의 transport close 경로와 동일 mechanism 임을 인용.\n- FIND-mcp-lifecycle-002\
+  \ root_cause_chain[0]:\n  \"tools-stdio-server.ts:17 의 setRequestHandler callback\
+  \ 시그니처가\n  `async (request)` 로 작성됨. SDK 의 setRequestHandler 두 번째 인자\n  `extra: RequestHandlerExtra`\
+  \ 를 통째로 무시.\" — 002 의 1차 결함이\n  001 과 동일 file (tools-stdio-server.ts) 의 동일 wiring\
+  \ 함수 안에서 발생.\n\nEpic 으로 묶는 이유: fix surface 가 두 file (tools-stdio-server.ts +\nplugin-tools-handlers.ts)\
+  \ 에 걸쳐 있으나 **단일 wiring 변경으로 함께\nresolve** 된다. tools-stdio-server.ts:17 의 setRequestHandler\
+  \ callback 을\n`async (request, extra) => handlers.callTool(request.params, extra.signal)`\n\
+  로 변경하면서 plugin-tools-handlers.ts:45 callTool 시그니처도\n`(params, signal?: AbortSignal)`\
+  \ 로 확장, L54 tool.execute 의 3번째 인자에\nsignal 전달 — 이 한 셋의 변경으로 002 가 해결. FIND-001 의\
+  \ drain 측은\n같은 tools-stdio-server.ts 의 shutdown (L30-41) 에서 (a) await close 패턴\n\
+  도입 또는 (b) in-flight Set 추적 + drain 으로 resolve. **두 fix 가 같은\n파일 (tools-stdio-server.ts)\
+  \ 의 인접 함수 본문 + plugin-tools-handlers.ts\ncallTool 시그니처 한 라인** 으로 한 PR XS-S 범위. 분리\
+  \ PR 로 처리하면\n같은 file/같은 함수를 두 번 건드리고 두 PR 모두 동일 회귀 테스트\n(실제 SDK Server + 실제 stdio\
+  \ transport + SIGTERM/cancel 시나리오) 를\n중복 구축해야 함. one-thing-per-PR 원칙은 \"MCP server\
+  \ in-flight tool call\nlifecycle handling\" 한 축으로 본다.\n\n메인테이너 시각도 동일 예상: tools-stdio-server.ts\
+  \ 의 shutdown wiring 과\nsetRequestHandler wiring 은 같은 함수 (`connectToolsMcpServerToStdio`,\n\
+  L24-48) 안에 있어 결함도 같은 함수 책임 (host lifecycle contract\nhonoring) 에 귀속된다.\n"
+proposed_title: 'fix(mcp): drain in-flight callTool on shutdown and propagate host
+  cancellation signal'
+proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
 state: pending_gatekeeper
 cross_review_metric: metrics/cross-review-CAND-026-20260514-081538.jsonl
-cross_review_decision: 'scope-down: FIND-mcp-lifecycle-001 (shutdown drain) abandon — SDK Protocol._onclose 가 transport.onclose 발화 시 _requestHandlerAbortControllers unconditional abort 호출 + protocol.js:369-372 post-handler abort check 가 응답 송신 자체 skip. drain/await close 추가 효과 미미. FIND-mcp-lifecycle-002 (RequestHandlerExtra.signal propagation) 만 단독 PR scope. plugin tool execute 시그니처가 signal 인자 미수신 다수 (memory_recall, cron-tool) — fix effective scope 는 signal-aware tool 한정. avg 0.84, critical high scope-down override.'
+cross_review_decision: 'scope-down: FIND-mcp-lifecycle-001 (shutdown drain) abandon
+  — SDK Protocol._onclose 가 transport.onclose 발화 시 _requestHandlerAbortControllers
+  unconditional abort 호출 + protocol.js:369-372 post-handler abort check 가 응답 송신 자체
+  skip. drain/await close 추가 효과 미미. FIND-mcp-lifecycle-002 (RequestHandlerExtra.signal
+  propagation) 만 단독 PR scope. plugin tool execute 시그니처가 signal 인자 미수신 다수 (memory_recall,
+  cron-tool) — fix effective scope 는 signal-aware tool 한정. avg 0.84, critical high
+  scope-down override.'
 upstream_dup_check:
-  upstream_head: af3d9333aa  # re-verified 2026-05-14: 6a41a54212→af3d9333aa diff of mcp area = 0 commits
+  upstream_head: af3d9333aa
   six_week_commits:
     tools_stdio_server_ts:
-      - 61ab68f5c9  # refactor: share MCP tools stdio server (본 패턴 도입)
+    - 61ab68f5c9
     plugin_tools_handlers_ts:
-      - 471489159b  # fix(mcp): honor plugin tool policy
-      - 0df90d9b8d  # fix: trace plugin tool factory timings
-      - e4b09e1bf3  # fix(mcp): serialize raw plugin tool results
-      - 5fa0d282a8  # fix(mcp): stringify plugin tool content safely
-      - 8f3b99c512  # fix(mcp): block owner-only tools in ACPX bridge
+    - 471489159b
+    - 0df90d9b8d
+    - e4b09e1bf3
+    - 5fa0d282a8
+    - 8f3b99c512
     plugin_tools_serve_ts:
-      - e75cd46ba6  # test: isolate plugin tools mcp handlers
-  finding: |
-    6 주 file 영역 11 commits 모두 policy / serialization / 보안 / 테스트 /
+    - e75cd46ba6
+  finding: '6 주 file 영역 11 commits 모두 policy / serialization / 보안 / 테스트 /
+
     refactor 축. in-flight drain / abort signal 전파 / await close 추가 0 건.
+
+    '
   pr_search:
-    - "plugin-tools-serve OR tools-stdio-server in:title,body"
-    - "callTool OR \"void server.close\" OR abort signal mcp in:title,body"
-    - "AbortSignal mcp plugin in:title,body"
+  - plugin-tools-serve OR tools-stdio-server in:title,body
+  - callTool OR "void server.close" OR abort signal mcp in:title,body
+  - AbortSignal mcp plugin in:title,body
   related_open_pr: null
-  related_open_pr_notes: |
-    - PR #71648 (CAND-025, mcp-memory) — channel-bridge.ts 한정 (다른 file).
-      lifecycle 셀의 두 file (tools-stdio-server.ts / plugin-tools-handlers.ts)
-      과 겹침 없음. axis 직교 (memory vs lifecycle).
-    - bundle-mcp 도메인 PR #73536 / #78160 — client-side callTool timeout 전달
-      (본 셀 server-side 와 정반대). 다른 file (src/agents/pi-bundle-mcp-*.ts).
+  related_open_pr_notes: "- PR #71648 (CAND-025, mcp-memory) — channel-bridge.ts 한정\
+    \ (다른 file).\n  lifecycle 셀의 두 file (tools-stdio-server.ts / plugin-tools-handlers.ts)\n\
+    \  과 겹침 없음. axis 직교 (memory vs lifecycle).\n- bundle-mcp 도메인 PR #73536 / #78160\
+    \ — client-side callTool timeout 전달\n  (본 셀 server-side 와 정반대). 다른 file (src/agents/pi-bundle-mcp-*.ts).\n"
   duplicate_decision: not-duplicate
   cross_refs_other_cells:
-    - CAND-025  # mcp-memory, same domain different axis (메모리 vs 라이프사이클)
+  - CAND-025
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-026-pre-20260514-093047.md
+  measurements:
+    scenario: proof-CAND-026
+    trials: 1
+    executeInvoked: 1
+    signalReceived: false
+    sameSignal: false
+  scenario: proof-CAND-026
 ---
 
 # fix(mcp): drain in-flight callTool on shutdown and propagate host cancellation signal

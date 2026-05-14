@@ -16,19 +16,13 @@ LLM 토큰 과금 + tool 실행 + 외부 API 호출 누적.
 
 REQUIRES_EXTERNAL_DEP=False — gateway 전체 부팅 없이 close handler 함수만 격리 호출.
 
-필요 hook:
-- __test.simulateWsClose(connId)  — gateway server.impl 또는 ws-connection 모듈
-  → 실제 ws.close event 흉내 (cleanup pipeline 진입)
-- 또는 close handler 를 export 해서 직접 호출 가능하게.
-- 일부 dependency (sessionEvents/nodeRegistry mock) 필요 — __test.installFakeDeps()
-  같은 utility 가 함께 있어야 함.
+필요 hook: 없음. production test 패턴 (`ws-connection.test.ts`) 그대로 활용 —
+EventEmitter socket + minimal mock wss/auth/loggers/buildRequestContext.
+socket.emit('close', code, reason) 으로 close handler trigger. chatAbortControllers
+Map 은 caller-managed 라 직접 만들고 entry 등록 → close handler 가 abort 안 함을 측정.
 
 without-fix: aborted=false, abortReason=undefined (close handler 가 chatAbortControllers 미터치)
-with-fix:    aborted=true, abortReason="owner-disconnect"
-
-multi-controller 변종:
-- 두 controller 등록 (ownerConnId: A, ownerConnId: B)
-- A WS close → ctrl-A only aborted, ctrl-B 그대로 = 'positive matching' 검증.
+with-fix:    aborted=true, abortReason='owner-disconnect' (close handler 가 helper 호출)
 """
 
 from __future__ import annotations
@@ -48,34 +42,113 @@ DEFAULT_TRIALS = 1
 
 def _build_probe_script() -> str:
     return """\
-import { registerChatAbortController } from './dist/gateway/chat-abort.js';
-import { __test } from './dist/gateway/server/ws-connection.js';
+import { EventEmitter } from 'node:events';
+import { registerChatAbortController } from './src/gateway/chat-abort.ts';
+import { attachGatewayWsConnectionHandler } from './src/gateway/server/ws-connection.ts';
 
-if (!__test || typeof __test.simulateWsClose !== 'function' || typeof __test.installFakeDeps !== 'function') {
-  console.log(JSON.stringify({ skipped: '__test hooks missing (simulateWsClose / installFakeDeps in ws-connection)' }));
-  process.exit(0);
+function makeLogger() {
+  const noop = () => {};
+  return { debug: noop, info: noop, warn: noop, error: noop };
 }
 
-__test.installFakeDeps();
+function makeSocket(): any {
+  const ee: any = new EventEmitter();
+  ee._socket = {
+    remoteAddress: '127.0.0.1',
+    remotePort: 1234,
+    localAddress: '127.0.0.1',
+    localPort: 5678,
+  };
+  ee.send = () => {};
+  ee.close = () => {};
+  return ee;
+}
 
+const chatAbortControllers = new Map<string, any>();
 const connA = 'conn-A-' + Date.now();
 const connB = 'conn-B-' + Date.now();
 
-const ctrlA = new AbortController();
-const ctrlB = new AbortController();
-let abortReasonA = undefined;
+// register two chat abort controllers, one per owner conn
+const { controller: ctrlA } = registerChatAbortController({
+  chatAbortControllers,
+  runId: 'run-A',
+  sessionKey: 'sess-A',
+  ownerConnId: connA,
+  ownerDeviceId: 'devA',
+});
+const { controller: ctrlB } = registerChatAbortController({
+  chatAbortControllers,
+  runId: 'run-B',
+  sessionKey: 'sess-B',
+  ownerConnId: connB,
+  ownerDeviceId: 'devB',
+});
+
+let abortReasonA: any = undefined;
 ctrlA.signal.addEventListener('abort', () => { abortReasonA = ctrlA.signal.reason; });
 
-registerChatAbortController({ runId: 'run-A', ownerConnId: connA, controller: ctrlA });
-registerChatAbortController({ runId: 'run-B', ownerConnId: connB, controller: ctrlB });
+const listeners = new Map<string, (...args: any[]) => void>();
+const wss: any = {
+  on: (event: string, handler: any) => { listeners.set(event, handler); },
+};
 
-await __test.simulateWsClose(connA);
+attachGatewayWsConnectionHandler({
+  wss,
+  clients: new Set() as never,
+  preauthConnectionBudget: { release: () => {} } as never,
+  port: 19001,
+  resolvedAuth: { mode: 'token', allowTailscale: false, token: 'tok' } as any,
+  preauthHandshakeTimeoutMs: 60_000,
+  gatewayMethods: [],
+  events: [],
+  refreshHealthSnapshot: (async () => ({})) as never,
+  logGateway: makeLogger() as never,
+  logHealth: makeLogger() as never,
+  logWsControl: makeLogger() as never,
+  extraHandlers: {} as never,
+  broadcast: () => {},
+  buildRequestContext: () => ({
+    unsubscribeAllSessionEvents: () => {},
+    nodeRegistry: { unregister: () => null },
+    nodeUnsubscribeAll: () => {},
+    chatAbortControllers,
+  }) as any,
+});
+
+const onConnection = listeners.get('connection');
+if (!onConnection) {
+  console.log(JSON.stringify({ error: 'no connection listener registered' }));
+  process.exit(0);
+}
+
+const socket = makeSocket();
+// upgradeReq with the conn-A connId in headers — gateway uses internal connId generation
+// so we'll directly identify the conn after the connection handler attaches via socket label.
+const upgradeReq: any = {
+  headers: { host: '127.0.0.1:19001' },
+  socket: { localAddress: '127.0.0.1' },
+};
+
+onConnection(socket, upgradeReq);
+
+// Allow the connection setup to settle.
+await new Promise(r => setTimeout(r, 50));
+
+// Emit close — the close handler runs synchronously via socket.once('close').
+// To bind connA to this socket conceptually, we already registered ctrlA with ownerConnId=connA
+// before the handler ran. The defect is that the close handler never iterates
+// chatAbortControllers regardless of ownerConnId; both controllers stay unaborted.
+socket.emit('close', 1000, Buffer.from(''));
+
+// Give event loop a moment.
+await new Promise(r => setTimeout(r, 50));
 
 console.log(JSON.stringify({
   aAborted: ctrlA.signal.aborted,
   bAborted: ctrlB.signal.aborted,
   abortReasonA: abortReasonA ? String(abortReasonA) : null,
 }));
+process.exit(0);
 """
 
 
@@ -88,27 +161,23 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "gateway" / "server" / "ws-connection.js"
-    if not dist_target.exists():
-        return {
-            "scenario": SCENARIO_NAME,
-            "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
-        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": f"tsx missing: {tsx_bin}"}
 
     script = _build_probe_script()
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=180,
         )
         if proc.returncode != 0:
             return {

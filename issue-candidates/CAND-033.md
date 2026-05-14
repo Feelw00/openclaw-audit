@@ -2,9 +2,15 @@
 candidate_id: CAND-033
 type: single
 finding_ids:
-  - FIND-auto-reply-lifecycle-001
-cluster_rationale: "단일 결함 — drain.ts:239-264 collect mode 의 auth-groups inner for loop 가 snapshot 패턴 (L221 queue.items.slice() + L223 splitCollectItemsByAuthorization) 으로 동작. 각 iteration 의 await 사이에 외부 clearSessionQueues / clearFollowupQueue 가 발생해도 inner for 본문은 pre-captured groupItems 를 계속 model 로 전달. CAND-012 (PR #68839 MERGED) 의 identity guard 는 outer finally 만 보호 — inner-loop axis 별개. /stop 부분 적용 (사용자 abort 후에도 일부 메시지 모델 전달) 으로 P2."
-proposed_title: "auto-reply/queue/drain: collect-mode inner loop ignores mid-iteration session reset"
+- FIND-auto-reply-lifecycle-001
+cluster_rationale: '단일 결함 — drain.ts:239-264 collect mode 의 auth-groups inner for
+  loop 가 snapshot 패턴 (L221 queue.items.slice() + L223 splitCollectItemsByAuthorization)
+  으로 동작. 각 iteration 의 await 사이에 외부 clearSessionQueues / clearFollowupQueue 가 발생해도
+  inner for 본문은 pre-captured groupItems 를 계속 model 로 전달. CAND-012 (PR #68839 MERGED)
+  의 identity guard 는 outer finally 만 보호 — inner-loop axis 별개. /stop 부분 적용 (사용자 abort
+  후에도 일부 메시지 모델 전달) 으로 P2.'
+proposed_title: 'auto-reply/queue/drain: collect-mode inner loop ignores mid-iteration
+  session reset'
 proposed_severity: P2
 existing_issue: null
 created_at: 2026-05-14
@@ -13,20 +19,44 @@ upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:
-    - "137d566422 fix(auto-reply): guard FOLLOWUP_QUEUES delete against late drain finally"
-    - "712644f0d9 fix(queue): preserve pending items during drains"
-    - "43d4be9027 fix(queue): split collect batches by auth context (#66024)"
-    - "8a23485472 fix(reply): preserve queue metadata after perf cherry-picks"
-    - "468c6a0101 perf(core): trim reply and agent allocation churn"
-    - "3e2bc28e51 fix: forward chat images to acp dispatch"
-  finding: "6주 drain.ts commit 8건 모두 outer guarantee / data integrity 축. inner for-loop x mid-await cancel race 0건. 137d566422 (CAND-012) 가 outer finally identity guard 만 추가했고 inner-loop axis 는 검토 범위 외였다."
-  pr_search: "gh pr list --search 'auto-reply queue drain in:title,body' → 본 file OPEN PR 없음."
+  - '137d566422 fix(auto-reply): guard FOLLOWUP_QUEUES delete against late drain finally'
+  - '712644f0d9 fix(queue): preserve pending items during drains'
+  - '43d4be9027 fix(queue): split collect batches by auth context (#66024)'
+  - '8a23485472 fix(reply): preserve queue metadata after perf cherry-picks'
+  - '468c6a0101 perf(core): trim reply and agent allocation churn'
+  - '3e2bc28e51 fix: forward chat images to acp dispatch'
+  finding: 6주 drain.ts commit 8건 모두 outer guarantee / data integrity 축. inner for-loop
+    x mid-await cancel race 0건. 137d566422 (CAND-012) 가 outer finally identity guard
+    만 추가했고 inner-loop axis 는 검토 범위 외였다.
+  pr_search: gh pr list --search 'auto-reply queue drain in:title,body' → 본 file OPEN
+    PR 없음.
   related_open_pr: null
   related_open_pr_notes: null
   duplicate_decision: not-duplicate
   cross_refs_other_cells: []
 cross_refs:
-  - CAND-012  # 같은 file 다른 axis (outer finally vs inner-loop)
+- CAND-012
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-033-pre-20260514-101425.md
+  measurements:
+    scenario: proof-CAND-033
+    trials: 3
+    trialResults:
+    - trial: 0
+      callList:
+      - X
+      - Y
+    - trial: 1
+      callList:
+      - X
+      - Y
+    - trial: 2
+      callList:
+      - X
+      - Y
+    yLeakCount: 3
+  scenario: proof-CAND-033
 ---
 
 # auto-reply/queue/drain: collect-mode inner loop ignores mid-iteration session reset

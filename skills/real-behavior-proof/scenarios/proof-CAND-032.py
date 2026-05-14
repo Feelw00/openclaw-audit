@@ -14,13 +14,13 @@ non-transient 분류 시 infra/unhandled-rejections.ts 가 process.exit(1) 가�
 - queueReplyRunMessage 호출 → 짧은 grace (200ms)
 - unhandledRejection 발사 횟수 측정
 
-REQUIRES_EXTERNAL_DEP=False.
+REQUIRES_EXTERNAL_DEP=False. tsx 로 src ts 직접 import (build 우회).
 
-필요 hook (이미 부분 존재 가능 — reply-run-registry 가 backend deps 인자로 받는 구조):
-- __test.registerRun({ runId, backend, ... }) 또는 기존 register API 사용
-- backend 객체에 queueMessage: async () => throw new Error(...)
-- queueReplyRunMessage(runId, text) 호출 (이미 export)
-- fix 자체는 1라인 .catch 부착 — without-fix 빌드도 시나리오 실행 가능.
+필요 hook (production `__testing` 은 reset 만 노출, backend injection 미존재):
+- worktree-local instrumentation: `__testing` 에 `installFakeRun(sessionId, backend)` 추가.
+- ReplyOperation 인터페이스에서 queueReplyRunMessage 가 접근하는 필드는 `.phase` 하나뿐
+  (L497-505 흐름). fake op `{ phase: 'running' }` 으로 충분.
+- backend 는 `{ queueMessage: async()=>throw, isStreaming: ()=>true }` 두 메서드만 호출됨.
 
 without-fix: unhandledCount === 1 (reject 가 .catch 없이 floating).
 with-fix:    unhandledCount === 0 (.catch 가 swallow + diag.debug).
@@ -47,26 +47,27 @@ DEFAULT_GRACE_MS = 500
 
 def _build_probe_script(*, trials: int, grace_ms: int) -> str:
     return f"""\
-import {{ queueReplyRunMessage, __test }} from './dist/auto-reply/reply/reply-run-registry.js';
+import {{ queueReplyRunMessage, __testing }} from './src/auto-reply/reply/reply-run-registry.ts';
 
-if (!__test || typeof __test.registerRunWithBackend !== 'function') {{
-  console.log(JSON.stringify({{ skipped: '__test.registerRunWithBackend hook missing (DI seam needed for fake backend)' }}));
+if (!__testing || typeof __testing.installFakeRun !== 'function') {{
+  console.log(JSON.stringify({{ skipped: '__testing.installFakeRun hook missing (instrumentation not applied)' }}));
   process.exit(0);
 }}
 
 let unhandledCount = 0;
-const rejectionListener = (err) => {{ unhandledCount++; }};
+const rejectionListener = (_err) => {{ unhandledCount++; }};
 process.on('unhandledRejection', rejectionListener);
 
 const results = [];
 for (let i = 0; i < {trials}; i++) {{
-  const runId = 'proof-run-' + i + '-' + Date.now();
+  const sessionId = 'proof-session-' + i + '-' + Date.now();
   const fakeBackend = {{
     queueMessage: async () => {{ throw new Error('probe-rejection-' + i); }},
+    isStreaming: () => true,
   }};
-  __test.registerRunWithBackend(runId, fakeBackend);
-  const queued = queueReplyRunMessage(runId, 'probe message ' + i);
-  results.push({{ runId, queued }});
+  __testing.installFakeRun(sessionId, fakeBackend);
+  const queued = queueReplyRunMessage(sessionId, 'probe message ' + i);
+  results.push({{ sessionId, queued }});
 }}
 
 await new Promise(r => setTimeout(r, {grace_ms}));
@@ -81,6 +82,35 @@ console.log(JSON.stringify({{
 """
 
 
+_INSTRUMENTATION_SRC_REL = "src/auto-reply/reply/reply-run-registry.ts"
+_INSTRUMENTATION_PATCH = """\
+  installFakeRun(sessionId: string, backend: unknown): void {
+    const sessionKey = `proof:${sessionId}`;
+    const op = { phase: 'running' as const } as unknown as ReplyOperation;
+    replyRunState.activeRunsByKey.set(sessionKey, op);
+    replyRunState.activeSessionIdsByKey.set(sessionKey, sessionId);
+    replyRunState.activeKeysBySessionId.set(sessionId, sessionKey);
+    attachedBackendByOperation.set(op, backend as never);
+  },
+"""
+
+
+def _apply_instrumentation(wt_path: Path) -> str | None:
+    """worktree-local hook 추가. 커밋 안 됨. 반환: error message or None."""
+    src = wt_path / _INSTRUMENTATION_SRC_REL
+    if not src.exists():
+        return f"instrumentation target missing: {src}"
+    content = src.read_text()
+    if "installFakeRun" in content:
+        return None  # idempotent
+    needle = "export const __testing = {"
+    if needle not in content:
+        return f"could not locate __testing export in {src}"
+    patched = content.replace(needle, needle + "\n" + _INSTRUMENTATION_PATCH, 1)
+    src.write_text(patched)
+    return None
+
+
 def run_scenario(
     *,
     node_entry: Path,
@@ -91,22 +121,25 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "auto-reply" / "reply" / "reply-run-registry.js"
-    if not dist_target.exists():
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
         return {
             "scenario": SCENARIO_NAME,
             "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
+            "error": f"tsx missing: {tsx_bin}. pnpm install 결과 확인.",
         }
+    instr_err = _apply_instrumentation(wt_path)
+    if instr_err:
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": instr_err}
 
     script = _build_probe_script(trials=trials, grace_ms=grace_ms)
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,

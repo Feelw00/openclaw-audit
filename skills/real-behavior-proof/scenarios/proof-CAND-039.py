@@ -19,17 +19,14 @@ caller 측 cancellation 통로 미보유. boot 직후 1250ms 이내 SIGTERM 시 
 
 REQUIRES_EXTERNAL_DEP=False (실제 deliveryQueue / sessionDelivery 모듈은 mock).
 
-필요 hook:
-- __test.onRecoveryAttempt = (which: 'outbound'|'session') => void
-- __test.setFakeDeliveryModule(fakeRecover)  — dynamic import 결과 inject
-- __test.markClosing()                       — isClosing 플래그 toggle
-- activateGatewayScheduledServices 가 받는 deps 일부를 fake 가능하게.
+필요 hook (worktree-local instrumentation):
+- server-runtime-services.ts 에 `__test.setRecoveryProbe({ onOutbound, onSession, skipReal })` 추가
+- recoverPendingOutboundDeliveries 와 setTimeout 콜백 시작 시점에 hook fire + skipReal 면 early return
+  (production dynamic import 우회 — instrumentation only, fix-like guard 아님)
+- 시나리오의 _apply_instrumentation 가 자동 패치
 
-without-fix: recoveryFired=true (timer 가 cancel 안 됨)
-with-fix:    recoveryFired=false (isClosing guard 또는 clearTimeout 으로 차단)
-
-추가 axis: outbound IIFE 와 session setTimeout 각각 분리 측정 가능 — 두 가지 fire 여부
-별도 reporting.
+without-fix: outboundFired=true + sessionFired=true (1250ms setTimeout 도 fire)
+with-fix:    isClosing guard 또는 timer handle 반환으로 차단 → fire 0
 """
 
 from __future__ import annotations
@@ -50,13 +47,16 @@ DEFAULT_WAIT_MS = 2_000  # > setTimeout 1250ms
 
 def _build_probe_script(*, trials: int, wait_ms: int) -> str:
     return f"""\
-import {{ activateGatewayScheduledServices, __test }} from './dist/gateway/server-runtime-services.js';
+import {{ activateGatewayScheduledServices, __test }} from './src/gateway/server-runtime-services.ts';
 
-if (!__test
-    || typeof __test.markClosing !== 'function'
-    || typeof __test.setRecoveryProbe !== 'function') {{
-  console.log(JSON.stringify({{ skipped: '__test hooks missing (markClosing / setRecoveryProbe in server-runtime-services)' }}));
+if (!__test || typeof __test.setRecoveryProbe !== 'function') {{
+  console.log(JSON.stringify({{ skipped: '__test.setRecoveryProbe hook missing (instrumentation not applied)' }}));
   process.exit(0);
+}}
+
+function noopLogger(): any {{
+  const fn = () => {{}};
+  return {{ debug: fn, info: fn, warn: fn, error: fn, child: () => noopLogger() }};
 }}
 
 const trialResults = [];
@@ -64,24 +64,30 @@ const trialResults = [];
 for (let i = 0; i < {trials}; i++) {{
   let outboundFired = false;
   let sessionFired = false;
+  __test.reset();
   __test.setRecoveryProbe({{
     onOutbound: () => {{ outboundFired = true; }},
     onSession: () => {{ sessionFired = true; }},
-  }});
-  __test.resetClosingFlag();
-
-  const handles = activateGatewayScheduledServices({{
-    isClosing: () => __test.isClosing(),
-    // 나머지 deps는 __test.installFakeDeps 가 채움 (호출자 가정)
+    skipReal: true,
   }});
 
-  // immediate close trigger — boot 직후 N ms 내 SIGTERM 모사
-  await new Promise(r => setTimeout(r, 50));
-  __test.markClosing();
-  if (handles && typeof handles.stop === 'function') {{
-    try {{ await handles.stop(); }} catch {{}}
+  try {{
+    activateGatewayScheduledServices({{
+      minimalTestGateway: false,
+      cfgAtStart: {{}} as any,
+      deps: {{}} as any,
+      sessionDeliveryRecoveryMaxEnqueuedAt: 0,
+      cron: {{ start: async () => {{}} }} as any,
+      startCron: false,
+      logCron: {{ error: () => {{}} }},
+      log: noopLogger(),
+    }});
+  }} catch (err) {{
+    trialResults.push({{ trial: i, error: String(err) }});
+    continue;
   }}
 
+  // wait past 1250ms session setTimeout
   await new Promise(r => setTimeout(r, {wait_ms}));
 
   trialResults.push({{ trial: i, outboundFired, sessionFired }});
@@ -97,7 +103,78 @@ console.log(JSON.stringify({{
   sessionCount,
   totalFired,
 }}));
+process.exit(0);
 """
+
+
+_INSTRUMENTATION_SRC_REL = "src/gateway/server-runtime-services.ts"
+_INSTRUMENTATION_PATCH = """
+
+const __testProbe: {
+  onOutbound?: () => void;
+  onSession?: () => void;
+  skipReal?: boolean;
+} = {};
+export const __test = {
+  setRecoveryProbe(p: { onOutbound?: () => void; onSession?: () => void; skipReal?: boolean }) {
+    Object.assign(__testProbe, p);
+  },
+  reset() {
+    for (const k of Object.keys(__testProbe)) {
+      delete (__testProbe as any)[k];
+    }
+  },
+};
+"""
+
+_OUTBOUND_HOOK_BEFORE = """function recoverPendingOutboundDeliveries(params: {
+  cfg: OpenClawConfig;
+  log: GatewayRuntimeServiceLogger;
+}): void {
+  void (async () => {"""
+_OUTBOUND_HOOK_AFTER = """function recoverPendingOutboundDeliveries(params: {
+  cfg: OpenClawConfig;
+  log: GatewayRuntimeServiceLogger;
+}): void {
+  __testProbe.onOutbound?.();
+  if (__testProbe.skipReal) return;
+  void (async () => {"""
+
+_SESSION_HOOK_BEFORE = """function recoverPendingSessionDeliveries(params: {
+  deps: import("../cli/deps.types.js").CliDeps;
+  log: GatewayRuntimeServiceLogger;
+  maxEnqueuedAt: number;
+}): void {
+  const timer = setTimeout(() => {
+    void (async () => {"""
+_SESSION_HOOK_AFTER = """function recoverPendingSessionDeliveries(params: {
+  deps: import("../cli/deps.types.js").CliDeps;
+  log: GatewayRuntimeServiceLogger;
+  maxEnqueuedAt: number;
+}): void {
+  const timer = setTimeout(() => {
+    __testProbe.onSession?.();
+    if (__testProbe.skipReal) return;
+    void (async () => {"""
+
+
+def _apply_instrumentation(wt_path: Path) -> str | None:
+    """worktree-local instrumentation. fix-like guard 아님 — measurement hook + skipReal early-return."""
+    src = wt_path / _INSTRUMENTATION_SRC_REL
+    if not src.exists():
+        return f"instrumentation target missing: {src}"
+    content = src.read_text()
+    if "__testProbe" in content:
+        return None  # idempotent
+    if _OUTBOUND_HOOK_BEFORE not in content:
+        return "outbound recover function signature not found (production code drift?)"
+    if _SESSION_HOOK_BEFORE not in content:
+        return "session recover function signature not found (production code drift?)"
+    content = content.replace(_OUTBOUND_HOOK_BEFORE, _OUTBOUND_HOOK_AFTER, 1)
+    content = content.replace(_SESSION_HOOK_BEFORE, _SESSION_HOOK_AFTER, 1)
+    content = content + _INSTRUMENTATION_PATCH
+    src.write_text(content)
+    return None
 
 
 def run_scenario(
@@ -110,27 +187,26 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "gateway" / "server-runtime-services.js"
-    if not dist_target.exists():
-        return {
-            "scenario": SCENARIO_NAME,
-            "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
-        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": f"tsx missing: {tsx_bin}"}
+    instr_err = _apply_instrumentation(wt_path)
+    if instr_err:
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": instr_err}
 
     script = _build_probe_script(trials=trials, wait_ms=wait_ms)
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
             text=True,
-            timeout=(wait_ms // 1000) * trials + 30,
+            timeout=(wait_ms // 1000) * trials + 120,
         )
         if proc.returncode != 0:
             return {

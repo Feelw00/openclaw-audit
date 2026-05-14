@@ -97,14 +97,31 @@ def _create_worktree(sha: str, label: str, proof_id: str) -> tuple[Path, str]:
     return wt_path, branch
 
 
-def _build_one(wt_path: Path, *, skip_install: bool = False, build_timeout: int = DEFAULT_BUILD_TIMEOUT_SEC) -> Path:
+def _build_one(
+    wt_path: Path,
+    *,
+    skip_install: bool = False,
+    skip_build: bool = False,
+    build_timeout: int = DEFAULT_BUILD_TIMEOUT_SEC,
+) -> Path:
     """pnpm install + pnpm build. node entry path 반환.
 
     skip_install=True 면 install 단계 생략 (개발 중 빠른 iteration).
+    skip_build=True 면 build 단계 생략 — 시나리오가 src ts 를 직접 import 하는 경우
+    (tsx / --experimental-strip-types) 30분 빌드 우회. install 만으로 node_modules 확보.
     pnpm 은 hoisted store 라 두 worktree 가 같은 store 공유 → install 빠름.
+
+    skip_build=True 시 entry 는 worktree root 자체 (시나리오가 `node_entry.parent` 로
+    worktree path 만 쓰는 패턴 호환). 빌드 artifact 의존 시나리오는 skip_build 와 양립 불가.
     """
     if not skip_install:
         _run(["pnpm", "install", "--frozen-lockfile"], cwd=wt_path, timeout=900)
+    if skip_build:
+        # 시나리오가 src ts 의존 — 빌드 우회. entry 는 worktree root 의 sentinel 파일.
+        sentinel = wt_path / "package.json"
+        if not sentinel.exists():
+            raise RuntimeError(f"worktree malformed: no package.json at {wt_path}")
+        return sentinel
     _run(["pnpm", "build"], cwd=wt_path, timeout=build_timeout)
     # package.json bin: openclaw → openclaw.mjs
     entry = wt_path / "openclaw.mjs"
@@ -124,10 +141,12 @@ def build_pair(
     proof_id: str | None = None,
     skip_install: bool = False,
     skip_head_install: bool = True,
+    skip_build: bool = False,
 ) -> BuildPair:
     """base/head 두 worktree 생성 + 빌드 후 반환.
 
     skip_head_install=True (default): base 가 install 후 같은 pnpm store 공유하므로 head 는 install 생략 가능.
+    skip_build=True: 시나리오가 src ts 직접 import (tsx) — build 우회.
     proof_id: 디렉터리 이름에 사용 (env_isolate 와 같은 id 권장).
     """
     pid = proof_id or secrets.token_hex(6)
@@ -135,12 +154,12 @@ def build_pair(
     print(f"[build] creating base worktree at {base_sha[:10]}", file=sys.stderr)
     base_path, base_branch = _create_worktree(base_sha, "base", pid)
     print(f"[build] base = {base_path}", file=sys.stderr)
-    base_entry = _build_one(base_path, skip_install=skip_install)
+    base_entry = _build_one(base_path, skip_install=skip_install, skip_build=skip_build)
 
     print(f"[build] creating head worktree at {head_sha[:10]}", file=sys.stderr)
     head_path, head_branch = _create_worktree(head_sha, "head", pid)
     print(f"[build] head = {head_path}", file=sys.stderr)
-    head_entry = _build_one(head_path, skip_install=skip_install or skip_head_install)
+    head_entry = _build_one(head_path, skip_install=skip_install or skip_head_install, skip_build=skip_build)
 
     return BuildPair(
         base=BuildResult(path=base_path, sha=base_sha, branch=base_branch, node_entry=base_entry),
@@ -154,15 +173,17 @@ def build_single(
     label: str = "single",
     proof_id: str | None = None,
     skip_install: bool = False,
+    skip_build: bool = False,
 ) -> BuildResult:
     """단일 빌드 (pre-sol 모드의 without-fix only).
 
     pre-sol mode 는 head 빌드 없이 base 만 (결함이 base 에 있는지 확인).
+    skip_build=True: 시나리오가 src ts 직접 import (tsx) — build 우회.
     """
     pid = proof_id or secrets.token_hex(6)
     print(f"[build] creating {label} worktree at {sha[:10]}", file=sys.stderr)
     wt_path, branch = _create_worktree(sha, label, pid)
-    entry = _build_one(wt_path, skip_install=skip_install)
+    entry = _build_one(wt_path, skip_install=skip_install, skip_build=skip_build)
     return BuildResult(path=wt_path, sha=sha, branch=branch, node_entry=entry)
 
 

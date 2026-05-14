@@ -2,9 +2,15 @@
 candidate_id: CAND-037
 type: single
 finding_ids:
-  - FIND-context-engine-lifecycle-001
-cluster_rationale: "단일 결함 — registry.ts:561-599 resolveContextEngine 의 contract validation fallback 분기 (factory throw / validation throw / contractError) 에서 이미 instantiated engine 의 dispose?.() 호출 부재. factory 가 SQLite / chokidar / HTTP keep-alive 등 native resource 셋업 시 leak. caller-side dispose (run.ts:3094 / compact.queued.ts:108/301) 는 정상 반환 engine 에만 적용 — fallback path 의 invalid engine 은 caller 도달 안 함. resolveContextEngine 내부가 유일한 cleanup 책임 지점이나 호출 부재. 다른 context-engine FIND 와 file/axis 다름."
-proposed_title: "context-engine/registry: dispose invalid engine before fallback on contract failure"
+- FIND-context-engine-lifecycle-001
+cluster_rationale: 단일 결함 — registry.ts:561-599 resolveContextEngine 의 contract validation
+  fallback 분기 (factory throw / validation throw / contractError) 에서 이미 instantiated
+  engine 의 dispose?.() 호출 부재. factory 가 SQLite / chokidar / HTTP keep-alive 등 native
+  resource 셋업 시 leak. caller-side dispose (run.ts:3094 / compact.queued.ts:108/301)
+  는 정상 반환 engine 에만 적용 — fallback path 의 invalid engine 은 caller 도달 안 함. resolveContextEngine
+  내부가 유일한 cleanup 책임 지점이나 호출 부재. 다른 context-engine FIND 와 file/axis 다름.
+proposed_title: 'context-engine/registry: dispose invalid engine before fallback on
+  contract failure'
 proposed_severity: P3
 existing_issue: null
 created_at: 2026-05-14
@@ -13,17 +19,36 @@ upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa
   six_week_commits:
-    - "2677f7cf14 fix: validate resolved context engine contracts (#63222)"
-    - "6aa4515798 fix(context-engine): gracefully degrade to legacy engine on third-party plugin resolution failure (#66930)"
-    - "263a190fc9 Context engine/plugins: accept third-party engines whose info.id differs from registered slot id (#66678)"
-    - "59d07f0ab4 fix(plugins): roll back failed register globals"
-  finding: "2677f7cf14 (#63222, 2026-04-13) 가 contract validation + graceful fallback 한 번에 도입했으나 새로 등장한 'factory 성공 후 invalid engine 인스턴스' 의 cleanup 경로는 함께 추가 안 됨. 6주 dispose 추가 PR 0건."
-  pr_search: "gh issue list --search 'context engine dispose'  / gh pr list --search 'resolveContextEngine dispose' → 0 매치. upstream 미인지 영역."
+  - '2677f7cf14 fix: validate resolved context engine contracts (#63222)'
+  - '6aa4515798 fix(context-engine): gracefully degrade to legacy engine on third-party
+    plugin resolution failure (#66930)'
+  - '263a190fc9 Context engine/plugins: accept third-party engines whose info.id differs
+    from registered slot id (#66678)'
+  - '59d07f0ab4 fix(plugins): roll back failed register globals'
+  finding: 2677f7cf14 (#63222, 2026-04-13) 가 contract validation + graceful fallback
+    한 번에 도입했으나 새로 등장한 'factory 성공 후 invalid engine 인스턴스' 의 cleanup 경로는 함께 추가 안 됨.
+    6주 dispose 추가 PR 0건.
+  pr_search: gh issue list --search 'context engine dispose'  / gh pr list --search
+    'resolveContextEngine dispose' → 0 매치. upstream 미인지 영역.
   related_open_pr: null
   related_open_pr_notes: null
   duplicate_decision: not-duplicate
   cross_refs_other_cells: []
 cross_refs: []
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-037-pre-20260514-101620.md
+  measurements:
+    scenario: proof-CAND-037
+    trials: 2
+    trialResults:
+    - branch: factory-throw
+      disposeCalls: 0
+    - branch: contract-error
+      disposeCalls: 0
+    totalDispose: 0
+    branchesWithDispose: 0
+  scenario: proof-CAND-037
 ---
 
 # context-engine/registry: dispose invalid engine before fallback on contract failure

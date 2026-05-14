@@ -16,16 +16,13 @@ factory 가 SQLite/chokidar/HTTP keep-alive 등 native resource 셋업 시 leak.
 
 REQUIRES_EXTERNAL_DEP=False.
 
-필요 hook (config plugins.slots.contextEngine override):
-- __test.installContextEnginePluginSlot({ id, factory })  — 또는 config builder
-- 기존 plugin loader 우회 (test seam).
-- without-fix 단계도 hook 자체는 fix-orthogonal. fix 는 dispose() 호출 추가뿐.
+필요 hook: 없음. production 의 registerContextEngine(id, factory) + resolveContextEngine(config) public.
+legacy engine 은 './src/context-engine/legacy.registration.ts' side-effect import 으로 자동 등록.
+tsx 로 src ts 직접 실행 (--skip-build).
 
-without-fix: disposeCalledCount === 0 (fallback path 가 engine 인스턴스 그냥 버림 = leak)
-with-fix:    disposeCalledCount === 1 (세 fallback 분기 모두 dispose 호출 추가)
-
-three fallback branches 다 측정 가능하면 더 robust — factory-throw / validation-throw / contract-error
-세 트라이얼.
+without-fix: contract-error branch 에서 instantiated engine 의 dispose 호출 안 됨 (disposeCalls=0)
+with-fix:    contract-error branch dispose 호출 (disposeCalls=1)
+factory-throw branch 는 instance 없음 — both builds 모두 dispose=0 (대조군).
 """
 
 from __future__ import annotations
@@ -40,59 +37,39 @@ from typing import Any
 
 REQUIRES_EXTERNAL_DEP = False
 SCENARIO_NAME = "proof-CAND-037"
-DEFAULT_TRIALS = 3  # three fallback branches (factory-throw / validation-throw / contract-error)
+DEFAULT_TRIALS = 2  # factory-throw (control) + contract-error (defect axis)
 
 
 def _build_probe_script() -> str:
     return """\
-import { resolveContextEngine, __test } from './dist/context-engine/registry.js';
-
-if (!__test || typeof __test.installContextEnginePluginSlot !== 'function') {
-  console.log(JSON.stringify({ skipped: '__test.installContextEnginePluginSlot hook missing (plugin slot DI seam needed)' }));
-  process.exit(0);
-}
+// legacy engine side-effect registration must run before resolve.
+import './src/context-engine/legacy.registration.ts';
+import { registerContextEngine, resolveContextEngine } from './src/context-engine/registry.ts';
 
 const trialResults = [];
 
-// Trial 1: factory throws — engine 인스턴스 생성 안 됨 → dispose 대상 없음 (expected dispose = 0 both)
+// Trial 1: factory throws — no instance produced; dispose count 0 both builds (control).
 {
   let disposeCalls = 0;
-  __test.installContextEnginePluginSlot({
-    id: 'probe-factory-throw',
-    factory: async () => { throw new Error('factory-throw'); },
-  });
-  try { await resolveContextEngine({ slotId: 'probe-factory-throw' }); } catch {}
+  registerContextEngine('probe-factory-throw', async () => { throw new Error('factory-throw'); });
+  try {
+    await resolveContextEngine({ plugins: { slots: { contextEngine: 'probe-factory-throw' } } } as any);
+  } catch {}
   trialResults.push({ branch: 'factory-throw', disposeCalls });
 }
 
-// Trial 2: factory returns engine, then validation throws
+// Trial 2: factory returns engine missing required methods → contract error → fallback
+// without-fix discards the instantiated engine; with-fix calls engine.dispose() first.
 {
   let disposeCalls = 0;
-  __test.installContextEnginePluginSlot({
-    id: 'probe-validation-throw',
-    factory: async () => ({
-      id: 'probe-validation-throw',
-      compact: async () => { throw new Error('contract-validation-throw'); },
-      dispose: async () => { disposeCalls++; },
-    }),
-    validateOnCreate: true,
-  });
-  try { await resolveContextEngine({ slotId: 'probe-validation-throw' }); } catch {}
-  trialResults.push({ branch: 'validation-throw', disposeCalls });
-}
-
-// Trial 3: factory returns engine, contract describer returns non-null error string
-{
-  let disposeCalls = 0;
-  __test.installContextEnginePluginSlot({
-    id: 'probe-contract-error',
-    factory: async () => ({
-      id: 'probe-contract-error',
-      // compact missing — describeResolvedContextEngineContractError 가 contract violation 보고
-      dispose: async () => { disposeCalls++; },
-    }),
-  });
-  try { await resolveContextEngine({ slotId: 'probe-contract-error' }); } catch {}
+  registerContextEngine('probe-contract-error', async () => ({
+    info: { id: 'probe', name: 'probe' },
+    // ingest / assemble / compact intentionally missing
+    dispose: async () => { disposeCalls++; },
+  } as any));
+  try {
+    await resolveContextEngine({ plugins: { slots: { contextEngine: 'probe-contract-error' } } } as any);
+  } catch {}
   trialResults.push({ branch: 'contract-error', disposeCalls });
 }
 
@@ -100,11 +77,12 @@ const totalDispose = trialResults.reduce((s, t) => s + t.disposeCalls, 0);
 const branchesWithDispose = trialResults.filter(t => t.branch !== 'factory-throw' && t.disposeCalls > 0).length;
 
 console.log(JSON.stringify({
-  trials: 3,
+  trials: 2,
   trialResults,
   totalDispose,
   branchesWithDispose,
 }));
+process.exit(0);
 """
 
 
@@ -117,27 +95,23 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "context-engine" / "registry.js"
-    if not dist_target.exists():
-        return {
-            "scenario": SCENARIO_NAME,
-            "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
-        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": f"tsx missing: {tsx_bin}"}
 
     script = _build_probe_script()
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=120,
         )
         if proc.returncode != 0:
             return {

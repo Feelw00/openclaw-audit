@@ -22,12 +22,15 @@ inner exec-approval-channel-runtime.ts:393-415 spawn detached + stop() inflight 
 
 REQUIRES_EXTERNAL_DEP=False.
 
-필요 hook:
-- __test.peekActiveEntriesSize(handler)  — closure 의 activeEntries Map 외부 노출
-- __test.installFakeTransport(handler, transport)  — capability deps inject
+필요 hook: 없음. createChannelApprovalHandlerFromCapability 가 production export.
+nativeRuntime stub 은 production test-helpers 의 패턴 그대로 직접 인라인 (vitest 의존 회피).
+handler 의 entry methods: handleRequested(req) + stop(). unbindPending 호출 횟수가
+production-observable measurement — closure-private activeEntries 직접 접근 불필요.
 
-without-fix: unbindCalled=0, mapSize=1 (deliverTarget 가 다시 set 한 wrapped entry. native binding orphan.)
-with-fix:    unbindCalled=1 (stopped flag check → native cleanup), mapSize=0 (wrapped 미등록)
+without-fix: stop() 시점 activeEntries 비어있음 + deliver resume 후 wrapped 등록 →
+              unbindPending 미호출 (native binding orphan).
+with-fix:    stop() 가 deliver resume 까지 await 하거나 stopped flag check 추가 →
+              unbindPending 호출됨.
 
 추가 axis (cross-review caveat): inner exec-approval-channel-runtime.ts stop() 측 fix 가
 함께 적용된 빌드에서 spawn detached promise 가 stop()await 됐는지 측정. probe 별도
@@ -51,55 +54,95 @@ DEFAULT_TRIALS = 5
 
 def _build_probe_script(*, trials: int) -> str:
     return f"""\
-import {{ createChannelApprovalHandlerFromCapability, __test }} from './dist/infra/approval-handler-runtime.js';
+import {{ createChannelApprovalHandlerFromCapability }} from './src/infra/approval-handler-runtime.ts';
 
-if (!__test
-    || typeof __test.installFakeTransport !== 'function'
-    || typeof __test.peekActiveEntriesSize !== 'function') {{
-  console.log(JSON.stringify({{ skipped: '__test hooks missing (installFakeTransport / peekActiveEntriesSize in approval-handler-runtime)' }}));
-  process.exit(0);
+function makeNativeRuntime(opts: any) {{
+  return {{
+    resolveApprovalKind: opts.resolveApprovalKind ?? (() => 'plugin'),
+    availability: {{
+      isConfigured: () => true,
+      shouldHandle: () => true,
+    }},
+    presentation: {{
+      buildPendingPayload: async () => ({{ text: 'pending' }}),
+      buildResolvedResult: () => undefined,
+      buildExpiredResult: () => undefined,
+    }},
+    transport: {{
+      prepareTarget: opts.prepareTarget ?? (async () => ({{
+        dedupeKey: 'origin-chat',
+        target: {{ to: 'origin-chat' }},
+      }})),
+      deliverPending: opts.deliverPending,
+    }},
+    interactions: {{
+      bindPending: opts.bindPending ?? (async () => ({{ bindingId: 'b' }})),
+      unbindPending: opts.unbindPending,
+    }},
+  }};
 }}
 
 const trialResults = [];
 
 for (let i = 0; i < {trials}; i++) {{
-  let releaseDeliver;
+  let releaseDeliver: any;
   const deliverGate = new Promise(r => {{ releaseDeliver = r; }});
 
   let unbindCalled = 0;
-  const fakeTransport = {{
-    deliverPending: async () => {{ await deliverGate; return {{ token: 'probe-token' }}; }},
-    bindPending: async () => {{ return {{ binding: 'probe-binding' }}; }},
-    unbindPending: () => {{ unbindCalled++; }},
+  const deliverPending = async () => {{
+    await deliverGate;
+    return {{ messageId: 'probe-' + i }};
+  }};
+  const unbindPending = () => {{ unbindCalled++; }};
+
+  const nativeRuntime = makeNativeRuntime({{
+    resolveApprovalKind: () => 'plugin',
+    deliverPending,
+    unbindPending,
+  }});
+
+  const handler: any = await createChannelApprovalHandlerFromCapability({{
+    capability: {{ nativeRuntime }} as any,
+    label: 'probe',
+    clientDisplayName: 'probe',
+    channel: 'test',
+    channelLabel: 'Test',
+    cfg: {{ channels: {{}} }} as any,
+  }});
+
+  if (!handler) {{
+    trialResults.push({{ trial: i, error: 'handler null' }});
+    continue;
+  }}
+
+  const request: any = {{
+    id: 'req-' + i,
+    expiresAtMs: Date.now() + 60000,
+    request: {{ turnSourceChannel: 'test', turnSourceTo: 'origin-chat' }},
+    createdAtMs: Date.now(),
   }};
 
-  const handler = createChannelApprovalHandlerFromCapability({{ /* capability shape from existing tests */ }});
-  __test.installFakeTransport(handler, fakeTransport);
-
-  const requestId = 'req-' + i;
-  const deliverPromise = handler.deliverTarget({{ id: requestId }});
-
-  await new Promise(r => setTimeout(r, 50));
-  if (typeof handler.onStopped === 'function') {{
-    handler.onStopped();
-  }} else if (typeof handler.__onStopped === 'function') {{
-    handler.__onStopped();
-  }}
+  const dispatchPromise = handler.handleRequested(request);
+  await new Promise(r => setTimeout(r, 50));  // let deliverPending enter the park
+  const stopPromise = handler.stop();
   releaseDeliver();
-  try {{ await deliverPromise; }} catch {{}}
+  try {{ await dispatchPromise; }} catch {{}}
+  try {{ await stopPromise; }} catch {{}}
 
-  const mapSize = __test.peekActiveEntriesSize(handler);
-  trialResults.push({{ trial: i, requestId, unbindCalled, mapSize }});
+  // mapSize 직접 측정 불가 — unbindCalled 가 production-observable proxy.
+  // without-fix: stop 시점 activeEntries 비어있음 + deliver resume 후 set → unbindPending=0 = leak.
+  trialResults.push({{ trial: i, unbindCalled, leak: unbindCalled === 0 }});
 }}
 
-const totalUnbind = trialResults.reduce((s, t) => s + t.unbindCalled, 0);
-const totalLeak = trialResults.filter(t => t.mapSize > 0).length;
+const totalUnbind = trialResults.reduce((s, t) => s + (t.unbindCalled ?? 0), 0);
+const totalLeak = trialResults.filter(t => t.leak === true).length;
 console.log(JSON.stringify({{
   trials: {trials},
   trialResults,
   totalUnbind,
   totalLeak,
 }}));
+process.exit(0);
 """
 
 
@@ -112,27 +155,23 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "infra" / "approval-handler-runtime.js"
-    if not dist_target.exists():
-        return {
-            "scenario": SCENARIO_NAME,
-            "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
-        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": f"tsx missing: {tsx_bin}"}
 
     script = _build_probe_script(trials=trials)
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=180,
         )
         if proc.returncode != 0:
             return {

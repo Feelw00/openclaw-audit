@@ -16,14 +16,13 @@ marker 가 잔존 (cleanup==='keep' marker 는 5분간 유지 정책과 맞물�
 
 REQUIRES_EXTERNAL_DEP=False.
 
-필요 hook (instrumentation, fix 아님):
-- src/agents/subagent-registry.ts 또는 run-manager.ts 에 __test export 추가:
-  - __test.pendingLifecycleTimeoutByRunId (또는 size getter)
-  - __test.pendingLifecycleErrorByRunId
-  - __test.schedulePendingLifecycleTimeout(runId, ms)
-  - __test.schedulePendingLifecycleError(runId, err)
-  - __test.markSubagentRunTerminated(runId)  (controller wrapper)
-- production 코드 변경 없이 export 만 추가 (test-only, worktree-local).
+필요 hook (worktree-local instrumentation):
+- src/agents/subagent-registry.ts 에 `export const __test = {...}` 추가.
+  - getPendingLifecycleTimeoutCount(): number
+  - getPendingLifecycleErrorCount(): number
+  - installRunAndScheduleTimeout(runId): subagentRuns.set + schedulePendingLifecycleTimeout
+- production 코드 무변경. instrumentation 만 (시나리오 _apply_instrumentation 가 자동 패치).
+- tsx 로 src ts 직접 실행 (build 우회, --skip-build).
 
 without-fix: markTerminated 후 pendingLifecycleTimeoutByRunId.size === 1 (marker 잔존).
 with-fix:    markTerminated 후 pendingLifecycleTimeoutByRunId.size === 0 (대칭 clear).
@@ -46,31 +45,65 @@ DEFAULT_TRIALS = 1
 
 def _build_probe_script() -> str:
     return """\
-import { __test } from './dist/agents/subagent-registry.js';
+import { markSubagentRunTerminated, __test } from './src/agents/subagent-registry.ts';
 
-if (!__test || typeof __test.schedulePendingLifecycleTimeout !== 'function'
-    || !__test.pendingLifecycleTimeoutByRunId
-    || typeof __test.markSubagentRunTerminated !== 'function') {
-  console.log(JSON.stringify({ skipped: '__test hooks missing (need pendingLifecycleTimeoutByRunId / schedulePendingLifecycleTimeout / markSubagentRunTerminated)' }));
+if (!__test || typeof __test.installRunAndScheduleTimeout !== 'function'
+    || typeof __test.getPendingLifecycleTimeoutCount !== 'function') {
+  console.log(JSON.stringify({ skipped: '__test hooks missing (instrumentation not applied)' }));
   process.exit(0);
 }
 
 const runId = 'proof-' + Date.now();
-__test.schedulePendingLifecycleTimeout(runId, 15_000);
-if (typeof __test.schedulePendingLifecycleError === 'function') {
-  __test.schedulePendingLifecycleError(runId, new Error('probe-aborted'));
-}
+__test.installRunAndScheduleTimeout(runId);
 
-const timeoutBefore = __test.pendingLifecycleTimeoutByRunId.size;
-const errorBefore = __test.pendingLifecycleErrorByRunId?.size ?? -1;
+const timeoutBefore = __test.getPendingLifecycleTimeoutCount();
+const errorBefore = __test.getPendingLifecycleErrorCount();
 
-__test.markSubagentRunTerminated(runId);
+const updated = markSubagentRunTerminated({ runId, reason: 'probe-kill' });
 
-const timeoutAfter = __test.pendingLifecycleTimeoutByRunId.size;
-const errorAfter = __test.pendingLifecycleErrorByRunId?.size ?? -1;
+const timeoutAfter = __test.getPendingLifecycleTimeoutCount();
+const errorAfter = __test.getPendingLifecycleErrorCount();
 
-console.log(JSON.stringify({ runId, timeoutBefore, timeoutAfter, errorBefore, errorAfter }));
+console.log(JSON.stringify({ runId, updated, timeoutBefore, timeoutAfter, errorBefore, errorAfter }));
+// markSubagentRunTerminated may register lifecycle hooks / background tasks that keep
+// the event loop alive. Probe is single-shot — force exit to avoid hang under tsx.
+process.exit(0);
 """
+
+
+_INSTRUMENTATION_SRC_REL = "src/agents/subagent-registry.ts"
+_INSTRUMENTATION_PATCH = """
+
+export const __test = {
+  getPendingLifecycleTimeoutCount(): number {
+    return pendingLifecycleTimeoutByRunId.size;
+  },
+  getPendingLifecycleErrorCount(): number {
+    return pendingLifecycleErrorByRunId.size;
+  },
+  installRunAndScheduleTimeout(runId: string): void {
+    const now = Date.now();
+    subagentRuns.set(runId, {
+      runId,
+      childSessionKey: `proof:${runId}`,
+      startedAt: now,
+    } as never);
+    schedulePendingLifecycleTimeout({ runId, endedAt: now });
+  },
+};
+"""
+
+
+def _apply_instrumentation(wt_path: Path) -> str | None:
+    """worktree-local hook 추가. 커밋 안 됨. idempotent."""
+    src = wt_path / _INSTRUMENTATION_SRC_REL
+    if not src.exists():
+        return f"instrumentation target missing: {src}"
+    content = src.read_text()
+    if "__test = {" in content and "getPendingLifecycleTimeoutCount" in content:
+        return None
+    src.write_text(content + _INSTRUMENTATION_PATCH)
+    return None
 
 
 def run_scenario(
@@ -82,27 +115,26 @@ def run_scenario(
     **kwargs: Any,
 ) -> dict[str, Any]:
     wt_path = node_entry.parent
-    dist_target = wt_path / "dist" / "agents" / "subagent-registry.js"
-    if not dist_target.exists():
-        return {
-            "scenario": SCENARIO_NAME,
-            "trials": 0,
-            "error": f"build artifact missing: {dist_target}.",
-        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": f"tsx missing: {tsx_bin}"}
+    instr_err = _apply_instrumentation(wt_path)
+    if instr_err:
+        return {"scenario": SCENARIO_NAME, "trials": 0, "error": instr_err}
 
     script = _build_probe_script()
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=180,
         )
         if proc.returncode != 0:
             return {

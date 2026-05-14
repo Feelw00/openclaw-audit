@@ -8,19 +8,24 @@ tools-stdio-server.ts:17 의 setRequestHandler callback 이 두 번째 인자 ex
 또는 transport close 를 발사해도 in-flight tool.execute 가 abort 신호 못 받음.
 
 원리:
-- worktree 의 dist/mcp/plugin-tools-handlers.js 에서 callTool 함수 직접 import
-- toolRegistry mock 으로 probe tool 1개 등록 (execute 콜백이 4번째 인자 signal 을 캡처)
-- AbortSignal 생성 후 callTool({name: 'probe', arguments: {}}, signal) 호출
+- worktree 의 dist/mcp/plugin-tools-handlers.js 에서 createPluginToolsMcpHandlers factory import
+- probe tool 1개 (execute 가 3번째 인자 signal 을 캡처) 로 handlers 초기화
+- AbortSignal 생성 후 handlers.callTool({name: 'probe', arguments: {}}, ctrl.signal) 호출
+  (현재 production callTool 시그니처는 (params) 만 받으므로 second arg 무시됨)
 - probe tool 의 execute 가 받은 signal 이 caller signal 과 동일 reference 인가 측정
 
 REQUIRES_EXTERNAL_DEP=False (MCP SDK 인스턴스/transport 없이 callTool 함수 단위 측정).
 
-필요 hook (이미 production 코드에 존재):
-- plugin-tools-handlers.ts 의 callTool export. 4번째 인자 시그니처는 fix 의 일부.
-- toolRegistry deps interface 노출 또는 module 내 setter (__test hook 추가 필요할 수 있음).
+필요 hook: 없음. production 의 `createPluginToolsMcpHandlers` factory export 가 그대로 사용
+가능하므로 worktree-local instrumentation 불필요. wrapToolWithBeforeToolCallHook 은 signal 인자를
+transparent forward 하므로 측정 정확도에 영향 없음 (`pi-tools.before-tool-call.ts:673,746` 확인).
 
-without-fix: callTool 시그니처가 (params) 만 받음 → tool.execute 의 4번째 인자 undefined → signalReceived=false.
-with-fix:    callTool (params, signal) → tool.execute(id, params, signal) → signalReceived=true.
+빌드 우회: harness `--skip-build` 사용. probe 가 src ts 를 직접 import (tsx 트랜스파일).
+30분 pnpm build 회피. pnpm install 만 필요 (5min). tsdown bundle 출력은 entry-only 라
+plugin-tools-handlers.js 가 plugin-tools-serve.js 내부에 inline 되어 import 불가 — src ts 경유 필수.
+
+without-fix: handlers.callTool(params) 시그니처 → tool.execute(id, params, undefined) → signalReceived=false.
+with-fix:    handlers.callTool(params, signal) → tool.execute(id, params, signal) → signalReceived=true + sameSignal=true.
 
 caveat: handlers.callTool 시그니처 변경 자체가 fix 의 1차 surface. without-fix 빌드에선
 시나리오의 callTool(params, signal) 호출이 signal 인자를 무시할 뿐 throw 안 함 — 측정은
@@ -44,17 +49,16 @@ DEFAULT_TRIALS = 1
 
 def _build_probe_script() -> str:
     return """\
-import { callTool, __test } from './dist/mcp/plugin-tools-handlers.js';
+import { createPluginToolsMcpHandlers } from './src/mcp/plugin-tools-handlers.ts';
 
 const ctrl = new AbortController();
 let observedSignal = undefined;
 let executeInvoked = 0;
 
 const probeTool = {
-  id: 'probe-tool',
   name: 'probe',
   description: 'CAND-026 signal propagation probe',
-  inputSchema: { type: 'object' },
+  parameters: { type: 'object', properties: {} },
   execute: async (_id, _params, signal) => {
     executeInvoked++;
     observedSignal = signal;
@@ -62,15 +66,18 @@ const probeTool = {
   },
 };
 
-if (typeof __test?.setToolRegistry === 'function') {
-  __test.setToolRegistry({ list: () => [probeTool], find: (n) => n === 'probe' ? probeTool : null });
-} else {
-  console.log(JSON.stringify({ skipped: '__test.setToolRegistry hook missing in build' }));
+let handlers;
+try {
+  handlers = createPluginToolsMcpHandlers([probeTool]);
+} catch (err) {
+  console.log(JSON.stringify({ skipped: `createPluginToolsMcpHandlers threw: ${String(err)}` }));
   process.exit(0);
 }
 
 try {
-  await callTool({ name: 'probe', arguments: {} }, ctrl.signal);
+  // second arg `ctrl.signal` is intentional — without-fix build ignores it,
+  // with-fix build propagates it. Measurement is single-binary: did execute receive signal?
+  await handlers.callTool({ name: 'probe', arguments: {} }, ctrl.signal);
 } catch (err) {
   console.log(JSON.stringify({ error: String(err), executeInvoked }));
   process.exit(0);
@@ -90,23 +97,32 @@ def run_scenario(
     trials: int = DEFAULT_TRIALS,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    wt_path = node_entry.parent
-    dist_handlers = wt_path / "dist" / "mcp" / "plugin-tools-handlers.js"
-    if not dist_handlers.exists():
+    # skip_build 시 node_entry 는 worktree/package.json sentinel.
+    wt_path = node_entry.parent if node_entry.name == "package.json" else node_entry.parent
+    src_handlers = wt_path / "src" / "mcp" / "plugin-tools-handlers.ts"
+    if not src_handlers.exists():
         return {
             "scenario": SCENARIO_NAME,
             "trials": 0,
-            "error": f"build artifact missing: {dist_handlers}. pnpm build 결과 확인.",
+            "error": f"src missing: {src_handlers}. worktree 생성 결과 확인.",
+        }
+    tsx_bin = wt_path / "node_modules" / ".bin" / "tsx"
+    if not tsx_bin.exists():
+        return {
+            "scenario": SCENARIO_NAME,
+            "trials": 0,
+            "error": f"tsx missing: {tsx_bin}. pnpm install 결과 확인.",
         }
 
     script = _build_probe_script()
-    with tempfile.NamedTemporaryFile(suffix=".mjs", mode="w", delete=False, dir=str(wt_path)) as f:
+    # tsx 는 .ts 확장자 우대 (suffix=".mts" 도 OK 이지만 .ts 가 가장 호환).
+    with tempfile.NamedTemporaryFile(suffix=".ts", mode="w", delete=False, dir=str(wt_path)) as f:
         f.write(script)
         script_path = f.name
 
     try:
         proc = subprocess.run(
-            ["node", script_path],
+            [str(tsx_bin), script_path],
             cwd=str(wt_path),
             env=env,
             capture_output=True,
