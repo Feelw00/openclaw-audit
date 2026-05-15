@@ -2008,7 +2008,7 @@ items:
     updated_at: '2026-05-14T10:16:20+00:00'
   CAND-038:
     kind: cand
-    state: proof-collected-pre
+    state: proof-blocked-pre
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2020,11 +2020,19 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-038 mode=pre-sol
       at: '2026-05-14T10:23:53+00:00'
+    - from: proof-collected-pre
+      to: proof-blocked-pre
+      actor: real-behavior-proof
+      reason: 'scenario=proof-CAND-038-e2e measurements={''scenario'': ''proof-CAND-038-e2e'',
+        ''trials'': 0, ''e2e_attempt'': True, ''blocked_reason'': ''audit-side infrastructure
+        missing (device pairing / pending state injection / native runtime stub) —
+        multi-session work'', ''next_session'': ''gateway-e2e.md''}'
+      at: '2026-05-15T05:22:53+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-14T10:23:53+00:00'
+    updated_at: '2026-05-15T05:22:53+00:00'
   CAND-039:
     kind: cand
-    state: proof-collected-pre
+    state: proof-blocked-pre
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2036,11 +2044,19 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-039 mode=pre-sol
       at: '2026-05-14T10:26:55+00:00'
+    - from: proof-collected-pre
+      to: proof-blocked-pre
+      actor: real-behavior-proof
+      reason: 'scenario=proof-CAND-039-e2e measurements={''scenario'': ''proof-CAND-039-e2e'',
+        ''trials'': 0, ''e2e_attempt'': True, ''blocked_reason'': ''audit-side infrastructure
+        missing (device pairing / pending state injection / native runtime stub) —
+        multi-session work'', ''next_session'': ''gateway-e2e.md''}'
+      at: '2026-05-15T05:22:53+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-14T10:26:55+00:00'
+    updated_at: '2026-05-15T05:22:53+00:00'
   CAND-040:
     kind: cand
-    state: proof-collected-pre
+    state: proof-blocked-pre
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2052,8 +2068,16 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-040 mode=pre-sol
       at: '2026-05-14T10:20:41+00:00'
+    - from: proof-collected-pre
+      to: proof-blocked-pre
+      actor: real-behavior-proof
+      reason: 'scenario=proof-CAND-040-e2e measurements={''scenario'': ''proof-CAND-040-e2e'',
+        ''trials'': 0, ''e2e_attempt'': True, ''blocked_reason'': ''audit-side infrastructure
+        missing (device pairing / pending state injection / native runtime stub) —
+        multi-session work'', ''next_session'': ''gateway-e2e.md''}'
+      at: '2026-05-15T05:22:53+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-14T10:20:41+00:00'
+    updated_at: '2026-05-15T05:22:53+00:00'
   CAND-041:
     kind: candidate
     state: pending_gatekeeper

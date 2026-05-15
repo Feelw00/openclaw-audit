@@ -36,15 +36,16 @@ cross_refs:
 - CAND-017
 - CAND-018
 pre_sol_proof:
-  status: collected
-  proof_record: proofs/PROOF-CAND-038-pre-20260514-102353.md
+  status: blocked-external-dep
+  proof_record: proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md
   measurements:
-    scenario: proof-CAND-038
-    trials: 1
-    aAborted: false
-    bAborted: false
-    abortReasonA: null
-  scenario: proof-CAND-038
+    scenario: proof-CAND-038-e2e
+    trials: 0
+    e2e_attempt: true
+    blocked_reason: audit-side infrastructure missing (device pairing / pending state
+      injection / native runtime stub) — multi-session work
+    next_session: gateway-e2e.md
+  scenario: proof-CAND-038-e2e
 ---
 
 # gateway/server: abort chat runs owned by disconnecting WS connection

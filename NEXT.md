@@ -127,6 +127,25 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #         인프라 ready: isolated_home + gateway loopback + auth=none + mock_llm + audit ws probe.
 #         1차 실행은 SUT spawn 명령 정정 (`gateway start --auth none`) 까지. 디버깅 다음 세션.
 #
+#   - **2026-05-15 (이 세션) CAND-038/039/040 1차 e2e 시도 결과 — 모두 `blocked-external-dep`**:
+#     SUT spawn 명령 정정 완료 (`gateway run --auth none --bind loopback --port <p> --allow-unconfigured`,
+#     1.6s ready). audit ws connect.challenge 수신 + connect frame schema (PROTOCOL_VERSION=4 +
+#     ConnectParamsSchema 정확형) 까지 진행. 그 후 세 CAND 모두 audit-side infrastructure 신규
+#     작업 필요 — multi-session size (telegram-e2e.md 패턴 동등).
+#       • CAND-038: device pairing helper (ed25519 keypair + state dir 3 file, 참고
+#         `scripts/e2e/lib/upgrade-survivor/update-restart-auth.sh:140-225`) + audit ws client
+#         + mock-openai disconnect detection + chat workflow chain 검증. cli mode connect 시
+#         `NOT_PAIRED: device identity required` (auth.mode=none 인데도 device 필수). 작업량 ~5h.
+#       • CAND-039: pending state pre-injection (delivery-queue + restart-sentinel) + close
+#         prelude 지연 trigger (현 graceful 46ms 라 setTimeout 1250 fire window 미발생) +
+#         observable 강화 (recovery subsystem log). 작업량 ~4.5h.
+#       • CAND-040: native runtime stub + capability 등록 path + approval trigger +
+#         activeEntries 측정 sideband. 작업량 ~5.5h.
+#     영속화: `proofs/PROOF-CAND-{038,039,040}-pre-20260515-052108-e2e-blocked.md` 3건 + CAND
+#     frontmatter `pre_sol_proof.status=blocked-external-dep` 갱신 + state transition
+#     `proof-blocked-pre` 기록. 상세 다음 세션 작업 분할 → **`gateway-e2e.md`**
+#     (telegram-e2e.md 패턴). 이 파일은 CAND-038/039/040 e2e 작업 시에만 읽어라.
+#
 #   - **2026-05-15 후속 결정**: 사용자가 "외부 환경 set-up 후 재시도" 선택 → telegram
 #     인프라 구축 진행. CAND-031/032/033 (channel 의존) 의 driver 자동화 인프라 완료:
 #     telegram bot 2개 + group + Telethon user account driver + audit-side wrapper.
@@ -164,9 +183,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   | CAND-032 | ❌ e2e unreproducible (2026-05-15) | reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS 가 dominate). 3 attempt 시도 후 abandon. | abandoned |
 #   | CAND-033 | ❌ multi-account 필수 (2026-05-15) | drain.ts:89 `resolveFollowupAuthorizationKey` 가 senderId/senderE164/senderIsOwner/execOverrides/bashElevated 만 봄. single telegram user account 메시지는 sender 필드 모두 동일 → authGroups 1개 → 결함 미발현. execOverrides/bashElevated 도 메시지별 변화 path 없음. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능 | blocked-external-dep (multi-account 인프라 부재) |
 #   | CAND-037 | ❌ blocked-module-level (2026-05-15) | context-engine plugin loader. factory inject + dispose 측정에 instrumentation 의존. production binary 실행 path 없음 + 외부 환경 무관. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
-#   | CAND-038 | ❌ gateway 부팅 | gateway server + WebSocketServer 부팅. LLM 토큰 의존 가능 + 실 ws 클라이언트 | 외부 환경 필요 |
-#   | CAND-039 | ❌ gateway 부팅 | gateway full bootstrap + SIGTERM. 동일 | 외부 환경 필요 |
-#   | CAND-040 | ❌ gateway 부팅 | approval handler — gateway 부팅 + 실 approval flow | 외부 환경 필요 |
+#   | CAND-038 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅ + connect handshake schema 확인 ✅. cli mode connect 시 `NOT_PAIRED: device identity required`. device pairing helper + chat workflow chain + mock LLM disconnect detection + 두 ws probe 필요. 작업량 ~5h. | gateway-e2e.md §CAND-038 |
+#   | CAND-039 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅ + 정상/즉시-SIGTERM 시도 ✅. close prelude 46ms 라 setTimeout 1250 fire window 미발생. pending state pre-injection + close 지연 trigger + observable 강화 필요. 작업량 ~4.5h. | gateway-e2e.md §CAND-039 |
+#   | CAND-040 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅. native runtime stub + capability 등록 path + approval trigger + activeEntries 측정 sideband 필요. 작업량 ~5.5h. | gateway-e2e.md §CAND-040 |
 #
 #   **분류 키**:
 #   - ✅ wire-level: 외부 의존 0 + production binary spawn + 실 wire 통과 (CAND-026 만 해당)
@@ -174,18 +193,13 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     하지만 wire-level 가치 unit-level 과 거의 동일 (CAND-030, CAND-037)
 #   - ❌ 외부 환경 필요: cli/gateway 부팅 + 외부 메신저/LLM/OAuth/multi-account user 환경
 #
-#   ### 결정 사항 (사용자 판단 대기)
+#   ### 결정 사항 (사용자 결정 완료 — 2026-05-15)
 #
-#   1. **8 CAND unit-level final 채택** — 2026-05-14 의 9/9 collected 결과를 SOL 작성 진입의
-#      최종 evidence 로 인정. CAL-003 위험 인정하지만 외부 환경 set-up cost (CAND 당 수 시간
-#      + OAuth/LLM token 환경) 가 추가 검증 가치 대비 비효율. 다만 PR 발행 시 evidence 라벨은
-#      `proof: supplied` 만 가능 (`proof: sufficient` 미부여) — wire-level 검증 안 했음 표시.
-#   2. **외부 환경 set-up 후 재시도** — 사용자가 외부 메신저 (telegram bot 등) + LLM token
-#      환경 제공 → CAND 별 e2e 재시도. 시간 cost 8 CAND × 수 시간 = 다중 세션.
-#   3. **혼합** — module-level only 인 CAND-030/037 은 production bundle 빌드 거친 e2e
-#      형식적 진행 (정보량 추가 미미하지만 e2e label 부여), 나머지 6 CAND 는 unit-level final.
-#
-#   사용자 결정 받은 후 SOL 작성 단계 진입.
+#   사용자 결정: 옵션 2 (외부 환경 set-up 후 재시도). 진행 상태:
+#     • CAND-031/032/033 (channel): telegram 인프라 완성 → 031 dropped, 032 unreproducible, 033 blocked-external-dep
+#     • CAND-030/037 (module-level): 사용자 결정 (2026-05-15) 건너뜀, unit-level final 채택 가능
+#     • CAND-038/039/040 (gateway): 1차 시도 (2026-05-15) → blocked-external-dep. 다음 세션 audit-side
+#       인프라 작업 (gateway-e2e.md 참조). multi-session 진행.
 #
 #   ### 배경: 2026-05-14 세션의 pre-sol 9/9 collected 는 unit-level isolation test 이지
 #   ### production 실제 실행 검증이 아님 (CAL-003 정직한 인정).
@@ -256,27 +270,21 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   7. status 평가 + transition 기록 (proofs/PROOF-CAND-NNN-pre-{ts}-e2e.md 같은 별도 파일명 권장)
 #   8. unit-level 결과 (`PROOF-CAND-NNN-pre-20260514-*.md`) 와 비교 — 일치 / 불일치 보고
 #
-#   #### CAND-038 다음 세션 디버깅 starting points (2026-05-15 skeleton 작성 후)
+#   #### CAND-038/039/040 다음 세션 진행 (2026-05-15 1차 시도 후 — 상세는 gateway-e2e.md)
 #
-#   skeleton: `skills/real-behavior-proof/harness/proof_CAND_038_e2e.py`. 1차 실행은
-#   SUT 부팅 단계까지. 디버깅 우선순위:
-#   1. SUT `openclaw.mjs gateway start --auth none` 가 isolated_home 환경에서 정상 부팅
-#      하는지. agents.codex / openai plugin 의 의존 (codex binary 등) 이 isolated 환경에서
-#      찾는지 확인. stderr 확인.
-#   2. audit ws probe 의 connect.challenge 응답 frame 정확성 — `connect` method 의 params
-#      schema (gateway/protocol/schema/) 확인. nonceEcho 필드 이름이 맞는지, deviceAuth
-#      payload 가 auth.mode=none 에서도 의무인지.
-#   3. chat.send response 처리 — 새 sessionKey 자동 생성 path 인지. backend.queueMessage
-#      가 어떤 backend (codex agent runtime) 호출하는지. 새 session 생성에 sessions.create
-#      RPC 선행 필요한지 확인.
-#   4. mock-openai-server.mjs 의 client-disconnect 감지 — req.on('close') 로깅 추가
-#      (production-faithful 위반 우려 시 별도 mock 작성). MOCK_REQUEST_LOG 의 기록 항목
-#      현재 무엇인지 확인 (mock_llm.py 통해).
-#   5. evaluate_pre 작성:
-#      - without-fix (current): ws.close 후에도 mock LLM 가 SSE stream 끝까지 송신 가능
-#        (sut→mock connection 유지).
-#      - with-fix: ws.close → close handler 가 chatAbortControllers iterate + abort →
-#        sut→mock fetch abort → mock 측에서 client disconnect 감지 (mid-stream).
+#   1차 시도 결과 (2026-05-15 이 세션): SUT spawn 명령 정정 (`gateway run --auth none --bind
+#   loopback --port <p> --allow-unconfigured`, 1.6s ready) + connect handshake schema 정확형
+#   (PROTOCOL_VERSION=4 + ConnectParamsSchema) 까지 확인. 그 후 audit-side infrastructure
+#   신규 작업 필요 — 세 CAND 각각 multi-session size (~4.5-5.5h/CAND). 영속화:
+#   `proofs/PROOF-CAND-{038,039,040}-pre-20260515-052108-e2e-blocked.md` 3건 + CAND
+#   frontmatter `blocked-external-dep` + state transition `proof-blocked-pre`.
+#
+#   다음 세션 진행 순서 권고 (가성비 순):
+#   1. CAND-039 (~4.5h) — pending state injection + slow shutdown plugin + observable 강화
+#   2. CAND-038 (~5h) — device pairing + chat workflow chain + mock LLM disconnect
+#   3. CAND-040 (~5.5h) — native runtime stub + capability + approval trigger
+#
+#   각 CAND 진행 시작 시 `gateway-e2e.md` §CAND-NNN starting points 부터 읽어라.
 #
 #   #### SOL 작성은 e2e collected 결과를 받은 후 (보류)
 #
@@ -499,3 +507,5 @@ guard `_check_no_inline_heading` 가 line-start `# ` 패턴 (policy 가 거기�
   - 파이프라인 외 PR + 종결된 PR + Greptile 재리뷰 수동 트리거 절차
 - **Telegram E2E 인프라**: `telegram-e2e.md`
   - CAND-031/032/033 e2e 작업 시에만 읽어라. bot 인벤토리 / Telethon driver / 결정 배경 / 트러블슈팅 포함
+- **Gateway E2E 인프라**: `gateway-e2e.md`
+  - CAND-038/039/040 e2e 작업 시에만 읽어라. device pairing / pending state injection / native runtime stub / 다음 세션 작업 분할 포함

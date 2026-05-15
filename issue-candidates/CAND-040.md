@@ -42,30 +42,16 @@ upstream_dup_check:
   cross_refs_other_cells: []
 cross_refs: []
 pre_sol_proof:
-  status: collected
-  proof_record: proofs/PROOF-CAND-040-pre-20260514-102041.md
+  status: blocked-external-dep
+  proof_record: proofs/PROOF-CAND-040-pre-20260515-052108-e2e-blocked.md
   measurements:
-    scenario: proof-CAND-040
-    trials: 5
-    trialResults:
-    - trial: 0
-      unbindCalled: 0
-      leak: true
-    - trial: 1
-      unbindCalled: 0
-      leak: true
-    - trial: 2
-      unbindCalled: 0
-      leak: true
-    - trial: 3
-      unbindCalled: 0
-      leak: true
-    - trial: 4
-      unbindCalled: 0
-      leak: true
-    totalUnbind: 0
-    totalLeak: 5
-  scenario: proof-CAND-040
+    scenario: proof-CAND-040-e2e
+    trials: 0
+    e2e_attempt: true
+    blocked_reason: audit-side infrastructure missing (device pairing / pending state
+      injection / native runtime stub) — multi-session work
+    next_session: gateway-e2e.md
+  scenario: proof-CAND-040-e2e
 ---
 
 # infra/approval-handler-runtime: stopped handler does not abort in-flight deliverTarget

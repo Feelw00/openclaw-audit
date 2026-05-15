@@ -37,22 +37,16 @@ upstream_dup_check:
 cross_refs:
 - CAND-038
 pre_sol_proof:
-  status: collected
-  proof_record: proofs/PROOF-CAND-039-pre-20260514-102655.md
+  status: blocked-external-dep
+  proof_record: proofs/PROOF-CAND-039-pre-20260515-052108-e2e-blocked.md
   measurements:
-    scenario: proof-CAND-039
-    trials: 2
-    trialResults:
-    - trial: 0
-      outboundFired: true
-      sessionFired: true
-    - trial: 1
-      outboundFired: true
-      sessionFired: true
-    outboundCount: 2
-    sessionCount: 2
-    totalFired: 4
-  scenario: proof-CAND-039
+    scenario: proof-CAND-039-e2e
+    trials: 0
+    e2e_attempt: true
+    blocked_reason: audit-side infrastructure missing (device pairing / pending state
+      injection / native runtime stub) — multi-session work
+    next_session: gateway-e2e.md
+  scenario: proof-CAND-039-e2e
 ---
 
 # gateway/runtime-services: cancel startup recovery jobs on shutdown
