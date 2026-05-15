@@ -47,6 +47,19 @@ pre_sol_proof:
     queueSize: 1
     observeMs: 3000
   scenario: proof-CAND-031
+pre_sol_proof_e2e:
+  status: abandoned
+  proof_record: proofs/PROOF-CAND-031-pre-20260515-031046-e2e.md
+  decision_date: 2026-05-15
+  reason: 'LLM throw caught by followup-runner.ts:358 inner catch; production-faithful
+    self-recurse triggers (resolveQueuedReplyExecutionConfig / runPreflightCompactionIfNeeded
+    / sendFollowupPayloads) all require 1-5h setup with CAL-003 risk parallel to
+    CAND-032 enqueue-followup timing window.'
+retracted_reason: 'drop-2026-05-15: production reproducibility 매우 어려움 + trigger
+  window 매우 좁음. LLM throw 는 inner catch 가 잡고, 외부 throw triggers 는 비정상 환경
+  + enqueue-followup activation timing 동시 충족 필요. effective severity 낮음 — SOL 작성
+  가치 의문이라 CAND 자체 drop. unit-level callCount=14 는 결함 메커니즘 입증이지만
+  production hot-path 에서 자연 발현 가능성 낮음.'
 ---
 
 # auto-reply/queue/drain: bound retry loop on non-transient failures

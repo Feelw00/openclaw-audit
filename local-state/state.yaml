@@ -1878,7 +1878,7 @@ items:
     updated_at: '2026-05-14T10:10:46+00:00'
   CAND-031:
     kind: cand
-    state: proof-collected-pre
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -1890,8 +1890,24 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-031 mode=pre-sol
       at: '2026-05-14T10:12:25+00:00'
+    - from: proof-collected-pre
+      to: proof-e2e-abandoned-cost
+      actor: human
+      reason: 'e2e cost-prohibitive: LLM throw caught by inner catch (followup-runner.ts:358);
+        production-faithful triggers (config/preflight/routeReply) all require 1-5h
+        setup with CAL-003 risk parallel to CAND-032 timing window. unit-level proof
+        (callCount=14, queueSize=1) sufficient for SOL entry. see proofs/PROOF-CAND-031-pre-20260515-031046-e2e.md'
+      at: '2026-05-15T03:12:07+00:00'
+    - from: proof-e2e-abandoned-cost
+      to: abandoned
+      actor: human
+      reason: 'drop: production reproducibility 매우 어려움 + trigger window 매우 좁음. LLM
+        throw 는 followup-runner.ts:358 inner catch 가 잡고, 외부 throw triggers (config/preflight/routeReply)
+        는 비정상 환경에서만 발동 + enqueue-followup activation timing 까지 겹쳐야 함. effective severity
+        낮음. SOL 작성 가치 의문 — CAND 자체 drop.'
+      at: '2026-05-15T03:16:51+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T10:12:25+00:00'
+    updated_at: '2026-05-15T03:16:51+00:00'
   CAND-032:
     kind: cand
     state: abandoned

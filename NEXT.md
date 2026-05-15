@@ -131,13 +131,25 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     교훈: telegram e2e 인프라가 wire-level 작동 확인 됐고 다른 CAND 에도 재사용 가능.
 #     같은 패턴 (좁은 race window) 의 다른 CAND 도 e2e unreproducible 가능성 시사.
 #
+#   - **CAND-031 ❌ dropped (2026-05-15)**: production sequence 재분석 결과 self-recurse
+#     trigger 는 **LLM throw 가 아닌 LLM 외부 throw** (resolveQueuedReplyExecutionConfig /
+#     runPreflightCompactionIfNeeded / sendFollowupPayloads) — followup-runner.ts:358 의
+#     inner catch 가 LLM throw 를 잡아 drain self-recurse 발동 안 함. 외부 throw 자체도
+#     비정상 환경 한정 + enqueue-followup activation timing 좁음 (CAND-032 와 동일 종류
+#     reproducibility risk). effective severity 낮고 SOL 작성 가치 의문 — CAND 자체 drop.
+#     상세: `proofs/PROOF-CAND-031-pre-20260515-031046-e2e.md`.
+#
+#     교훈: drain.ts:303-313 catch+finally self-recurse 코드 로직은 결함이지만 production
+#     hot-path 발현 가능성 낮음. 같은 유형 (deterministic-fail 가정 + 비정상 환경 한정) CAND
+#     는 unit-level reproducibility 강해도 e2e + SOL 가치가 낮을 수 있음.
+#
 #   ### e2e 실행 환경 분류 (2026-05-15 결정)
 #
 #   | CAND | e2e 가능성 | 사유 | 권고 |
 #   |---|---|---|---|
 #   | CAND-026 | ✅ wire-level | standalone MCP server entry (`dist/mcp/plugin-tools-serve.js`) + named export → 외부 spawn + 실 wire 가능 | 완료 |
 #   | CAND-030 | ❌ module-level only | `subagent-registry` 가 cli inline module — production bundle named export 없음. deps stub 으로 module-level 호출 가능하지만 unit-level 과 정보량 동일 | unit-level final 후보 |
-#   | CAND-031 | ⚠️ telegram 인프라 준비됨 | auto-reply queue runner. driver 자동화 완료 (telegram-e2e.md). isolated home + sut cli 부팅 + 결함 trigger 작업 잔존 | telegram-e2e.md 참조 |
+#   | CAND-031 | ❌ dropped (2026-05-15) | LLM throw 는 inner catch 가 잡음. 외부 throw triggers 는 비정상 환경 한정 + enqueue-followup timing window 좁음. effective severity 낮음 + SOL 가치 의문. | abandoned |
 #   | CAND-032 | ❌ e2e unreproducible (2026-05-15) | reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS 가 dominate). 3 attempt 시도 후 abandon. | abandoned |
 #   | CAND-033 | ⚠️ telegram 인프라 준비됨 | collect-mode drain. multi-account 는 single user 의 다중 chat 시뮬로 우회 가능 여부 검토 필요 | telegram-e2e.md 참조 |
 #   | CAND-037 | ❌ module-level only | context-engine plugin loader. factory inject 는 cli 부팅 없이 가능하지만 production binary 실행 아님 | unit-level final 후보 |

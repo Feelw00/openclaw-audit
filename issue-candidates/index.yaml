@@ -331,9 +331,10 @@ candidates:
 - id: CAND-031
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
   cross_review_metric: metrics/cross-review-CAND-031-20260514-082000.jsonl
   cross_review_decision: 'proceed-with-caveat (avg 0.89): fix surface 정당, evidence 의 deterministic source 예시 (fs ENOENT) 만 교체 필요 — contextEngine.compact() / ensureRuntimePluginsLoaded / resolveCommandSecretRefsViaGateway plugin throw 가 정확. severity P3 유지.'
+  retracted_reason: 'drop-2026-05-15: production reproducibility 매우 어려움 + trigger window 매우 좁음. LLM throw 는 followup-runner.ts:358 inner catch 가 잡고, 외부 throw triggers (resolveQueuedReplyExecutionConfig / runPreflightCompactionIfNeeded / sendFollowupPayloads) 는 비정상 환경 (invalid plugin / gateway error / fs corruption) 에서만 발동. 추가로 enqueue-followup activation 자체가 first+second message 의 좁은 timing path 라 CAND-032 와 동일 종류 reproducibility risk. effective severity 낮음 — SOL 작성 가치 의문이라 CAND drop. unit-level callCount=14 는 결함 메커니즘 입증이지만 production hot-path 에서 자연 발현 가능성 낮음. see proofs/PROOF-CAND-031-pre-20260515-031046-e2e.md.'
   note: FIND-auto-reply-error-boundary-001 — drain.ts:298-313 catch+finally 가 max-attempts/backoff 없이 scheduleFollowupDrain
     self-recurse → deterministic-fail 시 debounceMs=500ms 간격 무한 retry + typing keepalive 폭주. severity P3.
 - id: CAND-032
