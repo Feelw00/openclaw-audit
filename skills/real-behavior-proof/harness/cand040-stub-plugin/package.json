@@ -1,0 +1,11 @@
+{
+  "name": "openclaw-audit-stub-c040",
+  "version": "0.0.1",
+  "description": "audit-side stub channel plugin for CAND-040 race window measurement",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  }
+}

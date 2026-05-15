@@ -13,7 +13,7 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
 |---|---|---|---|
 | 038 | ws-connection.ts:351-421 close handler 가 chatAbortControllers 의 ownerConnId 매칭 entry abort 안 함 | ✅ **collected (2026-05-15 3차, 옵션 A)** — chain_works=1, abort_observed=0. mock req.on("close") 미 fire 로 결함 직접 측정 | 1차 `proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md` / 2차 `proofs/PROOF-CAND-038-pre-20260515-082544.md` / **3차 `proofs/PROOF-CAND-038-pre-20260515-085213.md` (collected)** |
 | 039 | ✅ **collected (2026-05-15)** — recovery IIFE fire 5/5 trial. close prelude 가 43ms↔2.3s 두 패턴, 후자는 shutdown 이 recovery 완료 기다리는 결함 직접 관측 | (해소) pending state seed inline + state-dir 이중 .openclaw 처리 + IIFE only 측정 | `proofs/PROOF-CAND-039-pre-20260515-061713.md` |
-| 040 | approval-handler-runtime.ts:498-537 deliverTarget 의 activeEntries RMW 가 onStopped clear 와 race | native runtime stub / capability 등록 path / approval trigger / activeEntries 측정 sideband | `proofs/PROOF-CAND-040-pre-20260515-052108-e2e-blocked.md` |
+| 040 | approval-handler-runtime.ts:498-537 deliverTarget 의 activeEntries RMW 가 onStopped clear 와 race | ⏳ 옵션 C 진행 중 (2026-05-15 1차) — gateway boot path 도달 OK, handler.start wire 실패. **다음 세션** `skills/real-behavior-proof/harness/cand040-stub-plugin/README.md` 참조 | `proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md` |
 
 ## 부팅 baseline (확인된 사실)
 
@@ -126,33 +126,41 @@ state transition `proof-blocked-pre → proof-collected-pre`.
 surface 옵션 A (isClosing 가드 + timer handle 반환) 또는 옵션 B (AbortSignal 전파) 결정.
 post-sol 단계에서 with-fix 빌드 비교 + PR body 6 필드 evidence 산출.
 
-### CAND-040 (approval handler stop race)
+### CAND-040 (approval handler stop race) — ⏳ **옵션 C 진행 중 (2026-05-15 1차)**
 
-**audit-side infra 필요 작업**:
+**옵션 C** 선택 (사용자 결정 2026-05-15): gateway 부팅 + audit-side stub channel plugin
++ sideband. 작업 분할:
 
-1. **native runtime stub** (`harness/native_runtime_stub.py` 또는 tsx-inline)
-   - `nativeRuntime.transport.deliverPending/bindPending/unbindPending` minimal 구현
-   - `interactions.bindPending` 구현
-   - deliverPending/bindPending await 지연 통제 (Deferred-like sync gate)
-   - 호출 횟수 + 호출 시 entry 정보 sideband 기록
-   - 작업량: ~1.5h
+1. ✅ **stub plugin scaffold** — `skills/real-behavior-proof/harness/cand040-stub-plugin/`
+   (manifest + package.json + ChannelPlugin object + nativeRuntime file-IPC Deferred gate
+   + sideband 측정).
+2. ✅ **install + boot 검증** — `openclaw plugins install --link` 성공, gateway 부팅 시
+   plugin 11개로 인식, `register(api)` (discovery + full) 호출, `channelRuntime.
+   runtimeContexts.register` + 자기 lease readback → store 일치 확인, `gateway.startAccount`
+   영구 유지.
+3. ✅ **scenario 작성** — `scenarios/proof-CAND-040-e2e.py` (device pairing + connect
+   handshake + `exec.approval.request` RPC + sideband 측정 + debug_paths 보존). RPC ack
+   `{id, decision:null}` 받음.
+4. ❌ **handler wire 막힘** — stub 의 `availability.isConfigured` 등 호출 0회. 즉
+   `startChannelApprovalHandlerBootstrap` → `createChannelApprovalHandlerFromCapability` →
+   `handler.start()` 의 어딘가에서 silent skip. boot log 에 error/retry 없음.
 
-2. **channel capability 등록 path 식별**
-   - config-driven 또는 plugin-driven 또는 runtime API
-   - audit harness 가 어디서 capability 등록 trigger 가능한가
-   - 작업량: ~1.5h
+**다음 세션 trial-and-error 후보** (`harness/cand040-stub-plugin/README.md` 참조):
+- `openclaw.plugin.json#channelConfigs` 추가 (boot 경고 명시)
+- `ChannelPlugin.capabilities: {approvals: true}` 또는 다른 flag
+- 누락 adapter (`outbound` / `status` / `messaging`) — mattermost minimal 과 비교
+- `origin` 검증 — bundled 가 아닐 시 server-channels.ts:327 분기에서 startup runtime 못 받을 가능성
 
-3. **approval request 강제 trigger**
-   - audit-side direct call (capability handler 의 handleRequested 직접 호출)
-   - 또는 inbound channel 시뮬 (audit ws probe 가 channel message 보내는 path)
-   - 작업량: ~1h
+**대안 (다음 세션 첫 결정)**:
+- (a) 옵션 C trial-and-error 더 진행 — 추가 1-3h, 성공 보장 X
+- (b) 옵션 B (in-process direct, tsx + createChannelApprovalHandlerFromCapability 직접
+  호출 + Deferred-gated stub + handleRequested 직접 호출) — 1-2h, CAL-003 risk 수용
+- (c) unit-level final 채택 — 2026-05-14 `PROOF-CAND-040-pre-20260514-102041.md`
+  (totalUnbind=0 totalLeak=5/5) 를 final, PR body 의 `proof: supplied` 만, `sufficient`
+  미부여 + CAL-003 caveat
 
-4. **`scenarios/proof-CAND-040-e2e.py`**
-   - capability + approval handler attach + race trigger (Deferred gate 로 deliverPending await park → handler.stop() → gate release → activeEntries.size 측정)
-   - sideband 에서 unbindPending 호출 횟수 (without-fix=0, with-fix=1)
-   - 작업량: ~1.5h
-
-총 ~5.5h, 1-2 세션.
+이번 세션 누계 7-8h (production path 분석 + scaffold + 4 라운드 디버깅 + 막힘 dive).
+PROOF: `proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md`.
 
 ## 진행 순서 (권고)
 
@@ -160,7 +168,8 @@ post-sol 단계에서 with-fix 빌드 비교 + PR body 6 필드 evidence 산출.
 
 1. ~~**CAND-039**~~ ✅ **collected (2026-05-15)** — pre-sol 완료. SOL 작성 또는 post-sol 진입.
 2. ~~**CAND-038**~~ ✅ **collected (2026-05-15 3차, 옵션 A)** — pre-sol 완료. SOL 작성 또는 post-sol 진입.
-3. **CAND-040** (~5.5h) — capability stub + approval flow. 가장 복잡.
+3. **CAND-040 ⏳** — 옵션 C 1차 진행 (gateway boot + stub plugin + sideband). handler wire 막힘.
+   다음 세션 첫 결정 필요 (위 §CAND-040 의 대안 3 옵션).
 
 각 CAND 진행 시 새 세션 시작 + 이 문서 starting points 부터 + multi-session 분할 가능.
 

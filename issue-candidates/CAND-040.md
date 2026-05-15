@@ -43,14 +43,21 @@ upstream_dup_check:
 cross_refs: []
 pre_sol_proof:
   status: blocked-external-dep
-  proof_record: proofs/PROOF-CAND-040-pre-20260515-052108-e2e-blocked.md
+  proof_record: proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md
   measurements:
     scenario: proof-CAND-040-e2e
     trials: 0
     e2e_attempt: true
-    blocked_reason: audit-side infrastructure missing (device pairing / pending state
-      injection / native runtime stub) — multi-session work
-    next_session: gateway-e2e.md
+    progress: '옵션 C (gateway + stub plugin + sideband) 진행 — 2 세션 추정 중 이번 세션은
+      gateway boot path 까지 도달. install + plugin load + register + lease store 일치 +
+      gateway.startAccount + exec.approval.request RPC ack 모두 OK. 그러나 approval handler
+      가 stub 의 nativeRuntime 와 wire 안 됨 (availability.isConfigured 호출 0).'
+    blocked_reason: 'approval handler.start 가 stub plugin 의 nativeRuntime 와 wire 안 됨
+      (silent skip). 다음 세션 trial-and-error: channelConfigs / capabilities / 누락 adapter
+      / origin. 또는 옵션 B (in-process, CAL-003 risk) 또는 unit-level final 으로 전환.'
+    next_session: skills/real-behavior-proof/harness/cand040-stub-plugin/README.md
+    stub_plugin_dir: skills/real-behavior-proof/harness/cand040-stub-plugin/
+    scenario_file: skills/real-behavior-proof/scenarios/proof-CAND-040-e2e.py
   scenario: proof-CAND-040-e2e
 ---
 

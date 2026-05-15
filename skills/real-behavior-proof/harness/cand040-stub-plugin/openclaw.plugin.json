@@ -1,0 +1,15 @@
+{
+  "id": "audit-stub-c040",
+  "activation": {
+    "onStartup": true
+  },
+  "enabledByDefault": true,
+  "name": "Audit Stub CAND-040",
+  "description": "audit-side stub channel plugin for CAND-040 race window measurement",
+  "channels": ["audit-stub-c040"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

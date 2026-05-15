@@ -2100,8 +2100,14 @@ items:
         missing (device pairing / pending state injection / native runtime stub) —
         multi-session work'', ''next_session'': ''gateway-e2e.md''}'
       at: '2026-05-15T05:22:53+00:00'
+    - from: proof-blocked-pre
+      to: proof-blocked-pre
+      actor: real-behavior-proof
+      reason: '옵션 C 진행 2세션 중 1차: gateway boot path + install + register 도달. handler.start
+        wire 안 됨. record=proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md'
+      at: '2026-05-15T11:44:45+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-15T05:22:53+00:00'
+    updated_at: '2026-05-15T11:44:45+00:00'
   CAND-041:
     kind: candidate
     state: pending_gatekeeper
