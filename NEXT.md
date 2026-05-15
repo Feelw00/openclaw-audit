@@ -114,11 +114,18 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     (elapsedMs=501) 분리 관측으로 결함 위치 wiring 안에 정확히 박혀있음 확정.
 #
 #   - **나머지 8 CAND (030/031/032/033/037/038/039/040): production e2e 보류** — 사유는
-#     아래 §"e2e 실행 환경 분류" 참조. 모두 cli 또는 gateway 전체 부팅 + 외부 의존
-#     (실 channel adapter / 외부 메신저 / LLM / OAuth / multi-account user 시뮬) 필요.
-#     사용자 결정 (2026-05-15): "실제 테스트 어려운 것은 NEXT.md 에 기록 후 다음 CAND 로
-#     넘어가자" → 8 CAND 모두 외부 환경 미충족이라 진정 e2e 불가. unit-level 결과를 final 로
-#     채택할지, 또는 외부 환경 set-up 후 재시도할지 사용자 판단 대기.
+#     아래 §"e2e 실행 환경 분류" 참조.
+#
+#   - **2026-05-15 후속 결정**: 사용자가 "외부 환경 set-up 후 재시도" 선택 → telegram
+#     인프라 구축 진행. CAND-031/032/033 (channel 의존) 의 driver 자동화 인프라 완료:
+#     telegram bot 2개 + group + Telethon user account driver + audit-side wrapper.
+#     상세 (인프라 인벤토리 / 결정 배경 / 사용 패턴 / 트러블슈팅) → **`telegram-e2e.md`**.
+#     이 파일은 CAND-031/032/033 e2e 작업 시에만 읽어라.
+#
+#   - **현재 진행 (2026-05-15)**: telegram driver 인프라 완료 (Task 7-9). 다음 작업 (Task
+#     10-13): isolated openclaw home + sut config + mock LLM + cli 부팅 + CAND-032 시나리오.
+#     큰 작업이라 다음 세션에 진행 권장. 결함 trigger (backend reject 자연 reproduce) 의
+#     난이도 분석 필요 — `telegram-e2e.md` §"결함 trigger 의 어려움" 참조.
 #
 #   ### e2e 실행 환경 분류 (2026-05-15 결정)
 #
@@ -126,9 +133,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   |---|---|---|---|
 #   | CAND-026 | ✅ wire-level | standalone MCP server entry (`dist/mcp/plugin-tools-serve.js`) + named export → 외부 spawn + 실 wire 가능 | 완료 |
 #   | CAND-030 | ❌ module-level only | `subagent-registry` 가 cli inline module — production bundle named export 없음. deps stub 으로 module-level 호출 가능하지만 unit-level 과 정보량 동일 | unit-level final 후보 |
-#   | CAND-031 | ❌ 실 channel + 메신저 | auto-reply queue runner — production trigger 가 channel incoming message. mock channel adapter openclaw 에 없음 (telegram/whatsapp 등 실 transport) | 외부 환경 필요 |
-#   | CAND-032 | ❌ 실 channel + 메신저 | reply-run-registry → backend.queueMessage reject. trigger path 가 channel message → auto-reply pipeline → backend. 동일 사유 | 외부 환경 필요 |
-#   | CAND-033 | ❌ 실 multi-user | collect-mode drain. multi-account user 시뮬 + clearSessionQueues 동시 trigger. 실 channel + 다수 계정 transport | 외부 환경 필요 |
+#   | CAND-031 | ⚠️ telegram 인프라 준비됨 | auto-reply queue runner. driver 자동화 완료 (telegram-e2e.md). isolated home + sut cli 부팅 + 결함 trigger 작업 잔존 | telegram-e2e.md 참조 |
+#   | CAND-032 | ⚠️ telegram 인프라 준비됨 | reply-run-registry → backend.queueMessage reject. 동일 인프라. 결함 trigger 자연 reproduce 의 난이도 큼 (telegram-e2e.md §결함 trigger) | telegram-e2e.md 참조 |
+#   | CAND-033 | ⚠️ telegram 인프라 준비됨 | collect-mode drain. multi-account 는 single user 의 다중 chat 시뮬로 우회 가능 여부 검토 필요 | telegram-e2e.md 참조 |
 #   | CAND-037 | ❌ module-level only | context-engine plugin loader. factory inject 는 cli 부팅 없이 가능하지만 production binary 실행 아님 | unit-level final 후보 |
 #   | CAND-038 | ❌ gateway 부팅 | gateway server + WebSocketServer 부팅. LLM 토큰 의존 가능 + 실 ws 클라이언트 | 외부 환경 필요 |
 #   | CAND-039 | ❌ gateway 부팅 | gateway full bootstrap + SIGTERM. 동일 | 외부 환경 필요 |
@@ -441,3 +448,5 @@ guard `_check_no_inline_heading` 가 line-start `# ` 패턴 (policy 가 거기�
   - **CAL-011 (TODO 작성)** — alternative-axis acceptance + cross-review-driven retract. CAL-008 (dup-axis 선제) + CAL-010 (indirect-merge with credit) 의 hybrid 패턴. 메인테이너가 다른 axis 로 동일 문제 해결 시 우리 PR close + 잔여 영역만 follow-up issue 로 좁게 분리.
 - **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
   - 파이프라인 외 PR + 종결된 PR + Greptile 재리뷰 수동 트리거 절차
+- **Telegram E2E 인프라**: `telegram-e2e.md`
+  - CAND-031/032/033 e2e 작업 시에만 읽어라. bot 인벤토리 / Telethon driver / 결정 배경 / 트러블슈팅 포함
