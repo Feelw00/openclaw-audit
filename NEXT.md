@@ -116,6 +116,17 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   - **나머지 8 CAND (030/031/032/033/037/038/039/040): production e2e 보류** — 사유는
 #     아래 §"e2e 실행 환경 분류" 참조.
 #
+#   - **2026-05-15 후속 진행 (CAND-033/030/037 blocked + CAND-038 skeleton)**:
+#       • CAND-033 blocked-external-dep: resolveFollowupAuthorizationKey 가 sender/exec 필드만
+#         보는데 single telegram user account 메시지는 모두 동일 → authGroups ≥2 production-faithful
+#         생성 불가. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능.
+#       • CAND-030/037 blocked-module-level: 사용자 결정 (2026-05-15) 으로 건너뜀.
+#         module-level only + instrumentation 의존 → 외부 환경 set-up 가치 0.
+#       • CAND-038/039/040 (gateway 3건): 외부 환경 set-up 진행 결정.
+#         skeleton 작성 완료 (`skills/real-behavior-proof/harness/proof_CAND_038_e2e.py`).
+#         인프라 ready: isolated_home + gateway loopback + auth=none + mock_llm + audit ws probe.
+#         1차 실행은 SUT spawn 명령 정정 (`gateway start --auth none`) 까지. 디버깅 다음 세션.
+#
 #   - **2026-05-15 후속 결정**: 사용자가 "외부 환경 set-up 후 재시도" 선택 → telegram
 #     인프라 구축 진행. CAND-031/032/033 (channel 의존) 의 driver 자동화 인프라 완료:
 #     telegram bot 2개 + group + Telethon user account driver + audit-side wrapper.
@@ -148,11 +159,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   | CAND | e2e 가능성 | 사유 | 권고 |
 #   |---|---|---|---|
 #   | CAND-026 | ✅ wire-level | standalone MCP server entry (`dist/mcp/plugin-tools-serve.js`) + named export → 외부 spawn + 실 wire 가능 | 완료 |
-#   | CAND-030 | ❌ module-level only | `subagent-registry` 가 cli inline module — production bundle named export 없음. deps stub 으로 module-level 호출 가능하지만 unit-level 과 정보량 동일 | unit-level final 후보 |
+#   | CAND-030 | ❌ blocked-module-level (2026-05-15) | subagent-registry 가 cli inline module + production bundle named export 없음. marker Map size 측정에 instrumentation 패치 필수 (proof-CAND-030.py 의 `__test = {...}` 주입). 외부 환경 (LLM/OAuth/메신저) 과 무관 → 외부 환경 set-up 으로 e2e 가치 추가 0. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
 #   | CAND-031 | ❌ dropped (2026-05-15) | LLM throw 는 inner catch 가 잡음. 외부 throw triggers 는 비정상 환경 한정 + enqueue-followup timing window 좁음. effective severity 낮음 + SOL 가치 의문. | abandoned |
 #   | CAND-032 | ❌ e2e unreproducible (2026-05-15) | reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS 가 dominate). 3 attempt 시도 후 abandon. | abandoned |
-#   | CAND-033 | ⚠️ telegram 인프라 준비됨 | collect-mode drain. multi-account 는 single user 의 다중 chat 시뮬로 우회 가능 여부 검토 필요 | telegram-e2e.md 참조 |
-#   | CAND-037 | ❌ module-level only | context-engine plugin loader. factory inject 는 cli 부팅 없이 가능하지만 production binary 실행 아님 | unit-level final 후보 |
+#   | CAND-033 | ❌ multi-account 필수 (2026-05-15) | drain.ts:89 `resolveFollowupAuthorizationKey` 가 senderId/senderE164/senderIsOwner/execOverrides/bashElevated 만 봄. single telegram user account 메시지는 sender 필드 모두 동일 → authGroups 1개 → 결함 미발현. execOverrides/bashElevated 도 메시지별 변화 path 없음. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능 | blocked-external-dep (multi-account 인프라 부재) |
+#   | CAND-037 | ❌ blocked-module-level (2026-05-15) | context-engine plugin loader. factory inject + dispose 측정에 instrumentation 의존. production binary 실행 path 없음 + 외부 환경 무관. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
 #   | CAND-038 | ❌ gateway 부팅 | gateway server + WebSocketServer 부팅. LLM 토큰 의존 가능 + 실 ws 클라이언트 | 외부 환경 필요 |
 #   | CAND-039 | ❌ gateway 부팅 | gateway full bootstrap + SIGTERM. 동일 | 외부 환경 필요 |
 #   | CAND-040 | ❌ gateway 부팅 | approval handler — gateway 부팅 + 실 approval flow | 외부 환경 필요 |
@@ -244,6 +255,28 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   6. `harness/run.py --target CAND-NNN --mode pre-sol --scenario proof-CAND-NNN-e2e` 실행
 #   7. status 평가 + transition 기록 (proofs/PROOF-CAND-NNN-pre-{ts}-e2e.md 같은 별도 파일명 권장)
 #   8. unit-level 결과 (`PROOF-CAND-NNN-pre-20260514-*.md`) 와 비교 — 일치 / 불일치 보고
+#
+#   #### CAND-038 다음 세션 디버깅 starting points (2026-05-15 skeleton 작성 후)
+#
+#   skeleton: `skills/real-behavior-proof/harness/proof_CAND_038_e2e.py`. 1차 실행은
+#   SUT 부팅 단계까지. 디버깅 우선순위:
+#   1. SUT `openclaw.mjs gateway start --auth none` 가 isolated_home 환경에서 정상 부팅
+#      하는지. agents.codex / openai plugin 의 의존 (codex binary 등) 이 isolated 환경에서
+#      찾는지 확인. stderr 확인.
+#   2. audit ws probe 의 connect.challenge 응답 frame 정확성 — `connect` method 의 params
+#      schema (gateway/protocol/schema/) 확인. nonceEcho 필드 이름이 맞는지, deviceAuth
+#      payload 가 auth.mode=none 에서도 의무인지.
+#   3. chat.send response 처리 — 새 sessionKey 자동 생성 path 인지. backend.queueMessage
+#      가 어떤 backend (codex agent runtime) 호출하는지. 새 session 생성에 sessions.create
+#      RPC 선행 필요한지 확인.
+#   4. mock-openai-server.mjs 의 client-disconnect 감지 — req.on('close') 로깅 추가
+#      (production-faithful 위반 우려 시 별도 mock 작성). MOCK_REQUEST_LOG 의 기록 항목
+#      현재 무엇인지 확인 (mock_llm.py 통해).
+#   5. evaluate_pre 작성:
+#      - without-fix (current): ws.close 후에도 mock LLM 가 SSE stream 끝까지 송신 가능
+#        (sut→mock connection 유지).
+#      - with-fix: ws.close → close handler 가 chatAbortControllers iterate + abort →
+#        sut→mock fetch abort → mock 측에서 client disconnect 감지 (mid-stream).
 #
 #   #### SOL 작성은 e2e collected 결과를 받은 후 (보류)
 #
