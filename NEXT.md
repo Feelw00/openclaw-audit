@@ -104,6 +104,55 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #
 #   ## 0. 최우선 — 9 CAND production end-to-end re-verification (사용자 결정 2026-05-14)
 #
+#   ### 진행 상태 (2026-05-15)
+#
+#   - **CAND-026 ✅ wire-level e2e collected** (PROOF-CAND-026-pre-20260515-002424.md).
+#     production bundle `dist/mcp/plugin-tools-serve.js` + 실 stdio MCP transport +
+#     `createPluginToolsMcpServer({tools:[probe]})` factory inject + 실 SDK Client 가
+#     `notifications/cancelled` 송신 → tool.execute 의 4번째 인자 signal=undefined 확인.
+#     unit-level 결과와 일치 + client side AbortError 정상 + server side 끝까지 실행
+#     (elapsedMs=501) 분리 관측으로 결함 위치 wiring 안에 정확히 박혀있음 확정.
+#
+#   - **나머지 8 CAND (030/031/032/033/037/038/039/040): production e2e 보류** — 사유는
+#     아래 §"e2e 실행 환경 분류" 참조. 모두 cli 또는 gateway 전체 부팅 + 외부 의존
+#     (실 channel adapter / 외부 메신저 / LLM / OAuth / multi-account user 시뮬) 필요.
+#     사용자 결정 (2026-05-15): "실제 테스트 어려운 것은 NEXT.md 에 기록 후 다음 CAND 로
+#     넘어가자" → 8 CAND 모두 외부 환경 미충족이라 진정 e2e 불가. unit-level 결과를 final 로
+#     채택할지, 또는 외부 환경 set-up 후 재시도할지 사용자 판단 대기.
+#
+#   ### e2e 실행 환경 분류 (2026-05-15 결정)
+#
+#   | CAND | e2e 가능성 | 사유 | 권고 |
+#   |---|---|---|---|
+#   | CAND-026 | ✅ wire-level | standalone MCP server entry (`dist/mcp/plugin-tools-serve.js`) + named export → 외부 spawn + 실 wire 가능 | 완료 |
+#   | CAND-030 | ❌ module-level only | `subagent-registry` 가 cli inline module — production bundle named export 없음. deps stub 으로 module-level 호출 가능하지만 unit-level 과 정보량 동일 | unit-level final 후보 |
+#   | CAND-031 | ❌ 실 channel + 메신저 | auto-reply queue runner — production trigger 가 channel incoming message. mock channel adapter openclaw 에 없음 (telegram/whatsapp 등 실 transport) | 외부 환경 필요 |
+#   | CAND-032 | ❌ 실 channel + 메신저 | reply-run-registry → backend.queueMessage reject. trigger path 가 channel message → auto-reply pipeline → backend. 동일 사유 | 외부 환경 필요 |
+#   | CAND-033 | ❌ 실 multi-user | collect-mode drain. multi-account user 시뮬 + clearSessionQueues 동시 trigger. 실 channel + 다수 계정 transport | 외부 환경 필요 |
+#   | CAND-037 | ❌ module-level only | context-engine plugin loader. factory inject 는 cli 부팅 없이 가능하지만 production binary 실행 아님 | unit-level final 후보 |
+#   | CAND-038 | ❌ gateway 부팅 | gateway server + WebSocketServer 부팅. LLM 토큰 의존 가능 + 실 ws 클라이언트 | 외부 환경 필요 |
+#   | CAND-039 | ❌ gateway 부팅 | gateway full bootstrap + SIGTERM. 동일 | 외부 환경 필요 |
+#   | CAND-040 | ❌ gateway 부팅 | approval handler — gateway 부팅 + 실 approval flow | 외부 환경 필요 |
+#
+#   **분류 키**:
+#   - ✅ wire-level: 외부 의존 0 + production binary spawn + 실 wire 통과 (CAND-026 만 해당)
+#   - ❌ module-level only: cli 부팅 없이 production module 호출 가능. production bundle 빌드는
+#     하지만 wire-level 가치 unit-level 과 거의 동일 (CAND-030, CAND-037)
+#   - ❌ 외부 환경 필요: cli/gateway 부팅 + 외부 메신저/LLM/OAuth/multi-account user 환경
+#
+#   ### 결정 사항 (사용자 판단 대기)
+#
+#   1. **8 CAND unit-level final 채택** — 2026-05-14 의 9/9 collected 결과를 SOL 작성 진입의
+#      최종 evidence 로 인정. CAL-003 위험 인정하지만 외부 환경 set-up cost (CAND 당 수 시간
+#      + OAuth/LLM token 환경) 가 추가 검증 가치 대비 비효율. 다만 PR 발행 시 evidence 라벨은
+#      `proof: supplied` 만 가능 (`proof: sufficient` 미부여) — wire-level 검증 안 했음 표시.
+#   2. **외부 환경 set-up 후 재시도** — 사용자가 외부 메신저 (telegram bot 등) + LLM token
+#      환경 제공 → CAND 별 e2e 재시도. 시간 cost 8 CAND × 수 시간 = 다중 세션.
+#   3. **혼합** — module-level only 인 CAND-030/037 은 production bundle 빌드 거친 e2e
+#      형식적 진행 (정보량 추가 미미하지만 e2e label 부여), 나머지 6 CAND 는 unit-level final.
+#
+#   사용자 결정 받은 후 SOL 작성 단계 진입.
+#
 #   ### 배경: 2026-05-14 세션의 pre-sol 9/9 collected 는 unit-level isolation test 이지
 #   ### production 실제 실행 검증이 아님 (CAL-003 정직한 인정).
 #
@@ -149,13 +198,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #      `isolated_home(require_oauth=True if 필요)`.
 #   3. **실행 cost 큼**: CAND 당 5-30분 (cli 부팅 + setup + trial + cleanup). 9 CAND 전체
 #      예상 4-6시간 + 빌드 30분 × N. 다중 세션 진행 필요.
-#   4. **진행 순서** (production deps 크기 순):
-#        세션 M+1: CAND-026 (stdio MCP only, 작음)
-#        세션 M+2: CAND-032 + CAND-030 (auto-reply / agents-registry full)
-#        세션 M+3: CAND-031 + CAND-033 (queue full + multi-user)
-#        세션 M+4: CAND-037 (plugin loader + factory)
-#        세션 M+5: CAND-038 + CAND-040 (gateway + approval handler 부분 부팅)
-#        세션 M+6: CAND-039 (gateway full bootstrap + SIGTERM)
+#   4. **진행 순서** (2026-05-15 시점 outcome — 위 §"e2e 실행 환경 분류" 결정 반영):
+#        세션 M+1 (완료): CAND-026 wire-level e2e collected ✅
+#        세션 M+2~ (보류): CAND-030/031/032/033/037/038/039/040 모두 외부 환경 또는
+#                        module-level only — 사용자 결정 대기. 외부 환경 set-up 안 하면
+#                        unit-level final 채택 또는 보류 유지.
 #   5. **상태 enum**:
 #        - `collected` (e2e) — production 실행에서도 결함 재현 → SOL 작성 진입
 #        - `unreproducible` — unit-level 결함이 production path 에 실제로 안 나타남 → CAND abandon
