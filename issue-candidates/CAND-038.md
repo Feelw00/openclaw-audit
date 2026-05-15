@@ -37,14 +37,44 @@ cross_refs:
 - CAND-018
 pre_sol_proof:
   status: blocked-external-dep
-  proof_record: proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md
+  proof_record: proofs/PROOF-CAND-038-pre-20260515-082544.md
   measurements:
     scenario: proof-CAND-038-e2e
-    trials: 0
-    e2e_attempt: true
-    blocked_reason: audit-side infrastructure missing (device pairing / pending state
-      injection / native runtime stub) — multi-session work
-    next_session: gateway-e2e.md
+    trials: 1
+    chain_works_trials: 0
+    abort_observed_trials: 0
+    trial_results:
+    - trial_idx: 0
+      status: ok
+      probe_phase: ws_closed
+      probe_connected: true
+      probe_helloOk: true
+      probe_chatSendAck:
+        runId: 97763f0b-75ff-444b-b7b8-e3f72bc83aed
+        status: started
+      probe_chatSendErr: null
+      probe_wsCloseCode: 1000
+      probe_errors: []
+      probe_frames:
+      - ts: 1778833530050
+        type: event
+        event: connect.challenge
+      - ts: 1778833530072
+        type: res
+        id: 89c20d75-ccab-44f5-96f9-70d9c076f364
+        ok: true
+      - ts: 1778833530416
+        type: event
+        event: health
+      - ts: 1778833530473
+        type: res
+        id: a97729ca-fb92-4d56-bf30-f80851e720fd
+        ok: true
+      mock_request_started_count: 0
+      mock_hold_started_count: 0
+      mock_stream_completed_count: 0
+      mock_client_disconnected: []
+      probe_stderr_tail: ''
   scenario: proof-CAND-038-e2e
 ---
 

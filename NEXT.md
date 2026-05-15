@@ -138,10 +138,20 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     SOL-CAND-039 작성 진입 또는 post-sol 단계. fix surface 옵션 A (isClosing 가드 + timer
 #     handle) / 옵션 B (AbortSignal 전파) 결정 필요.
 #
-#   - **2026-05-15 (다음 세션) CAND-038 device pairing helper 작성 완료** —
-#     `skills/real-behavior-proof/harness/device_pairing.py` (inline Node script + Python
-#     wrapper). 검증 완료. 다음 세션 진행 (audit ws client + mock LLM disconnect detection +
-#     시나리오 + 실행, ~3.5h 추정).
+#   - **2026-05-15 (이 세션) CAND-038 ws handshake + chat.send ack 작동** —
+#     `skills/real-behavior-proof/harness/device_pairing.py` ✅ (ed25519 keypair seed) +
+#     `harness/mock_openai_cand038.mjs` ✅ (hold-then-complete + req.on("close") detection) +
+#     `scenarios/proof-CAND-038-e2e.py` ✅ (audit ws probe TS: connect.challenge → device
+#     payload v2 signed → connect → hello-ok → chat.send → ws.close).
+#     **1차 e2e 시도 결과** (`proofs/PROOF-CAND-038-pre-20260515-082544.md`):
+#       • probe_connected=true, helloOk=true, chatSendAck={runId, status: "started"} ✅
+#       • probe_wsCloseCode=1000 ✅
+#       • mock_request_started_count=0 ❌ — chain reach LLM 부재.
+#     원인: env_isolate 의 minimal cfg 가 새 schema 와 불일치 → SUT default cfg 사용 →
+#     agentRuntime.id="codex" + codex CLI binary 부재 → LLM 호출 전 chain 막힘.
+#     **다음 세션 (~1.5h)**: state_dir/openclaw.json 에 새 schema 와 일치하는 cfg 직접 작성
+#     (agentRuntime.id="openai-responses" + models.providers.openai.baseUrl=mock_port).
+#     상세 옵션 비교: gateway-e2e.md §CAND-038 의 4번 항목.
 #
 #   - **2026-05-15 (1차 세션) CAND-038/039/040 1차 e2e 시도 결과 — 모두 `blocked-external-dep`**:
 #     SUT spawn 명령 정정 완료 (`gateway run --auth none --bind loopback --port <p> --allow-unconfigured`,
@@ -199,7 +209,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   | CAND-032 | ❌ e2e unreproducible (2026-05-15) | reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS 가 dominate). 3 attempt 시도 후 abandon. | abandoned |
 #   | CAND-033 | ❌ multi-account 필수 (2026-05-15) | drain.ts:89 `resolveFollowupAuthorizationKey` 가 senderId/senderE164/senderIsOwner/execOverrides/bashElevated 만 봄. single telegram user account 메시지는 sender 필드 모두 동일 → authGroups 1개 → 결함 미발현. execOverrides/bashElevated 도 메시지별 변화 path 없음. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능 | blocked-external-dep (multi-account 인프라 부재) |
 #   | CAND-037 | ❌ blocked-module-level (2026-05-15) | context-engine plugin loader. factory inject + dispose 측정에 instrumentation 의존. production binary 실행 path 없음 + 외부 환경 무관. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
-#   | CAND-038 | ⏳ in-progress (2026-05-15 다음 세션) | device pairing helper ✅. 남은: audit ws client + mock LLM disconnect + 시나리오 + 실행 (~3.5h). | gateway-e2e.md §CAND-038 |
+#   | CAND-038 | ⏳ in-progress (2026-05-15 2차) | ws handshake + chat.send ack 성공 ✅. chain reach LLM 부재 (cfg/agentRuntime 디버깅 ~1.5h 남음). | gateway-e2e.md §CAND-038 |
 #   | CAND-039 | ✅ **collected** (2026-05-15 다음 세션) | 5/5 trial fire. recovery IIFE production-faithful 발현 직접 관측. close prelude 43ms↔2.3s 두 패턴. SOL 작성 진입 가능. | proofs/PROOF-CAND-039-pre-20260515-061713.md |
 #   | CAND-040 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅. native runtime stub + capability 등록 path + approval trigger + activeEntries 측정 sideband 필요. 작업량 ~5.5h. | gateway-e2e.md §CAND-040 |
 #

@@ -11,7 +11,7 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
 
 | CAND | 핵심 결함 | 부재 인프라 | proof record |
 |---|---|---|---|
-| 038 | ws-connection.ts:351-421 close handler 가 chatAbortControllers 의 ownerConnId 매칭 entry abort 안 함 | device pairing / chat workflow chain / mock LLM disconnect detection / 두 ws probe subscription | `proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md` |
+| 038 | ws-connection.ts:351-421 close handler 가 chatAbortControllers 의 ownerConnId 매칭 entry abort 안 함 | ws handshake + chat.send ack ✅ (2026-05-15 2차). LLM chain reach 부재 (cfg/agentRuntime 디버깅 필요) | 1차 `proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md` / 2차 `proofs/PROOF-CAND-038-pre-20260515-082544.md` |
 | 039 | ✅ **collected (2026-05-15)** — recovery IIFE fire 5/5 trial. close prelude 가 43ms↔2.3s 두 패턴, 후자는 shutdown 이 recovery 완료 기다리는 결함 직접 관측 | (해소) pending state seed inline + state-dir 이중 .openclaw 처리 + IIFE only 측정 | `proofs/PROOF-CAND-039-pre-20260515-061713.md` |
 | 040 | approval-handler-runtime.ts:498-537 deliverTarget 의 activeEntries RMW 가 onStopped clear 와 race | native runtime stub / capability 등록 path / approval trigger / activeEntries 측정 sideband | `proofs/PROOF-CAND-040-pre-20260515-052108-e2e-blocked.md` |
 
@@ -33,6 +33,33 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
    동일 로직. 작성한 파일: `identity/device.json` + `identity/device-auth.json` +
    `devices/paired.json` + `devices/pending.json` (모두 0o600).
    반환: `{deviceId, publicKeyPem, privateKeyPem, publicKeyRawBase64Url, token, role, scopes, files}`
+
+2. ~~**audit ws client + connect handshake**~~ ✅ **완료 (2026-05-15 2차)**: `scenarios/proof-CAND-038-e2e.py`
+   안 `_build_ws_probe_ts` 함수 — connect.challenge 수신 → device payload v2 signed
+   (`v2|deviceId|cli|cli|operator|operator.read,operator.write|signedAtMs|token|nonce`,
+   ed25519 sign + base64url, `gateway/device-auth.ts:20`) → connect req frame → hello-ok 수신 →
+   chat.send req → 2s 후 ws.close. 1차 시도에서 connect handshake + chat.send ack
+   (`{runId, status: "started"}`) 모두 성공 확인. ws close code 1000 정상.
+
+3. ~~**mock LLM disconnect detection**~~ ✅ **완료 (2026-05-15 2차)**: `harness/mock_openai_cand038.mjs`.
+   `req.on("close")` listener 가 MOCK_REQUEST_LOG 에 `{event:"client_disconnected", ts,
+   requestIndex, path, completed, holdElapsed}` append. hold-then-complete 모드: SSE 시작
+   event 1개 → MOCK_HOLD_MS hold → 정상 SSE chunk + end. hold 도중 client close 시
+   `completed=false` 로 기록 → with-fix 발현 증거.
+
+4. ❌ **chain reach LLM** (2026-05-15 2차) — `mock_request_started_count=0`. 원인 분석:
+   env_isolate 의 minimal cfg (auth.mode=token + meta._isolated_proof_env 등) 가 새 schema
+   와 불일치 → SUT 의 cfg validator 가 무시 + default cfg 사용 → `agentRuntime.id="codex"` →
+   codex CLI binary 부재 → LLM 호출 path 도달 전 chain 막힘. **다음 세션 작업**:
+   - 옵션 A (~30분): 시나리오에서 `state_dir/openclaw.json` 에 새 schema 와 일치하는 cfg 직접
+     작성 (agentRuntime.id="openai-responses" + models.providers.openai.baseUrl=mock_port).
+     env_isolate 무시.
+   - 옵션 B (~1h): env_isolate.py 의 `_build_minimal_config` 를 새 schema 와 일치하도록 패치
+     (다른 시나리오에도 영향).
+   - 옵션 C: codex CLI mock binary 두기 — 가장 invasive, 피하기.
+   권고: 옵션 A. CAND-038 시나리오 안에 inline.
+
+5. **시나리오 + 실행 + 영속화** ~1h 남음 (다음 세션)
 
 2. **audit ws client helper** (`harness/audit_ws_client.py`)
    - WebSocket connect + connect frame (device payload 포함) + hello.ok 대기
