@@ -209,7 +209,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   | CAND-032 | ❌ e2e unreproducible (2026-05-15) | reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS 가 dominate). 3 attempt 시도 후 abandon. | abandoned |
 #   | CAND-033 | ❌ multi-account 필수 (2026-05-15) | drain.ts:89 `resolveFollowupAuthorizationKey` 가 senderId/senderE164/senderIsOwner/execOverrides/bashElevated 만 봄. single telegram user account 메시지는 sender 필드 모두 동일 → authGroups 1개 → 결함 미발현. execOverrides/bashElevated 도 메시지별 변화 path 없음. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능 | blocked-external-dep (multi-account 인프라 부재) |
 #   | CAND-037 | ❌ blocked-module-level (2026-05-15) | context-engine plugin loader. factory inject + dispose 측정에 instrumentation 의존. production binary 실행 path 없음 + 외부 환경 무관. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
-#   | CAND-038 | ⏳ in-progress (2026-05-15 2차) | ws handshake + chat.send ack 성공 ✅. chain reach LLM 부재 (cfg/agentRuntime 디버깅 ~1.5h 남음). | gateway-e2e.md §CAND-038 |
+#   | CAND-038 | ⏳ in-progress (2026-05-15 2차) | ws handshake + chat.send ack ✅. chain reach LLM 부재. **다음 세션 옵션 A** (state_dir cfg inline ~1.5h). | gateway-e2e.md §CAND-038 4번 |
 #   | CAND-039 | ✅ **collected** (2026-05-15 다음 세션) | 5/5 trial fire. recovery IIFE production-faithful 발현 직접 관측. close prelude 43ms↔2.3s 두 패턴. SOL 작성 진입 가능. | proofs/PROOF-CAND-039-pre-20260515-061713.md |
 #   | CAND-040 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅. native runtime stub + capability 등록 path + approval trigger + activeEntries 측정 sideband 필요. 작업량 ~5.5h. | gateway-e2e.md §CAND-040 |
 #
@@ -226,6 +226,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     • CAND-030/037 (module-level): 사용자 결정 (2026-05-15) 건너뜀, unit-level final 채택 가능
 #     • CAND-038/039/040 (gateway): 1차 시도 (2026-05-15) → blocked-external-dep. 다음 세션 audit-side
 #       인프라 작업 (gateway-e2e.md 참조). multi-session 진행.
+#     • CAND-039 (2차, 2026-05-15) ✅ collected. SOL 작성 진입 가능.
+#     • CAND-038 (2차, 2026-05-15): ws handshake + chat.send ack ✅. chain reach LLM gap 남음.
+#       **다음 세션: 옵션 A 진행 (사용자 결정 2026-05-15)** — state_dir/openclaw.json 에 새
+#       schema 일치 cfg 직접 작성 (agentRuntime.id="openai-responses" + models.providers.
+#       openai.baseUrl=mock_port). 시나리오 안 inline 으로 env_isolate cfg 우회.
 #
 #   ### 배경: 2026-05-14 세션의 pre-sol 9/9 collected 는 unit-level isolation test 이지
 #   ### production 실제 실행 검증이 아님 (CAL-003 정직한 인정).
@@ -305,10 +310,13 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   `proofs/PROOF-CAND-{038,039,040}-pre-20260515-052108-e2e-blocked.md` 3건 + CAND
 #   frontmatter `blocked-external-dep` + state transition `proof-blocked-pre`.
 #
-#   다음 세션 진행 순서 권고 (가성비 순) — 2026-05-15 갱신:
+#   다음 세션 진행 순서 권고 (가성비 순) — 2026-05-15 2차 갱신:
 #   1. ~~CAND-039~~ ✅ collected (2026-05-15). SOL 작성 진입 가능.
-#   2. CAND-038 (~3.5h 남음) — device pairing ✅. 남은: audit ws client + mock LLM + 시나리오
-#   3. CAND-040 (~5.5h) — native runtime stub + capability + approval trigger
+#   2. **CAND-038 (~1.5h 남음, 다음 세션 우선)** — **옵션 A 결정 (사용자 2026-05-15)**:
+#      state_dir/openclaw.json 에 새 schema 일치 cfg 직접 작성 (agentRuntime.id=
+#      "openai-responses" + models.providers.openai.baseUrl=mock_port). 시나리오 안 inline.
+#      env_isolate cfg 우회. chain reach LLM 검증 → without-fix abort 미발현 → collected.
+#   3. CAND-040 (~5.5h) — native runtime stub + capability + approval trigger.
 #
 #   각 CAND 진행 시작 시 `gateway-e2e.md` §CAND-NNN starting points 부터 읽어라.
 #
