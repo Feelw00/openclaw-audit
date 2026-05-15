@@ -57,6 +57,20 @@ pre_sol_proof:
       - Y
     yLeakCount: 3
   scenario: proof-CAND-033
+pre_sol_proof_e2e:
+  status: abandoned
+  proof_record: proofs/PROOF-CAND-033-pre-20260515-090000-e2e.md
+  decision_date: 2026-05-15
+  reason: 'authGroups ≥ 2 trigger 조건이 single telegram user account 로 만들 수 없음.
+    resolveFollowupAuthorizationKey 가 sender/exec 필드만 보는데 single account 의 메시지는
+    모두 동일 sender → authGroups=1 → inner-for race window 자체가 안 열림. burner phone +
+    2nd telegram account 인프라 (multi-session size) 시 e2e 가능하나 effective severity 추정
+    낮음 + CAL-003 위험 (CAND-032 와 같은 종류 좁은 race window) 으로 사용자 drop 결정.'
+retracted_reason: 'drop-2026-05-15: production reproducibility 인프라 부담 큼 + effective
+  severity 추정 낮음. unit-level yLeakCount=3 은 결함 메커니즘 입증이지만 production
+  hot-path 자연 발현 가능성 낮고 (multi-sender 동시 메시지 + drain 도중 clearSessionQueues
+  race window) 2nd telegram account 인프라 비용 큼. CAL-003 의 좁은 race window CAND 패턴
+  (CAND-032 와 동일 종류) — SOL 작성 가치 의문이라 CAND 자체 drop.'
 ---
 
 # auto-reply/queue/drain: collect-mode inner loop ignores mid-iteration session reset

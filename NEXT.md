@@ -117,9 +117,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     아래 §"e2e 실행 환경 분류" 참조.
 #
 #   - **2026-05-15 후속 진행 (CAND-033/030/037 blocked + CAND-038 skeleton)**:
-#       • CAND-033 blocked-external-dep: resolveFollowupAuthorizationKey 가 sender/exec 필드만
-#         보는데 single telegram user account 메시지는 모두 동일 → authGroups ≥2 production-faithful
-#         생성 불가. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능.
+#       • CAND-033 dropped (2026-05-15 사용자 결정): authGroups ≥ 2 trigger 가 single telegram
+#         user account 로 만들 수 없음. burner phone + 2nd account 인프라 부담 multi-session +
+#         effective severity 낮음. PROOF: proofs/PROOF-CAND-033-pre-20260515-090000-e2e.md
 #       • CAND-030/037 blocked-module-level: 사용자 결정 (2026-05-15) 으로 건너뜀.
 #         module-level only + instrumentation 의존 → 외부 환경 set-up 가치 0.
 #       • CAND-038/039/040 (gateway 3건): 외부 환경 set-up 진행 결정.
@@ -213,7 +213,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   | CAND-030 | ❌ blocked-module-level (2026-05-15) | subagent-registry 가 cli inline module + production bundle named export 없음. marker Map size 측정에 instrumentation 패치 필수 (proof-CAND-030.py 의 `__test = {...}` 주입). 외부 환경 (LLM/OAuth/메신저) 과 무관 → 외부 환경 set-up 으로 e2e 가치 추가 0. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
 #   | CAND-031 | ❌ dropped (2026-05-15) | LLM throw 는 inner catch 가 잡음. 외부 throw triggers 는 비정상 환경 한정 + enqueue-followup timing window 좁음. effective severity 낮음 + SOL 가치 의문. | abandoned |
 #   | CAND-032 | ❌ e2e unreproducible (2026-05-15) | reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS 가 dominate). 3 attempt 시도 후 abandon. | abandoned |
-#   | CAND-033 | ❌ multi-account 필수 (2026-05-15) | drain.ts:89 `resolveFollowupAuthorizationKey` 가 senderId/senderE164/senderIsOwner/execOverrides/bashElevated 만 봄. single telegram user account 메시지는 sender 필드 모두 동일 → authGroups 1개 → 결함 미발현. execOverrides/bashElevated 도 메시지별 변화 path 없음. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능 | blocked-external-dep (multi-account 인프라 부재) |
+#   | CAND-033 | ❌ **dropped (2026-05-15)** | authGroups ≥ 2 trigger 조건이 single telegram user account 로 만들 수 없음 (resolveFollowupAuthorizationKey 가 sender/exec 필드만 봄). burner phone + 2nd telegram account 인프라 부담 multi-session + effective severity 낮음 + CAL-003 좁은 race window 패턴 (CAND-032 와 동일 종류). 사용자 drop 결정 | abandoned |
 #   | CAND-037 | ❌ blocked-module-level (2026-05-15) | context-engine plugin loader. factory inject + dispose 측정에 instrumentation 의존. production binary 실행 path 없음 + 외부 환경 무관. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
 #   | CAND-038 | ✅ **collected** (2026-05-15 3차, 옵션 A) | chain_works_trials=1 + abort_observed_trials=0. mock req.on("close") 미 fire 로 close handler 결함 직접 측정. SOL 작성 또는 post-sol 진입 가능. | proofs/PROOF-CAND-038-pre-20260515-085213.md |
 #   | CAND-039 | ✅ **collected** (2026-05-15 다음 세션) | 5/5 trial fire. recovery IIFE production-faithful 발현 직접 관측. close prelude 43ms↔2.3s 두 패턴. SOL 작성 진입 가능. | proofs/PROOF-CAND-039-pre-20260515-061713.md |
@@ -228,7 +228,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ### 결정 사항 (사용자 결정 완료 — 2026-05-15)
 #
 #   사용자 결정: 옵션 2 (외부 환경 set-up 후 재시도). 진행 상태:
-#     • CAND-031/032/033 (channel): telegram 인프라 완성 → 031 dropped, 032 unreproducible, 033 blocked-external-dep
+#     • CAND-031/032/033 (channel): telegram 인프라 완성 → 031 dropped, 032 unreproducible, 033 dropped
 #     • CAND-030/037 (module-level): 사용자 결정 (2026-05-15) 건너뜀, unit-level final 채택 가능
 #     • CAND-038/039/040 (gateway): 1차 시도 (2026-05-15) → blocked-external-dep. 다음 세션 audit-side
 #       인프라 작업 (gateway-e2e.md 참조). multi-session 진행.

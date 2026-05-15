@@ -129,6 +129,18 @@ curl -s "https://api.telegram.org/bot${OPENCLAW_QA_TELEGRAM_SUT_BOT_TOKEN}/getUp
   | python3 -m json.tool
 ```
 
+## 진행 종결 상태 (2026-05-15)
+
+CAND-031/032/033 모두 e2e 종결 — telegram 인프라 작동 검증 됐으나 결함 자체가 production
+hot-path 에서 자연 발현 어려움:
+- **CAND-031**: dropped — LLM throw 는 inner catch 가 잡음, 외부 throw triggers 비정상 환경 한정. PROOF: `proofs/PROOF-CAND-031-pre-20260515-031046-e2e.md`
+- **CAND-032**: e2e unreproducible — reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS cleanup dominate). PROOF: `proofs/PROOF-CAND-032-pre-20260515-024753-e2e.md`
+- **CAND-033**: dropped — authGroups ≥ 2 trigger 가 single account 로 만들 수 없음, 2nd account 인프라 부담 + severity 낮음. PROOF: `proofs/PROOF-CAND-033-pre-20260515-090000-e2e.md`
+
+이 telegram 인프라는 향후 같은 channel domain CAND 등장 시 재사용 가능. 다만 위 3건 패턴
+(좁은 race window + production 자연 발현 어려움) 의 future CAND 는 시도 전에
+reproducibility risk + 인프라 비용 분석 먼저 (CAL-003 적용).
+
 ## 결함 trigger 의 어려움 (CAND 시나리오 작성 시 주의)
 
 CAND-031/032/033 의 결함은 **backend reject** 또는 **race timing** — production 에서
