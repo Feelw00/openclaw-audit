@@ -1798,8 +1798,13 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-026 mode=pre-sol
       at: '2026-05-14T09:30:47+00:00'
+    - from: proof-collected-pre
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-026-e2e mode=pre-sol
+      at: '2026-05-15T00:24:24+00:00'
     created_at: '2026-05-14T06:55:21+00:00'
-    updated_at: '2026-05-14T09:30:47+00:00'
+    updated_at: '2026-05-15T00:24:24+00:00'
   CAND-027:
     kind: candidate
     state: abandoned

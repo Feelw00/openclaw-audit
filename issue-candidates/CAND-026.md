@@ -84,14 +84,27 @@ upstream_dup_check:
   - CAND-025
 pre_sol_proof:
   status: collected
-  proof_record: proofs/PROOF-CAND-026-pre-20260514-093047.md
+  proof_record: proofs/PROOF-CAND-026-pre-20260515-002424.md
   measurements:
-    scenario: proof-CAND-026
+    scenario: proof-CAND-026-e2e
     trials: 1
     executeInvoked: 1
-    signalReceived: false
-    sameSignal: false
-  scenario: proof-CAND-026
+    signalDefined: false
+    signalIsAbortSignal: false
+    abortObserved: false
+    signalAbortedAtEnd: false
+    elapsedMs: 501
+    handshake: ok
+    callOutcome:
+      ok: false
+      error: 'McpError: MCP error -32001: AbortError: This operation was aborted'
+    childStderr: '(node:92433) ExperimentalWarning: Type Stripping is an experimental
+      feature and might change at any time
+
+      (Use `node --trace-warnings ...` to show where the warning was created)
+
+      '
+  scenario: proof-CAND-026-e2e
 ---
 
 # fix(mcp): drain in-flight callTool on shutdown and propagate host cancellation signal
