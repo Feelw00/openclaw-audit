@@ -2008,7 +2008,7 @@ items:
     updated_at: '2026-05-14T10:16:20+00:00'
   CAND-038:
     kind: cand
-    state: proof-blocked-pre
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2034,8 +2034,13 @@ items:
       reason: 'scenario=proof-CAND-038-e2e mode=pre-sol (2차 e2e: ws handshake + chat.send
         ack 성공, LLM chain reach gap [cfg/agentRuntime 디버깅 필요])'
       at: '2026-05-15T08:25:44+00:00'
+    - from: proof-blocked-pre
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: CAND-038 옵션 A e2e collected. chain_works=1 abort_observed=0. record=proofs/PROOF-CAND-038-pre-20260515-085213.md
+      at: '2026-05-15T08:52:14+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-15T08:25:44+00:00'
+    updated_at: '2026-05-15T08:52:14+00:00'
   CAND-039:
     kind: cand
     state: proof-collected-pre

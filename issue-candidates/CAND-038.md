@@ -36,12 +36,12 @@ cross_refs:
 - CAND-017
 - CAND-018
 pre_sol_proof:
-  status: blocked-external-dep
-  proof_record: proofs/PROOF-CAND-038-pre-20260515-082544.md
+  status: collected
+  proof_record: proofs/PROOF-CAND-038-pre-20260515-085213.md
   measurements:
     scenario: proof-CAND-038-e2e
     trials: 1
-    chain_works_trials: 0
+    chain_works_trials: 1
     abort_observed_trials: 0
     trial_results:
     - trial_idx: 0
@@ -50,28 +50,28 @@ pre_sol_proof:
       probe_connected: true
       probe_helloOk: true
       probe_chatSendAck:
-        runId: 97763f0b-75ff-444b-b7b8-e3f72bc83aed
+        runId: 9179a6fa-c3c2-4725-8f7a-776dd27da75a
         status: started
       probe_chatSendErr: null
       probe_wsCloseCode: 1000
       probe_errors: []
       probe_frames:
-      - ts: 1778833530050
+      - ts: 1778835023026
         type: event
         event: connect.challenge
-      - ts: 1778833530072
+      - ts: 1778835023049
         type: res
-        id: 89c20d75-ccab-44f5-96f9-70d9c076f364
+        id: b1fefa6e-64e4-4134-927b-8378fe9b0202
         ok: true
-      - ts: 1778833530416
+      - ts: 1778835023115
         type: event
         event: health
-      - ts: 1778833530473
+      - ts: 1778835023263
         type: res
-        id: a97729ca-fb92-4d56-bf30-f80851e720fd
+        id: 0a8ef079-0b41-42c9-86b1-855ed5683e45
         ok: true
-      mock_request_started_count: 0
-      mock_hold_started_count: 0
+      mock_request_started_count: 1
+      mock_hold_started_count: 1
       mock_stream_completed_count: 0
       mock_client_disconnected: []
       probe_stderr_tail: ''

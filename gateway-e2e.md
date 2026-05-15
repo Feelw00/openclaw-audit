@@ -11,7 +11,7 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
 
 | CAND | 핵심 결함 | 부재 인프라 | proof record |
 |---|---|---|---|
-| 038 | ws-connection.ts:351-421 close handler 가 chatAbortControllers 의 ownerConnId 매칭 entry abort 안 함 | ws handshake + chat.send ack ✅ (2026-05-15 2차). LLM chain reach 부재 (cfg/agentRuntime 디버깅 필요) | 1차 `proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md` / 2차 `proofs/PROOF-CAND-038-pre-20260515-082544.md` |
+| 038 | ws-connection.ts:351-421 close handler 가 chatAbortControllers 의 ownerConnId 매칭 entry abort 안 함 | ✅ **collected (2026-05-15 3차, 옵션 A)** — chain_works=1, abort_observed=0. mock req.on("close") 미 fire 로 결함 직접 측정 | 1차 `proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md` / 2차 `proofs/PROOF-CAND-038-pre-20260515-082544.md` / **3차 `proofs/PROOF-CAND-038-pre-20260515-085213.md` (collected)** |
 | 039 | ✅ **collected (2026-05-15)** — recovery IIFE fire 5/5 trial. close prelude 가 43ms↔2.3s 두 패턴, 후자는 shutdown 이 recovery 완료 기다리는 결함 직접 관측 | (해소) pending state seed inline + state-dir 이중 .openclaw 처리 + IIFE only 측정 | `proofs/PROOF-CAND-039-pre-20260515-061713.md` |
 | 040 | approval-handler-runtime.ts:498-537 deliverTarget 의 activeEntries RMW 가 onStopped clear 와 race | native runtime stub / capability 등록 path / approval trigger / activeEntries 측정 sideband | `proofs/PROOF-CAND-040-pre-20260515-052108-e2e-blocked.md` |
 
@@ -47,19 +47,29 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
    event 1개 → MOCK_HOLD_MS hold → 정상 SSE chunk + end. hold 도중 client close 시
    `completed=false` 로 기록 → with-fix 발현 증거.
 
-4. ❌ **chain reach LLM** (2026-05-15 2차) — `mock_request_started_count=0`. 원인 분석:
-   env_isolate 의 minimal cfg (auth.mode=token + meta._isolated_proof_env 등) 가 새 schema
-   와 불일치 → SUT 의 cfg validator 가 무시 + default cfg 사용 → `agentRuntime.id="codex"` →
-   codex CLI binary 부재 → LLM 호출 path 도달 전 chain 막힘. **다음 세션 작업**:
-   - 옵션 A (~30분): 시나리오에서 `state_dir/openclaw.json` 에 새 schema 와 일치하는 cfg 직접
-     작성 (agentRuntime.id="openai-responses" + models.providers.openai.baseUrl=mock_port).
-     env_isolate 무시.
-   - 옵션 B (~1h): env_isolate.py 의 `_build_minimal_config` 를 새 schema 와 일치하도록 패치
-     (다른 시나리오에도 영향).
-   - 옵션 C: codex CLI mock binary 두기 — 가장 invasive, 피하기.
-   권고: 옵션 A. CAND-038 시나리오 안에 inline.
+4. ~~**chain reach LLM**~~ ✅ **완료 (2026-05-15 3차, 옵션 A 채택)** — 시나리오 `_run_one_trial`
+   안에 `state_dir/openclaw.json` overwrite (env_isolate 의 minimal cfg 무시):
+   ```python
+   {
+     "agents": {"defaults": {"model": {"primary": "openai/gpt-5"}}},
+     "models": {"providers": {"openai": {
+       "baseUrl": f"http://127.0.0.1:{mock_port}/v1",
+       "apiKey": "sk-mock-c038", "auth": "api-key",
+       "models": [{"id": "gpt-5", "name": "gpt-5", "api": "openai-responses"}]
+     }}},
+     "gateway": {"mode": "local", "port": gateway_port, "bind": "loopback",
+                  "auth": {"mode": "none"}, "tailscale": {"mode": "off", "resetOnExit": True}},
+     "session": {"dmScope": "per-channel-peer"}
+   }
+   ```
+   디버깅 (2 라운드): `api:"responses"` → `"openai-responses"`, `bind:"127.0.0.1"` → `"loopback"`
+   (gateway startup 에서 정확한 enum 메시지 노출).
+   핵심: agents.defaults.model.primary 가 `openai/gpt-5` (codex prefix 없음) 라
+   resolveAgentHarnessPolicy 가 runtime="auto" → pi default (codex CLI 회피).
 
-5. **시나리오 + 실행 + 영속화** ~1h 남음 (다음 세션)
+5. ✅ **완료 (2026-05-15 3차)** — chain_works_trials=1 + abort_observed_trials=0
+   (without-fix 결함 발현 직접 측정). `proofs/PROOF-CAND-038-pre-20260515-085213.md`.
+   state `proof-blocked-pre → proof-collected-pre`.
 
 2. **audit ws client helper** (`harness/audit_ws_client.py`)
    - WebSocket connect + connect frame (device payload 포함) + hello.ok 대기
@@ -149,11 +159,7 @@ post-sol 단계에서 with-fix 빌드 비교 + PR body 6 필드 evidence 산출.
 진행 상태 (2026-05-15 기준):
 
 1. ~~**CAND-039**~~ ✅ **collected (2026-05-15)** — pre-sol 완료. SOL 작성 또는 post-sol 진입.
-2. **CAND-038** (~3.5h 남음) — device pairing helper ✅ 완료. **다음 단계**:
-   - audit ws client manual frame (connect frame 에 device payload 첨부) ~1h
-   - mock LLM disconnect detection (req.on("close") 패치) ~0.5h
-   - chat workflow chain 디버깅 (chat.send → registerChatAbortController) ~1h
-   - 시나리오 + 실행 ~1h
+2. ~~**CAND-038**~~ ✅ **collected (2026-05-15 3차, 옵션 A)** — pre-sol 완료. SOL 작성 또는 post-sol 진입.
 3. **CAND-040** (~5.5h) — capability stub + approval flow. 가장 복잡.
 
 각 CAND 진행 시 새 세션 시작 + 이 문서 starting points 부터 + multi-session 분할 가능.

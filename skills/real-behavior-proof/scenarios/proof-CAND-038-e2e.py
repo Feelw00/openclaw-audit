@@ -372,7 +372,43 @@ def _run_one_trial(
             "mock_stderr_tail": mock_stderr.read_text()[-1000:] if mock_stderr.exists() else "",
         }
 
-    # 3. SUT spawn (gateway run with mock LLM endpoint env)
+    # 3. cfg overwrite — 옵션 A (NEXT.md 결정 2026-05-15).
+    # env_isolate 의 minimal cfg 는 agentRuntime.id="codex" 라 codex CLI binary 부재
+    # 환경에서 chain reach LLM 불가. 새 schema 에 맞춰 inline 으로 다시 쓰기:
+    #   - agents.defaults.model.primary = "openai/gpt-5" (codex prefix 회피)
+    #   - agentRuntime 명시 안 함 → resolveAgentHarnessPolicy 가 "auto" 후
+    #     openAIProviderUsesCodexRuntimeByDefault false → runtime="auto" 유지 → pi default
+    #   - models.providers.openai.baseUrl = mock_port URL + api=responses 명시
+    cfg_overwrite = {
+        "agents": {
+            "defaults": {
+                "model": {"primary": "openai/gpt-5"},
+            },
+        },
+        "models": {
+            "providers": {
+                "openai": {
+                    "baseUrl": f"http://127.0.0.1:{mock_port}/v1",
+                    "apiKey": "sk-mock-c038",
+                    "auth": "api-key",
+                    "models": [
+                        {"id": "gpt-5", "name": "gpt-5", "api": "openai-responses"},
+                    ],
+                },
+            },
+        },
+        "gateway": {
+            "mode": "local",
+            "port": gateway_port,
+            "bind": "loopback",
+            "auth": {"mode": "none"},
+            "tailscale": {"mode": "off", "resetOnExit": True},
+        },
+        "session": {"dmScope": "per-channel-peer"},
+    }
+    (state_dir / "openclaw.json").write_text(json.dumps(cfg_overwrite, indent=2))
+
+    # 3a. SUT spawn (gateway run with mock LLM endpoint env)
     sut_env = env.copy()
     sut_env["OPENAI_BASE_URL"] = f"http://127.0.0.1:{mock_port}/v1"
     sut_env["OPENAI_API_KEY"] = "sk-mock-c038"
