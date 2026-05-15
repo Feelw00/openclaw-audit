@@ -12,7 +12,7 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
 | CAND | 핵심 결함 | 부재 인프라 | proof record |
 |---|---|---|---|
 | 038 | ws-connection.ts:351-421 close handler 가 chatAbortControllers 의 ownerConnId 매칭 entry abort 안 함 | device pairing / chat workflow chain / mock LLM disconnect detection / 두 ws probe subscription | `proofs/PROOF-CAND-038-pre-20260515-052108-e2e-blocked.md` |
-| 039 | server-runtime-services.ts:156-190 recovery 함수 stop handle 부재 + caller cancellation 통로 없음 | pending state file injection / close prelude 지연 trigger / recovery observable 강화 | `proofs/PROOF-CAND-039-pre-20260515-052108-e2e-blocked.md` |
+| 039 | ✅ **collected (2026-05-15)** — recovery IIFE fire 5/5 trial. close prelude 가 43ms↔2.3s 두 패턴, 후자는 shutdown 이 recovery 완료 기다리는 결함 직접 관측 | (해소) pending state seed inline + state-dir 이중 .openclaw 처리 + IIFE only 측정 | `proofs/PROOF-CAND-039-pre-20260515-061713.md` |
 | 040 | approval-handler-runtime.ts:498-537 deliverTarget 의 activeEntries RMW 가 onStopped clear 와 race | native runtime stub / capability 등록 path / approval trigger / activeEntries 측정 sideband | `proofs/PROOF-CAND-040-pre-20260515-052108-e2e-blocked.md` |
 
 ## 부팅 baseline (확인된 사실)
@@ -27,11 +27,12 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
 
 **audit-side infra 필요 작업**:
 
-1. **device pairing helper** (`skills/real-behavior-proof/harness/device_pairing.py`)
-   - 참고: `/Users/lucas/Project/openclaw/scripts/e2e/lib/upgrade-survivor/update-restart-auth.sh:140-225`
-   - ed25519 keypair 생성 → `<state-dir>/identity/device.json` + `device-auth.json` + `devices/paired.json` 작성
-   - 반환: `{deviceId, publicKeyRaw, privateKeyPem, token, scopes}`
-   - 작업량: ~1.5h
+1. ~~**device pairing helper**~~ ✅ **완료 (2026-05-15)**: `skills/real-behavior-proof/harness/device_pairing.py`
+   작성 + 검증. inline Node script (ed25519 keypair + PEM 인코딩) + Python wrapper 패턴.
+   참조: `/Users/lucas/Project/openclaw/scripts/e2e/lib/upgrade-survivor/update-restart-auth.sh:140-225`
+   동일 로직. 작성한 파일: `identity/device.json` + `identity/device-auth.json` +
+   `devices/paired.json` + `devices/pending.json` (모두 0o600).
+   반환: `{deviceId, publicKeyPem, privateKeyPem, publicKeyRawBase64Url, token, role, scopes, files}`
 
 2. **audit ws client helper** (`harness/audit_ws_client.py`)
    - WebSocket connect + connect frame (device payload 포함) + hello.ok 대기
@@ -56,33 +57,37 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
 
 총 ~5h, 1-2 세션.
 
-### CAND-039 (startup recovery cancel on shutdown)
+### CAND-039 (startup recovery cancel on shutdown) — ✅ **collected** (2026-05-15)
 
-**audit-side infra 필요 작업**:
+**1차 e2e 시도** (2026-05-15): `proof-CAND-039-e2e` 시나리오 5 trial 전부 fire (5/5, fire_rate=1.0).
+production-faithful 결함 발현 직접 관측 — recovery IIFE 가 `[gateway] ready` 직후 ~25ms 만에 fire,
+SIGTERM 후에도 일부 trial 은 `Recovered delivery ... on telegram` + `Delivery recovery complete: 1
+recovered` 출력. close_prelude_ms 가 43ms ↔ 2280-2306ms 두 패턴 — 후자는 recovery in-flight 인
+상태에서 shutdown 이 background 완료를 기다리는 결함의 직접 측정. PROOF:
+`proofs/PROOF-CAND-039-pre-20260515-061713.md`. CAND frontmatter `pre_sol_proof.status=collected`,
+state transition `proof-blocked-pre → proof-collected-pre`.
 
-1. **pending state pre-injection helper** (`harness/pending_state_seed.py`)
-   - delivery-queue/<id>.json: `delivery-queue-storage.ts:23 QUEUE_DIRNAME` + `loadPendingDeliveries` → QueuedDelivery format (id, enqueuedAt, retryCount, payload 등)
-   - restart-sentinel.json: `restart-sentinel.ts:42 RestartSentinelPayload` (kind=restart 또는 update + sessionKey + deliveryContext)
-   - 세션 entry 동반 prep (sessionKey 가 valid 해야 recovery 가 channel route 시도)
-   - 작업량: ~1.5h
+**축약된 인프라** (multi-session 추정 4.5h → 실 ~2h):
+1. **pending state seed** — 시나리오 내부 inline. delivery-queue/<uuid>.json 만으로 충분
+   (restart-sentinel/session-delivery 추가는 setTimeout fire window 측정에 필요하지만 IIFE
+   측정만으로 결함 증명 충분). state-dir 는 `${OPENCLAW_HOME}/.openclaw` (env_isolate 의
+   이중 .openclaw 구조).
+2. **close prelude 지연 plugin 불필요** — IIFE 는 ready 직후 즉시 fire, close prelude 짧아도
+   buffer 에 fire log 잡힘. setTimeout 1250 측정은 보류 (slow-shutdown plugin 작업 ~1.5h
+   추가 필요, 가성비 낮음).
+3. **observable**: `[delivery-recovery] Found N pending delivery entries — starting recovery`
+   stdout 출력. ANSI 컬러 코드 strip + 패턴 매칭으로 검출.
+4. **시나리오**: `scenarios/proof-CAND-039-e2e.py` — REQUIRES_EXTERNAL_DEP=False, CLI flag
+   `--auth none --bind loopback --port <p> --allow-unconfigured` 가 cfg 보다 우선이라 cfg 패치
+   없이 부팅 가능 (env_isolate 의 새 schema 와 불일치한 minimal cfg 우회).
 
-2. **close prelude 지연 path 식별**
-   - 옵션 A: custom plugin (`audit/plugins/slow-shutdown-plugin/`) 가 gateway_stop hook 에서 1.5-2s sleep
-   - 옵션 B: production code 의 channel cleanup 지연 path (실 channel 등록 후 channel.dispose 가 IO 대기)
-   - 옵션 C: setTimeout 1250 fire window 를 강제로 늘리는 다른 trigger
-   - 작업량: ~1.5h
+**build worktree 우회** — 메인 repo (`/Users/lucas/Project/openclaw`) 의 `openclaw.mjs`
+(upstream/main HEAD 빌드) 직접 spawn. 30분 pnpm build 회피. ad-hoc runner
+(`/tmp/cand039_runner.py`, `/tmp/cand039_persist.py` — 일회용, cleanup 후 삭제됨).
 
-3. **observable 강화**
-   - recovery 의 stderr log keyword (`delivery-recovery` / `session-delivery-recovery` subsystem) 정확 형식 확인
-   - sentinel file removal 시점 측정 (recovery 진행 → sentinel 파일 read + 처리 후 unlink)
-   - 작업량: ~0.5h
-
-4. **`scenarios/proof-CAND-039-e2e.py`**
-   - pre-inject pending entry → gateway run + slow shutdown plugin → ready 후 SIGTERM → setTimeout 1250 fire window 강제 → log/sentinel observable 측정
-   - evaluate_pre: recovery 가 fire 됐는가 (without-fix 일치) + with-fix 시 fire 차단
-   - 작업량: ~1h
-
-총 ~4.5h, 1-2 세션.
+**다음 (post-sol 또는 SOL 작성)**: pre-sol collected 이라 SOL-CAND-039 작성 진입 가능. fix
+surface 옵션 A (isClosing 가드 + timer handle 반환) 또는 옵션 B (AbortSignal 전파) 결정.
+post-sol 단계에서 with-fix 빌드 비교 + PR body 6 필드 evidence 산출.
 
 ### CAND-040 (approval handler stop race)
 
@@ -114,13 +119,34 @@ CAND-038 / CAND-039 / CAND-040 의 production end-to-end re-verification 작업.
 
 ## 진행 순서 (권고)
 
-가장 짧은 시간 cost + 가장 가성비 높은 CAND 부터:
+진행 상태 (2026-05-15 기준):
 
-1. **CAND-039 부터** (~4.5h) — pending state injection + slow shutdown plugin. observable 강화가 핵심.
-2. **CAND-038** (~5h) — device pairing + chat workflow chain + mock LLM. chain 작동 디버깅 cost 클 가능성.
-3. **CAND-040** (~5.5h) — capability stub + approval flow. 가장 복잡 (channel/native 의존).
+1. ~~**CAND-039**~~ ✅ **collected (2026-05-15)** — pre-sol 완료. SOL 작성 또는 post-sol 진입.
+2. **CAND-038** (~3.5h 남음) — device pairing helper ✅ 완료. **다음 단계**:
+   - audit ws client manual frame (connect frame 에 device payload 첨부) ~1h
+   - mock LLM disconnect detection (req.on("close") 패치) ~0.5h
+   - chat workflow chain 디버깅 (chat.send → registerChatAbortController) ~1h
+   - 시나리오 + 실행 ~1h
+3. **CAND-040** (~5.5h) — capability stub + approval flow. 가장 복잡.
 
 각 CAND 진행 시 새 세션 시작 + 이 문서 starting points 부터 + multi-session 분할 가능.
+
+## CAND-039 e2e 에서 검증된 패턴 (CAND-038/040 에 재사용)
+
+1. **build worktree 우회** — 메인 repo `/Users/lucas/Project/openclaw/openclaw.mjs` 직접 spawn.
+   upstream/main 동기화만 유지하면 base sha 빌드 우회. 30분 cost 0.
+2. **state-dir 이중 .openclaw** — env_isolate 의 OPENCLAW_HOME 이 ".openclaw" 끝나면 production
+   resolveStateDir 는 `${OPENCLAW_HOME}/.openclaw` (이중). seed file 도 그 안에.
+3. **cfg 패치 불필요** — CLI flag (`--auth none --bind loopback --port <p> --allow-unconfigured`)
+   가 cfg 보다 우선. env_isolate 의 minimal cfg 가 새 schema 와 불일치해도 무시됨.
+4. **ANSI 컬러 코드 strip** — logger 출력에 ANSI 코드 포함. `re.sub(r"\x1b\[[0-9;]*m", "", text)`
+   후 패턴 매칭.
+5. **tempfile 로 stdout/stderr redirect + polling** — subprocess.PIPE 는 buffer-full 위험. 파일
+   redirect 후 폴링하면서 ready marker / fire log 검사.
+6. **ready marker**: `[gateway] ready` (server-startup-post-attach.ts:818). port listen 만으론
+   부족 — onSidecarsReady → activateScheduledServicesWhenReady 가 그 후.
+7. **ad-hoc runner + persist 패턴** — `/tmp/<cand>_runner.py` (env_isolate + run_scenario 호출),
+   `/tmp/<cand>_persist.py` (render_proof + state_mod 직접 호출). build.py 우회. 일회용 cleanup.
 
 ## 대안 — unit-level final 채택 (NEXT.md §0 옵션 1)
 

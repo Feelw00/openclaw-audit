@@ -2032,7 +2032,7 @@ items:
     updated_at: '2026-05-15T05:22:53+00:00'
   CAND-039:
     kind: cand
-    state: proof-blocked-pre
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2052,8 +2052,14 @@ items:
         missing (device pairing / pending state injection / native runtime stub) —
         multi-session work'', ''next_session'': ''gateway-e2e.md''}'
       at: '2026-05-15T05:22:53+00:00'
+    - from: proof-blocked-pre
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-039-e2e mode=pre-sol (build-worktree-bypass, main-repo
+        bundle)
+      at: '2026-05-15T06:17:13+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-15T05:22:53+00:00'
+    updated_at: '2026-05-15T06:17:13+00:00'
   CAND-040:
     kind: cand
     state: proof-blocked-pre

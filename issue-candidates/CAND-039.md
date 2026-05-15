@@ -37,15 +37,215 @@ upstream_dup_check:
 cross_refs:
 - CAND-038
 pre_sol_proof:
-  status: blocked-external-dep
-  proof_record: proofs/PROOF-CAND-039-pre-20260515-052108-e2e-blocked.md
+  status: collected
+  proof_record: proofs/PROOF-CAND-039-pre-20260515-061713.md
   measurements:
     scenario: proof-CAND-039-e2e
-    trials: 0
-    e2e_attempt: true
-    blocked_reason: audit-side infrastructure missing (device pairing / pending state
-      injection / native runtime stub) — multi-session work
-    next_session: gateway-e2e.md
+    trials: 5
+    fire_trials: 5
+    not_ready_trials: 0
+    fire_rate: 1.0
+    boot_ms_samples:
+    - 2143
+    - 2040
+    - 2139
+    - 2062
+    - 2152
+    close_prelude_ms_samples:
+    - 2306
+    - 43
+    - 2280
+    - 43
+    - 2275
+    fire_keyword: Found N pending delivery entries — starting recovery
+    subsystem: delivery-recovery
+    trial_results:
+    - trial_idx: 0
+      entry_id: 9fe2c243f9384c139abdc33766b0bf09
+      port_listen: true
+      port_listen_ms: 1500
+      ready: true
+      ready_marker: '[gateway] ready'
+      boot_ms: 2143
+      status: ok
+      rc: 0
+      close_prelude_ms: 2306
+      fire_found: true
+      fire_line: Found 1 pending delivery entries — starting recovery
+      complete_found: true
+      complete_line: 'Delivery recovery complete: 1 recovered'
+      subsystem_seen: true
+      stderr_len: 360
+      stdout_len: 2971
+      stderr_tail: "\e[90m2026-05-15T15:16:53.563+09:00\e[39m \e[36m[gateway]\e[39m\
+        \ \e[33mauth mode=none explicitly configured; all gateway connections are\
+        \ unauthenticated.\e[39m\n2026-05-15T15:16:57.465+09:00 (node:31968) ExperimentalWarning:\
+        \ Type Stripping is an experimental feature and might change at any time\n\
+        (Use `node --trace-warnings ...` to show where the warning was created)\n"
+      stdout_tail: "\e[39m \e[36m[heartbeat]\e[39m \e[36mstarted\e[39m\n\e[90m2026-05-15T15:16:55.380+09:00\e\
+        [39m \e[33m[delivery-recovery]\e[39m \e[36mFound 1 pending delivery entries\
+        \ — starting recovery\e[39m\n\e[90m2026-05-15T15:16:57.469+09:00\e[39m \e\
+        [36m[gateway]\e[39m \e[36msignal SIGTERM received\e[39m\n\e[90m2026-05-15T15:16:57.517+09:00\e\
+        [39m \e[36m[gateway]\e[39m \e[36mreceived SIGTERM; shutting down\e[39m\n\e\
+        [90m2026-05-15T15:16:57.627+09:00\e[39m \e[33m[delivery-recovery]\e[39m \e\
+        [36mRecovered delivery 9fe2c243f9384c139abdc33766b0bf09 on telegram\e[39m\n\
+        \e[90m2026-05-15T15:16:57.628+09:00\e[39m \e[33m[delivery-recovery]\e[39m\
+        \ \e[36mDelivery recovery complete: 1 recovered, 0 failed, 0 skipped (max\
+        \ retries), 0 deferred (backoff)\e[39m\n\e[90m2026-05-15T15:16:57.645+09:00\e\
+        [39m \e[33m[shutdown]\e[39m \e[36mstarted: gateway stopping\e[39m\n\e[90m2026-05-15T15:16:57.646+09:00\e\
+        [39m \e[35m[plugins]\e[39m \e[36mbonjour: advertised gateway fqdn=MacBook Pro\
+        \ (OpenClaw) (2)._openclaw-gw._tcp.local. host=MacBook-Pro-(2).local. port=17000\
+        \ state=unannounced\e[39m\n\e[90m2026-05-15T15:16:57.682+09:00\e[39m \e[34m[gmail-watcher]\e\
+        [39m \e[36mgmail watcher stopped\e[39m\n\e[90m2026-05-15T15:16:57.684+09:00\e\
+        [39m \e[33m[shutdown]\e[39m \e[36mcompleted cleanly in 40ms\e[39m\n"
+    - trial_idx: 1
+      entry_id: 7da28754906141dcb7e4cbbed4eabe91
+      port_listen: true
+      port_listen_ms: 1623
+      ready: true
+      ready_marker: '[gateway] ready'
+      boot_ms: 2040
+      status: ok
+      rc: 0
+      close_prelude_ms: 43
+      fire_found: true
+      fire_line: Found 1 pending delivery entries — starting recovery
+      complete_found: false
+      complete_line: null
+      subsystem_seen: true
+      stderr_len: 153
+      stdout_len: 1984
+      stderr_tail: "\e[90m2026-05-15T15:16:58.640+09:00\e[39m \e[36m[gateway]\e[39m\
+        \ \e[33mauth mode=none explicitly configured; all gateway connections are\
+        \ unauthenticated.\e[39m\n"
+      stdout_tail: ", file-transfer, memory-core, phone-control, talk-voice; 1.3s)\e\
+        [39m\n\e[90m2026-05-15T15:16:59.980+09:00\e[39m \e[36m[gateway]\e[39m \e[36mlog\
+        \ file: /tmp/openclaw/openclaw-2026-05-15.log\e[39m\n\e[90m2026-05-15T15:16:59.982+09:00\e\
+        [39m \e[36m[gateway]\e[39m \e[36mstarting channels and sidecars...\e[39m\n\
+        \e[90m2026-05-15T15:16:59.994+09:00\e[39m \e[35m[plugins]\e[39m \e[36membedded\
+        \ acpx runtime backend registered (cwd: /tmp/proof-c039-e2e-persist/.openclaw/.openclaw/workspace)\e\
+        [39m\n\e[90m2026-05-15T15:17:00.180+09:00\e[39m \e[35m[plugins]\e[39m \e[36membedded\
+        \ acpx runtime backend ready\e[39m\n\e[90m2026-05-15T15:17:00.259+09:00\e\
+        [39m \e[36m[browser/server]\e[39m \e[36mBrowser control listening on http://127.0.0.1:17002/\
+        \ (auth=token)\e[39m\n\e[90m2026-05-15T15:17:00.262+09:00\e[39m \e[36m[gateway]\e\
+        [39m \e[36mready\e[39m\n\e[90m2026-05-15T15:17:00.265+09:00\e[39m \e[36m[heartbeat]\e\
+        [39m \e[36mstarted\e[39m\n\e[90m2026-05-15T15:17:00.276+09:00\e[39m \e[36m[gateway]\e\
+        [39m \e[36msignal SIGTERM received\e[39m\n\e[90m2026-05-15T15:17:00.285+09:00\e\
+        [39m \e[36m[gateway]\e[39m \e[36mreceived SIGTERM; shutting down\e[39m\n\e\
+        [90m2026-05-15T15:17:00.287+09:00\e[39m \e[33m[delivery-recovery]\e[39m \e\
+        [36mFound 1 pending delivery entries — starting recovery\e[39m\n"
+    - trial_idx: 2
+      entry_id: dfa2f54867024835bd1844503e8c4e42
+      port_listen: true
+      port_listen_ms: 1606
+      ready: true
+      ready_marker: '[gateway] ready'
+      boot_ms: 2139
+      status: ok
+      rc: 0
+      close_prelude_ms: 2280
+      fire_found: true
+      fire_line: Found 1 pending delivery entries — starting recovery
+      complete_found: true
+      complete_line: 'Delivery recovery complete: 1 recovered'
+      subsystem_seen: true
+      stderr_len: 360
+      stdout_len: 2809
+      stderr_tail: "\e[90m2026-05-15T15:17:01.258+09:00\e[39m \e[36m[gateway]\e[39m\
+        \ \e[33mauth mode=none explicitly configured; all gateway connections are\
+        \ unauthenticated.\e[39m\n2026-05-15T15:17:05.009+09:00 (node:32044) ExperimentalWarning:\
+        \ Type Stripping is an experimental feature and might change at any time\n\
+        (Use `node --trace-warnings ...` to show where the warning was created)\n"
+      stdout_tail: "\e[39m \e[36m[heartbeat]\e[39m \e[36mstarted\e[39m\n\e[90m2026-05-15T15:17:02.918+09:00\e\
+        [39m \e[33m[delivery-recovery]\e[39m \e[36mFound 1 pending delivery entries\
+        \ — starting recovery\e[39m\n\e[90m2026-05-15T15:17:05.014+09:00\e[39m \e\
+        [36m[gateway]\e[39m \e[36msignal SIGTERM received\e[39m\n\e[90m2026-05-15T15:17:05.058+09:00\e\
+        [39m \e[36m[gateway]\e[39m \e[36mreceived SIGTERM; shutting down\e[39m\n\e\
+        [90m2026-05-15T15:17:05.161+09:00\e[39m \e[33m[delivery-recovery]\e[39m \e\
+        [36mRecovered delivery dfa2f54867024835bd1844503e8c4e42 on telegram\e[39m\n\
+        \e[90m2026-05-15T15:17:05.161+09:00\e[39m \e[33m[delivery-recovery]\e[39m\
+        \ \e[36mDelivery recovery complete: 1 recovered, 0 failed, 0 skipped (max\
+        \ retries), 0 deferred (backoff)\e[39m\n\e[90m2026-05-15T15:17:05.176+09:00\e\
+        [39m \e[33m[shutdown]\e[39m \e[36mstarted: gateway stopping\e[39m\n\e[90m2026-05-15T15:17:05.177+09:00\e\
+        [39m \e[35m[plugins]\e[39m \e[36mbonjour: advertised gateway fqdn=MacBook Pro\
+        \ (OpenClaw) (2)._openclaw-gw._tcp.local. host=MacBook-Pro-(2).local. port=17000\
+        \ state=unannounced\e[39m\n\e[90m2026-05-15T15:17:05.212+09:00\e[39m \e[34m[gmail-watcher]\e\
+        [39m \e[36mgmail watcher stopped\e[39m\n\e[90m2026-05-15T15:17:05.214+09:00\e\
+        [39m \e[33m[shutdown]\e[39m \e[36mcompleted cleanly in 38ms\e[39m\n"
+    - trial_idx: 3
+      entry_id: d5ea660dd1344c07adf1b2c9c3b02810
+      port_listen: true
+      port_listen_ms: 1630
+      ready: true
+      ready_marker: '[gateway] ready'
+      boot_ms: 2062
+      status: ok
+      rc: 0
+      close_prelude_ms: 43
+      fire_found: true
+      fire_line: Found 1 pending delivery entries — starting recovery
+      complete_found: false
+      complete_line: null
+      subsystem_seen: true
+      stderr_len: 153
+      stdout_len: 1984
+      stderr_tail: "\e[90m2026-05-15T15:17:06.175+09:00\e[39m \e[36m[gateway]\e[39m\
+        \ \e[33mauth mode=none explicitly configured; all gateway connections are\
+        \ unauthenticated.\e[39m\n"
+      stdout_tail: ", file-transfer, memory-core, phone-control, talk-voice; 1.3s)\e\
+        [39m\n\e[90m2026-05-15T15:17:07.518+09:00\e[39m \e[36m[gateway]\e[39m \e[36mlog\
+        \ file: /tmp/openclaw/openclaw-2026-05-15.log\e[39m\n\e[90m2026-05-15T15:17:07.520+09:00\e\
+        [39m \e[36m[gateway]\e[39m \e[36mstarting channels and sidecars...\e[39m\n\
+        \e[90m2026-05-15T15:17:07.532+09:00\e[39m \e[35m[plugins]\e[39m \e[36membedded\
+        \ acpx runtime backend registered (cwd: /tmp/proof-c039-e2e-persist/.openclaw/.openclaw/workspace)\e\
+        [39m\n\e[90m2026-05-15T15:17:07.717+09:00\e[39m \e[35m[plugins]\e[39m \e[36membedded\
+        \ acpx runtime backend ready\e[39m\n\e[90m2026-05-15T15:17:07.798+09:00\e\
+        [39m \e[36m[browser/server]\e[39m \e[36mBrowser control listening on http://127.0.0.1:17002/\
+        \ (auth=token)\e[39m\n\e[90m2026-05-15T15:17:07.805+09:00\e[39m \e[36m[gateway]\e\
+        [39m \e[36mready\e[39m\n\e[90m2026-05-15T15:17:07.808+09:00\e[39m \e[36m[heartbeat]\e\
+        [39m \e[36mstarted\e[39m\n\e[90m2026-05-15T15:17:07.822+09:00\e[39m \e[36m[gateway]\e\
+        [39m \e[36msignal SIGTERM received\e[39m\n\e[90m2026-05-15T15:17:07.827+09:00\e\
+        [39m \e[33m[delivery-recovery]\e[39m \e[36mFound 1 pending delivery entries\
+        \ — starting recovery\e[39m\n\e[90m2026-05-15T15:17:07.828+09:00\e[39m \e\
+        [36m[gateway]\e[39m \e[36mreceived SIGTERM; shutting down\e[39m\n"
+    - trial_idx: 4
+      entry_id: 7ba7f6442a514cf79756beeb388d314f
+      port_listen: true
+      port_listen_ms: 1617
+      ready: true
+      ready_marker: '[gateway] ready'
+      boot_ms: 2152
+      status: ok
+      rc: 0
+      close_prelude_ms: 2275
+      fire_found: true
+      fire_line: Found 1 pending delivery entries — starting recovery
+      complete_found: true
+      complete_line: 'Delivery recovery complete: 1 recovered'
+      subsystem_seen: true
+      stderr_len: 360
+      stdout_len: 2809
+      stderr_tail: "\e[90m2026-05-15T15:17:08.805+09:00\e[39m \e[36m[gateway]\e[39m\
+        \ \e[33mauth mode=none explicitly configured; all gateway connections are\
+        \ unauthenticated.\e[39m\n2026-05-15T15:17:12.573+09:00 (node:32097) ExperimentalWarning:\
+        \ Type Stripping is an experimental feature and might change at any time\n\
+        (Use `node --trace-warnings ...` to show where the warning was created)\n"
+      stdout_tail: "\e[39m \e[36m[heartbeat]\e[39m \e[36mstarted\e[39m\n\e[90m2026-05-15T15:17:10.473+09:00\e\
+        [39m \e[33m[delivery-recovery]\e[39m \e[36mFound 1 pending delivery entries\
+        \ — starting recovery\e[39m\n\e[90m2026-05-15T15:17:12.579+09:00\e[39m \e\
+        [36m[gateway]\e[39m \e[36msignal SIGTERM received\e[39m\n\e[90m2026-05-15T15:17:12.622+09:00\e\
+        [39m \e[36m[gateway]\e[39m \e[36mreceived SIGTERM; shutting down\e[39m\n\e\
+        [90m2026-05-15T15:17:12.729+09:00\e[39m \e[33m[delivery-recovery]\e[39m \e\
+        [36mRecovered delivery 7ba7f6442a514cf79756beeb388d314f on telegram\e[39m\n\
+        \e[90m2026-05-15T15:17:12.729+09:00\e[39m \e[33m[delivery-recovery]\e[39m\
+        \ \e[36mDelivery recovery complete: 1 recovered, 0 failed, 0 skipped (max\
+        \ retries), 0 deferred (backoff)\e[39m\n\e[90m2026-05-15T15:17:12.740+09:00\e\
+        [39m \e[33m[shutdown]\e[39m \e[36mstarted: gateway stopping\e[39m\n\e[90m2026-05-15T15:17:12.741+09:00\e\
+        [39m \e[35m[plugins]\e[39m \e[36mbonjour: advertised gateway fqdn=MacBook Pro\
+        \ (OpenClaw) (2)._openclaw-gw._tcp.local. host=MacBook-Pro-(2).local. port=17000\
+        \ state=unannounced\e[39m\n\e[90m2026-05-15T15:17:12.777+09:00\e[39m \e[34m[gmail-watcher]\e\
+        [39m \e[36mgmail watcher stopped\e[39m\n\e[90m2026-05-15T15:17:12.778+09:00\e\
+        [39m \e[33m[shutdown]\e[39m \e[36mcompleted cleanly in 39ms\e[39m\n"
   scenario: proof-CAND-039-e2e
 ---
 

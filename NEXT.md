@@ -127,7 +127,23 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #         인프라 ready: isolated_home + gateway loopback + auth=none + mock_llm + audit ws probe.
 #         1차 실행은 SUT spawn 명령 정정 (`gateway start --auth none`) 까지. 디버깅 다음 세션.
 #
-#   - **2026-05-15 (이 세션) CAND-038/039/040 1차 e2e 시도 결과 — 모두 `blocked-external-dep`**:
+#   - **2026-05-15 (다음 세션) CAND-039 e2e collected** (PROOF-CAND-039-pre-20260515-061713.md):
+#     `proof-CAND-039-e2e` 시나리오 5 trial 전부 fire (fire_rate=1.0). production-faithful
+#     결함 발현 직접 관측 — recovery IIFE 가 `[gateway] ready` 직후 ~25ms 만에 fire,
+#     일부 trial 은 SIGTERM 후에도 `Recovered delivery ... on telegram` + `Delivery recovery
+#     complete: 1 recovered` 출력. close_prelude_ms 가 43ms↔2.3s 두 패턴 — 후자는 recovery
+#     in-flight 인 상태에서 shutdown 이 background 완료를 기다리는 결함 직접 측정. 축약된
+#     인프라 (build worktree 우회 + 메인 repo bundle + IIFE only 측정) 로 multi-session 추정
+#     4.5h → 실 ~2h. state transition `proof-blocked-pre → proof-collected-pre`. **다음**:
+#     SOL-CAND-039 작성 진입 또는 post-sol 단계. fix surface 옵션 A (isClosing 가드 + timer
+#     handle) / 옵션 B (AbortSignal 전파) 결정 필요.
+#
+#   - **2026-05-15 (다음 세션) CAND-038 device pairing helper 작성 완료** —
+#     `skills/real-behavior-proof/harness/device_pairing.py` (inline Node script + Python
+#     wrapper). 검증 완료. 다음 세션 진행 (audit ws client + mock LLM disconnect detection +
+#     시나리오 + 실행, ~3.5h 추정).
+#
+#   - **2026-05-15 (1차 세션) CAND-038/039/040 1차 e2e 시도 결과 — 모두 `blocked-external-dep`**:
 #     SUT spawn 명령 정정 완료 (`gateway run --auth none --bind loopback --port <p> --allow-unconfigured`,
 #     1.6s ready). audit ws connect.challenge 수신 + connect frame schema (PROTOCOL_VERSION=4 +
 #     ConnectParamsSchema 정확형) 까지 진행. 그 후 세 CAND 모두 audit-side infrastructure 신규
@@ -183,8 +199,8 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   | CAND-032 | ❌ e2e unreproducible (2026-05-15) | reply-run-registry path 가 production sequence 에서 미활성화 (ACTIVE_EMBEDDED_RUNS 가 dominate). 3 attempt 시도 후 abandon. | abandoned |
 #   | CAND-033 | ❌ multi-account 필수 (2026-05-15) | drain.ts:89 `resolveFollowupAuthorizationKey` 가 senderId/senderE164/senderIsOwner/execOverrides/bashElevated 만 봄. single telegram user account 메시지는 sender 필드 모두 동일 → authGroups 1개 → 결함 미발현. execOverrides/bashElevated 도 메시지별 변화 path 없음. burner phone 으로 두 번째 telegram 계정 추가 set-up 시에만 e2e 가능 | blocked-external-dep (multi-account 인프라 부재) |
 #   | CAND-037 | ❌ blocked-module-level (2026-05-15) | context-engine plugin loader. factory inject + dispose 측정에 instrumentation 의존. production binary 실행 path 없음 + 외부 환경 무관. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
-#   | CAND-038 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅ + connect handshake schema 확인 ✅. cli mode connect 시 `NOT_PAIRED: device identity required`. device pairing helper + chat workflow chain + mock LLM disconnect detection + 두 ws probe 필요. 작업량 ~5h. | gateway-e2e.md §CAND-038 |
-#   | CAND-039 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅ + 정상/즉시-SIGTERM 시도 ✅. close prelude 46ms 라 setTimeout 1250 fire window 미발생. pending state pre-injection + close 지연 trigger + observable 강화 필요. 작업량 ~4.5h. | gateway-e2e.md §CAND-039 |
+#   | CAND-038 | ⏳ in-progress (2026-05-15 다음 세션) | device pairing helper ✅. 남은: audit ws client + mock LLM disconnect + 시나리오 + 실행 (~3.5h). | gateway-e2e.md §CAND-038 |
+#   | CAND-039 | ✅ **collected** (2026-05-15 다음 세션) | 5/5 trial fire. recovery IIFE production-faithful 발현 직접 관측. close prelude 43ms↔2.3s 두 패턴. SOL 작성 진입 가능. | proofs/PROOF-CAND-039-pre-20260515-061713.md |
 #   | CAND-040 | ❌ blocked-external-dep (2026-05-15) | gateway 부팅 ✅. native runtime stub + capability 등록 path + approval trigger + activeEntries 측정 sideband 필요. 작업량 ~5.5h. | gateway-e2e.md §CAND-040 |
 #
 #   **분류 키**:
@@ -279,9 +295,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   `proofs/PROOF-CAND-{038,039,040}-pre-20260515-052108-e2e-blocked.md` 3건 + CAND
 #   frontmatter `blocked-external-dep` + state transition `proof-blocked-pre`.
 #
-#   다음 세션 진행 순서 권고 (가성비 순):
-#   1. CAND-039 (~4.5h) — pending state injection + slow shutdown plugin + observable 강화
-#   2. CAND-038 (~5h) — device pairing + chat workflow chain + mock LLM disconnect
+#   다음 세션 진행 순서 권고 (가성비 순) — 2026-05-15 갱신:
+#   1. ~~CAND-039~~ ✅ collected (2026-05-15). SOL 작성 진입 가능.
+#   2. CAND-038 (~3.5h 남음) — device pairing ✅. 남은: audit ws client + mock LLM + 시나리오
 #   3. CAND-040 (~5.5h) — native runtime stub + capability + approval trigger
 #
 #   각 CAND 진행 시작 시 `gateway-e2e.md` §CAND-NNN starting points 부터 읽어라.
