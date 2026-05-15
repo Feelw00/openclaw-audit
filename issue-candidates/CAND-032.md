@@ -13,7 +13,13 @@ proposed_title: 'auto-reply/reply-run-registry: catch floating backend.queueMess
 proposed_severity: P2
 existing_issue: null
 created_at: 2026-05-14
-state: pending_gatekeeper
+state: abandoned
+rejected_reasons:
+- 'e2e-unreproducible-2026-05-15: production env (telegram + real openclaw bundle
+  + mock LLM) 3 attempt 모두 reply-run-registry path 미활성화. ACTIVE_EMBEDDED_RUNS
+  cleanup 과 reply-run-registry operation cleanup 이 동시에 일어나 race window 가
+  좁고 자연스러운 production sequence 로 노출 안 됨. CAL-001 reject risk 큼.
+  see proofs/PROOF-CAND-032-pre-20260515-024753-e2e.md'
 upstream_head_checked: af3d9333aa
 upstream_dup_check:
   upstream_head: af3d9333aa

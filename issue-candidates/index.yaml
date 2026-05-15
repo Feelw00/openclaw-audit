@@ -339,7 +339,8 @@ candidates:
 - id: CAND-032
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'e2e-unreproducible-2026-05-15: production env (telegram + real openclaw bundle + mock LLM) 3 attempt 모두 reply-run-registry path 미활성화. ACTIVE_EMBEDDED_RUNS cleanup 과 reply-run-registry operation cleanup 이 동시에 일어나 race window 가 좁고 자연스러운 production sequence 로 노출 안 됨. CAL-003 안전망 발동. see proofs/PROOF-CAND-032-pre-20260515-024753-e2e.md.'
   note: FIND-auto-reply-error-boundary-002 — reply-run-registry.ts:505 void backend.queueMessage(text) .catch 부재 →
     backend reject 시 unhandled rejection → non-transient class 시 process.exit(1) crash. 자매 경로 (pi-embedded-runner/runs.ts:148-154)
     의 .catch 패턴이 reference. severity P2.

@@ -1894,7 +1894,7 @@ items:
     updated_at: '2026-05-14T10:12:25+00:00'
   CAND-032:
     kind: cand
-    state: proof-collected-pre
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -1906,8 +1906,20 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-032 mode=pre-sol
       at: '2026-05-14T10:06:39+00:00'
+    - from: proof-collected-pre
+      to: proof-unreproducible-pre-e2e
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-032-e2e attempts=3 reply_run_path_active=False/all
+        unhandled_count=0/all see proofs/PROOF-CAND-032-pre-20260515-024753-e2e.md
+      at: '2026-05-15T02:49:15+00:00'
+    - from: proof-unreproducible-pre-e2e
+      to: abandoned
+      actor: human
+      reason: 'CAL-003 safety net: production e2e unreproducible across 3 controlled-failure
+        modes; reply-run path never activated. CAL-001 reject risk too high for PR.'
+      at: '2026-05-15T02:49:17+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T10:06:39+00:00'
+    updated_at: '2026-05-15T02:49:17+00:00'
   CAND-033:
     kind: cand
     state: proof-collected-pre
