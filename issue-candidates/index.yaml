@@ -274,7 +274,9 @@ candidates:
 - id: CAND-026
   type: epic
   finding_count: 2
-  state: pending_gatekeeper
+  state: solution-drafted
+  solution_refs:
+    - SOL-0010  # FIND-mcp-lifecycle-002 단독 (scope-down 반영, FIND-001 abandoned)
   cross_review_metric: metrics/cross-review-CAND-026-20260514-081538.jsonl
   cross_review_decision: 'scope-down (avg 0.84, critical high override): SDK Protocol._onclose 가 transport.onclose 시 _requestHandlerAbortControllers unconditional abort + protocol.js:369-372 post-handler abort check 가 응답 송신 skip → FIND-001 mechanism (EPIPE/silent drop/unhandledRejection) 부정확. FIND-002 (RequestHandlerExtra.signal propagation) 만 단독 XS PR. severity P2 → P3.'
   note: FIND-mcp-lifecycle-001/002 — standalone tools MCP server (plugin-tools / openclaw-tools

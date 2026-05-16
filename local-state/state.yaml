@@ -1780,8 +1780,8 @@ items:
     created_at: '2026-05-14T06:43:41+00:00'
     updated_at: '2026-05-14T06:43:41+00:00'
   CAND-026:
-    kind: cand
-    state: proof-collected-pre
+    kind: find
+    state: solution-drafted
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -1803,8 +1803,13 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-026-e2e mode=pre-sol
       at: '2026-05-15T00:24:24+00:00'
+    - from: proof-collected-pre
+      to: solution-drafted
+      actor: solution-drafter
+      reason: SOL-0010 drafted (FIND-mcp-lifecycle-002 단독, scope-down 반영)
+      at: '2026-05-16T02:16:24+00:00'
     created_at: '2026-05-14T06:55:21+00:00'
-    updated_at: '2026-05-15T00:24:24+00:00'
+    updated_at: '2026-05-16T02:16:24+00:00'
   CAND-027:
     kind: candidate
     state: abandoned
@@ -2154,3 +2159,29 @@ items:
       at: '2026-05-14T07:11:24+00:00'
     created_at: '2026-05-14T07:11:24+00:00'
     updated_at: '2026-05-14T07:11:24+00:00'
+  SOL-0010:
+    kind: find
+    state: pr-opened
+    transitions:
+    - from: null
+      to: drafted
+      actor: solution-drafter
+      reason: 'CAND-026 pre-sol e2e collected (PROOF-CAND-026-pre-20260515-002424.md)
+        후 SOL 작성. fix surface: tools-stdio-server.ts setRequestHandler extra.signal
+        전달 + plugin-tools-handlers.ts callTool 시그니처 + tool.execute signal 인자. XS /
+        3 hunk / 2 files.'
+      at: '2026-05-16T02:16:22+00:00'
+    - from: drafted
+      to: proof-collected-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-026-e2e mode=post-sol
+      at: '2026-05-16T02:30:51+00:00'
+    - from: proof-collected-post
+      to: pr-opened
+      actor: solution-drafter
+      reason: 'issue #82424 + PR #82426 발행. fix branch fix/mcp-plugin-tools-forward-cancel-signal
+        pushed to Feelw00/openclaw. PR body 에 6 필드 evidence + Closes #82424 + slack
+        pre-existing failure unrelated 명시.'
+      at: '2026-05-16T03:56:38+00:00'
+    created_at: '2026-05-16T02:16:22+00:00'
+    updated_at: '2026-05-16T03:56:38+00:00'

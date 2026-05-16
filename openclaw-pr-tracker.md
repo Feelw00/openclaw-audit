@@ -4,6 +4,16 @@
 
 ## 내 active PR (Feelw00)
 
+### #82426 — fix(mcp): forward host cancellation signal to plugin tool.execute
+
+- **유형**: 파이프라인 CAND-026 → SOL-0010, scope-down FIND-mcp-lifecycle-002 단독 (post-harness cross-review avg 0.84, critical scope-down high → drain axis abandon)
+- **상태**: OPEN (2026-05-16 발행), head `36b9e73e38` (fix `aeaa6e902e` + test `36b9e73e38`). 라벨 미부여 (clawsweeper 평가 대기)
+- **fix scope**: XS (3 hunk / 2 files) — setRequestHandler `(request, extra)` + extra.signal 전달 + callTool 시그니처 signal 추가 + tool.execute 4번째 인자
+- **proof**: pre-sol `proofs/PROOF-CAND-026-pre-20260515-002424.md` + post-sol `proofs/PROOF-SOL-0010-post-20260516-023051.md` (base 3b663ad1c1 vs head aeaa6e902e, signalDefined false→true / abortObserved false→true)
+- **CI**: pnpm build + check green. pnpm test 1057/1058 (1 unrelated failure in `extensions/slack/src/send.identity-fallback.test.ts`, upstream `cb695b0986` 의 stale test — PR Risks 섹션 명시)
+- **결정**: 메인테이너 리뷰 대기
+- **관련**: Closes #82424
+
 ### #68669 — fix(agents): dedupe subagent browser session cleanup wrapper with dispatch flag
 
 - **유형**: 파이프라인 CAND-011, post-harness + pre-pr + post-commit cross-review (총 11 agent) 모두 real
