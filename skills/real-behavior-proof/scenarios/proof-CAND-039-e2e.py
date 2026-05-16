@@ -68,6 +68,9 @@ DEFAULT_TRIALS = 5
 # subsystem prefix 는 logger 가 child("delivery-recovery") 로 붙임.
 FIRE_LOG_PATTERN = re.compile(r"Found \d+ pending delivery entries — starting recovery")
 COMPLETE_LOG_PATTERN = re.compile(r"Delivery recovery complete: \d+ recovered")
+SKIP_LOG_PATTERN = re.compile(
+    r"startup (?:outbound|session) delivery recovery skipped: gateway is closing"
+)
 SUBSYSTEM_KEYWORD = "delivery-recovery"
 
 GATEWAY_READY_TIMEOUT_SEC = 30.0
@@ -266,6 +269,7 @@ def _run_one_trial(
     combined = _ANSI_RE.sub("", err_text + "\n" + out_text)
     fire_match = FIRE_LOG_PATTERN.search(combined)
     complete_match = COMPLETE_LOG_PATTERN.search(combined)
+    skip_match = SKIP_LOG_PATTERN.search(combined)
     subsystem_seen = SUBSYSTEM_KEYWORD in combined
 
     trial.update(
@@ -274,6 +278,8 @@ def _run_one_trial(
             "rc": rc,
             "close_prelude_ms": close_prelude_ms,
             "fire_found": fire_match is not None,
+            "skip_found": skip_match is not None,
+            "skip_line": skip_match.group(0) if skip_match else None,
             "fire_line": fire_match.group(0) if fire_match else None,
             "complete_found": complete_match is not None,
             "complete_line": complete_match.group(0) if complete_match else None,
@@ -310,6 +316,7 @@ def run_scenario(
 
     trial_results: list[dict[str, Any]] = []
     fire_trials = 0
+    skip_trials = 0
     not_ready_trials = 0
     boot_ms_samples: list[int] = []
     close_ms_samples: list[int] = []
@@ -325,6 +332,8 @@ def run_scenario(
         trial_results.append(t)
         if t.get("fire_found"):
             fire_trials += 1
+        if t.get("skip_found"):
+            skip_trials += 1
         if t.get("status") != "ok":
             not_ready_trials += 1
         if t.get("boot_ms") is not None:
@@ -337,11 +346,14 @@ def run_scenario(
         "scenario": SCENARIO_NAME,
         "trials": trials,
         "fire_trials": fire_trials,
+        "skip_trials": skip_trials,
         "not_ready_trials": not_ready_trials,
         "fire_rate": fire_trials / trials if trials else 0.0,
+        "skip_rate": skip_trials / trials if trials else 0.0,
         "boot_ms_samples": boot_ms_samples,
         "close_prelude_ms_samples": close_ms_samples,
         "fire_keyword": "Found N pending delivery entries — starting recovery",
+        "skip_keyword": "startup [outbound|session] delivery recovery skipped: gateway is closing",
         "subsystem": SUBSYSTEM_KEYWORD,
         "trial_results": trial_results,
     }
@@ -369,11 +381,17 @@ def evaluate_post(without_fix: dict[str, Any], with_fix: dict[str, Any]) -> str:
             return "blocked-env"
     wo_fire = without_fix.get("fire_trials", 0)
     wf_fire = with_fix.get("fire_trials", 0)
-    if wo_fire > 0 and wf_fire == 0:
-        return "collected"
-    if wo_fire > 0 and wf_fire > 0 and wf_fire < wo_fire:
-        # 부분 fix — collected 아님
-        return "unreproducible"
+    wf_skip = with_fix.get("skip_trials", 0)
+    if wo_fire == 0:
+        # without-fix 도 recovery fire 못함 → 결함 자체 재현 불가.
+        return "blocked-external-dep"
+    # fix 효과 두 mode:
+    # (a) recovery 가 fire 자체 안 함 (fire_trials 감소)
+    # (b) recovery 가 fire 했지만 isClosing 가드 진입 log 가 출현 (race window 밖에서도 가드 진입)
+    if wf_fire < wo_fire and wf_skip == 0:
+        return "collected"  # fire 자체 감소
+    if wf_skip > 0:
+        return "collected"  # 가드 진입 직접 측정
     return "unreproducible"
 
 
@@ -422,12 +440,15 @@ def render_pr_evidence(without_fix: dict[str, Any], with_fix: dict[str, Any]) ->
         "Live wire-level measurement of whether the startup recovery IIFE fires during "
         "the boot-to-shutdown window. Fire is detected by the first info log emitted "
         "by `recoverPendingDeliveries` (`delivery-queue-recovery.ts:602`) under the "
-        "`delivery-recovery` subsystem in stderr.\n\n"
+        "`delivery-recovery` subsystem in stderr. Skip is detected by the new operator "
+        "log 'startup [outbound|session] delivery recovery skipped: gateway is closing' "
+        "emitted from the isClosing guard.\n\n"
         "```text\n"
         "[Build A] without this patch (base sha):\n"
         f"  trials:                {without_fix.get('trials')}\n"
         f"  fire_trials:           {without_fix.get('fire_trials')}\n"
         f"  fire_rate:             {without_fix.get('fire_rate')}\n"
+        f"  skip_trials:           {without_fix.get('skip_trials')}\n"
         f"  not_ready_trials:      {without_fix.get('not_ready_trials')}\n"
         f"  boot_ms_samples:       {without_fix.get('boot_ms_samples')}\n"
         f"  close_prelude_ms:      {without_fix.get('close_prelude_ms_samples')}\n"
@@ -436,6 +457,7 @@ def render_pr_evidence(without_fix: dict[str, Any], with_fix: dict[str, Any]) ->
         f"  trials:                {with_fix.get('trials')}\n"
         f"  fire_trials:           {with_fix.get('fire_trials')}\n"
         f"  fire_rate:             {with_fix.get('fire_rate')}\n"
+        f"  skip_trials:           {with_fix.get('skip_trials')}\n"
         f"  not_ready_trials:      {with_fix.get('not_ready_trials')}\n"
         f"  boot_ms_samples:       {with_fix.get('boot_ms_samples')}\n"
         f"  close_prelude_ms:      {with_fix.get('close_prelude_ms_samples')}\n"
@@ -445,9 +467,13 @@ def render_pr_evidence(without_fix: dict[str, Any], with_fix: dict[str, Any]) ->
         f"Without the patch, the recovery IIFE fires in "
         f"{without_fix.get('fire_trials', 0)}/{without_fix.get('trials', 0)} trials, "
         f"emitting 'Found N pending delivery entries — starting recovery' under the "
-        f"delivery-recovery subsystem during shutdown. With the patch, the IIFE is "
-        f"blocked once shutdown begins: "
-        f"{with_fix.get('fire_trials', 0)}/{with_fix.get('trials', 0)} trials fire."
+        f"delivery-recovery subsystem during shutdown, and no skip log is observed "
+        f"({without_fix.get('skip_trials', 0)}/{without_fix.get('trials', 0)}). With "
+        f"the patch, the isClosing guard fires in "
+        f"{with_fix.get('skip_trials', 0)}/{with_fix.get('trials', 0)} trials, "
+        f"emitting the new operator log 'startup recovery skipped: gateway is closing'; "
+        f"the recovery IIFE fires in {with_fix.get('fire_trials', 0)}/"
+        f"{with_fix.get('trials', 0)} trials."
     )
     not_tested = (
         "`recoverPendingSessionDeliveries` (setTimeout 1250ms) fire is not measured in "

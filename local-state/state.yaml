@@ -2185,3 +2185,61 @@ items:
       at: '2026-05-16T03:56:38+00:00'
     created_at: '2026-05-16T02:16:22+00:00'
     updated_at: '2026-05-16T03:56:38+00:00'
+  SOL-0011:
+    kind: sol
+    state: proof-collected-post
+    transitions:
+    - from: null
+      to: proof-blocked-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-038-e2e mode=post-sol
+      at: '2026-05-16T04:27:18+00:00'
+    - from: proof-blocked-post
+      to: proof-blocked-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-038-e2e mode=post-sol
+      at: '2026-05-16T04:48:32+00:00'
+    - from: proof-blocked-post
+      to: proof-collected-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-038-e2e mode=post-sol
+      at: '2026-05-16T05:52:07+00:00'
+    created_at: '2026-05-16T04:27:18+00:00'
+    updated_at: '2026-05-16T05:52:07+00:00'
+  SOL-0012:
+    kind: sol
+    state: proof-unreproducible-post
+    transitions:
+    - from: null
+      to: proof-unreproducible-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-039-e2e mode=post-sol
+      at: '2026-05-16T04:53:21+00:00'
+    - from: proof-unreproducible-post
+      to: proof-unreproducible-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-039-e2e mode=post-sol
+      at: '2026-05-16T06:03:10+00:00'
+    created_at: '2026-05-16T04:53:21+00:00'
+    updated_at: '2026-05-16T06:03:10+00:00'
+  SOL-0013:
+    kind: sol
+    state: proof-collected-post
+    transitions:
+    - from: null
+      to: proof-blocked-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-040-e2e mode=post-sol
+      at: '2026-05-16T04:59:02+00:00'
+    - from: proof-blocked-post
+      to: proof-blocked-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-040-e2e mode=post-sol
+      at: '2026-05-16T05:06:34+00:00'
+    - from: proof-blocked-post
+      to: proof-collected-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-040-e2e mode=post-sol
+      at: '2026-05-16T05:42:06+00:00'
+    created_at: '2026-05-16T04:59:02+00:00'
+    updated_at: '2026-05-16T05:42:06+00:00'

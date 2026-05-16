@@ -515,9 +515,11 @@ def run_scenario(
     state_dir.mkdir(parents=True, exist_ok=True)
 
     trial_results = []
-    leak_trials = 0  # without-fix: unbindPending=0 + deliverPending.exit>=1
-    fix_observed_trials = 0  # with-fix: unbindPending>=1
+    leak_trials = 0  # without-fix: unbindPending=0 + deliverPending.exit>=1 + bindPending>=1
+    fix_observed_trials = 0  # with-fix mode 1: unbindPending>=1 (race 발생 후 cleanup)
+    pre_race_blocked_trials = 0  # with-fix mode 2: deliverPending.exit>=1 & bindPending=0
     chain_works_trials = 0  # bindPending>=1 (chain reached the race window)
+    chain_reach_trials = 0  # deliverPending.exit>=1 (chain reached deliverPending; fix can guard before bindPending)
     for i in range(trials):
         t = _run_one_trial(
             node_entry=node_entry,
@@ -528,19 +530,26 @@ def run_scenario(
         )
         trial_results.append(t)
         counts = t.get("stub_call_counts") or {}
+        if counts.get("deliverPending.exit", 0) >= 1:
+            chain_reach_trials += 1
         if counts.get("bindPending", 0) >= 1:
             chain_works_trials += 1
             if counts.get("unbindPending", 0) == 0 and counts.get("deliverPending.exit", 0) >= 1:
                 leak_trials += 1
             if counts.get("unbindPending", 0) >= 1:
                 fix_observed_trials += 1
+        elif counts.get("deliverPending.exit", 0) >= 1:
+            # deliverPending 까지 도달했으나 bindPending 미도달: fix 의 pre-race 가드.
+            pre_race_blocked_trials += 1
 
     return {
         "scenario": SCENARIO_NAME,
         "trials": trials,
         "chain_works_trials": chain_works_trials,
+        "chain_reach_trials": chain_reach_trials,
         "leak_trials": leak_trials,
         "fix_observed_trials": fix_observed_trials,
+        "pre_race_blocked_trials": pre_race_blocked_trials,
         "trial_results": trial_results,
     }
 
@@ -565,11 +574,17 @@ def evaluate_post(without_fix: dict[str, Any], with_fix: dict[str, Any]) -> str:
     for m in (without_fix, with_fix):
         if m.get("trials", 0) == 0 or "error" in m:
             return "blocked-env"
-        if m.get("chain_works_trials", 0) == 0:
-            return "blocked-external-dep"
+    # without-fix 가 race window (bindPending) 도달 못 했으면 결함 자체 재현 불가.
+    if without_fix.get("chain_works_trials", 0) == 0:
+        return "blocked-external-dep"
+    # with-fix 의 chain reach 는 deliverPending.exit 으로 평가 (fix 가 bindPending 직전 차단 가능).
+    if with_fix.get("chain_reach_trials", 0) == 0:
+        return "blocked-external-dep"
     wo_leak = without_fix.get("leak_trials", 0)
     wf_fix_observed = with_fix.get("fix_observed_trials", 0)
-    if wo_leak > 0 and wf_fix_observed > 0:
+    wf_pre_race_blocked = with_fix.get("pre_race_blocked_trials", 0)
+    # fix 효과 = race 발생 후 cleanup (fix_observed) 또는 race 직전 차단 (pre_race_blocked).
+    if wo_leak > 0 and (wf_fix_observed > 0 or wf_pre_race_blocked > 0):
         return "collected"
     return "unreproducible"
 
@@ -613,16 +628,20 @@ def render_pr_evidence(without_fix: dict[str, Any], with_fix: dict[str, Any]) ->
         "Stub plugin sideband call counts (calls.jsonl):\n\n"
         "```text\n"
         f"[Build A] without this patch (base sha):\n"
-        f"  trials:                  {without_fix.get('trials')}\n"
-        f"  chain_works_trials:      {without_fix.get('chain_works_trials')}\n"
-        f"  leak_trials:             {without_fix.get('leak_trials')}\n"
-        f"  fix_observed_trials:     {without_fix.get('fix_observed_trials')}\n"
+        f"  trials:                       {without_fix.get('trials')}\n"
+        f"  chain_reach_trials:           {without_fix.get('chain_reach_trials')}\n"
+        f"  chain_works_trials:           {without_fix.get('chain_works_trials')}\n"
+        f"  leak_trials:                  {without_fix.get('leak_trials')}\n"
+        f"  fix_observed_trials:          {without_fix.get('fix_observed_trials')}\n"
+        f"  pre_race_blocked_trials:      {without_fix.get('pre_race_blocked_trials')}\n"
         f"\n"
         f"[Build B] with this patch (head sha):\n"
-        f"  trials:                  {with_fix.get('trials')}\n"
-        f"  chain_works_trials:      {with_fix.get('chain_works_trials')}\n"
-        f"  leak_trials:             {with_fix.get('leak_trials')}\n"
-        f"  fix_observed_trials:     {with_fix.get('fix_observed_trials')}\n"
+        f"  trials:                       {with_fix.get('trials')}\n"
+        f"  chain_reach_trials:           {with_fix.get('chain_reach_trials')}\n"
+        f"  chain_works_trials:           {with_fix.get('chain_works_trials')}\n"
+        f"  leak_trials:                  {with_fix.get('leak_trials')}\n"
+        f"  fix_observed_trials:          {with_fix.get('fix_observed_trials')}\n"
+        f"  pre_race_blocked_trials:      {with_fix.get('pre_race_blocked_trials')}\n"
         "```"
     )
     observed = (

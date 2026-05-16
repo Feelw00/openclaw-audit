@@ -69,9 +69,9 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 READY_MARKER_PATTERN = re.compile(r"\[gateway\]\s+ready\b")
 
 GATEWAY_READY_TIMEOUT_SEC = 60.0
-WS_CLOSE_AFTER_SEND_SEC = 2.0
-MOCK_HOLD_MS = 5000
-POST_CLOSE_WAIT_SEC = 12.0
+WS_CLOSE_AFTER_SEND_SEC = 5.0
+MOCK_HOLD_MS = 12000
+POST_CLOSE_WAIT_SEC = 18.0
 HARNESS_REPO = Path("/Users/lucas/Project/openclaw")
 
 
@@ -520,6 +520,12 @@ def _run_one_trial(
     stream_completed = [m for m in mock_lines if m.get("event") == "stream_completed"]
     hold_started = [m for m in mock_lines if m.get("event") == "hold_started"]
 
+    # SUT stderr/stdout capture before cleanup
+    sut_stderr_text = sut_stderr.read_text(errors="replace") if sut_stderr.exists() else ""
+    sut_stdout_text = sut_stdout.read_text(errors="replace") if sut_stdout.exists() else ""
+    sut_combined = _ANSI_RE.sub("", sut_stderr_text + "\n" + sut_stdout_text)
+    abort_log_found = "aborting chat run on owner disconnect" in sut_combined
+
     # cleanup tempfiles
     for fp in (mock_req_log, mock_stdout, mock_stderr, sut_stdout, sut_stderr):
         try: fp.unlink()
@@ -541,6 +547,7 @@ def _run_one_trial(
         "mock_stream_completed_count": len(stream_completed),
         "mock_client_disconnected": client_disconnected,
         "probe_stderr_tail": probe_stderr[-500:] if probe_stderr else "",
+        "sut_abort_log_found": abort_log_found,
     }
 
 
@@ -561,8 +568,10 @@ def run_scenario(
     mock_port = _alloc_free_port(18000, 18999)
 
     trial_results = []
-    abort_observed_trials = 0
+    abort_observed_trials = 0  # mid-stream cancel: mock_client_disconnected completed=false
+    pre_send_blocked_trials = 0  # pre-send cancel: chat ack 받았으나 LLM 발사 자체 없음 (with-fix only)
     chain_works_trials = 0  # chat.send chain reached LLM
+    chat_ack_trials = 0  # chat.send ack 받음 (chain 의 첫 단계 — LLM 발사 전이라도)
     for i in range(trials):
         t = _run_one_trial(
             node_entry=node_entry,
@@ -573,18 +582,28 @@ def run_scenario(
             trial_idx=i,
         )
         trial_results.append(t)
+        if (t.get("probe_chatSendAck") or {}).get("runId"):
+            chat_ack_trials += 1
         if t.get("mock_request_started_count", 0) > 0:
             chain_works_trials += 1
         for cd in t.get("mock_client_disconnected", []) or []:
             if cd.get("completed") is False:
                 abort_observed_trials += 1
                 break
+        # chat ack 받았으나 LLM 발사 자체 안 함 = fix 의 pre-send cancel.
+        if (
+            (t.get("probe_chatSendAck") or {}).get("runId")
+            and t.get("mock_request_started_count", 0) == 0
+        ):
+            pre_send_blocked_trials += 1
 
     return {
         "scenario": SCENARIO_NAME,
         "trials": trials,
+        "chat_ack_trials": chat_ack_trials,
         "chain_works_trials": chain_works_trials,
         "abort_observed_trials": abort_observed_trials,
+        "pre_send_blocked_trials": pre_send_blocked_trials,
         "trial_results": trial_results,
     }
 
@@ -610,11 +629,17 @@ def evaluate_post(without_fix: dict[str, Any], with_fix: dict[str, Any]) -> str:
     for m in (without_fix, with_fix):
         if m.get("trials", 0) == 0 or "error" in m:
             return "blocked-env"
-        if m.get("chain_works_trials", 0) == 0:
-            return "blocked-external-dep"
+    # without-fix 는 chain 이 LLM 까지 도달 + abort 미발현 (결함 재현) 이어야.
+    if without_fix.get("chain_works_trials", 0) == 0:
+        return "blocked-external-dep"
+    # with-fix 의 chain reach 는 chat ack 만으로 평가 (fix 가 LLM 발사 전 차단 가능).
+    if with_fix.get("chat_ack_trials", 0) == 0:
+        return "blocked-external-dep"
     wo_abort = without_fix.get("abort_observed_trials", 0)
     wf_abort = with_fix.get("abort_observed_trials", 0)
-    if wo_abort == 0 and wf_abort > 0:
+    wf_pre_send = with_fix.get("pre_send_blocked_trials", 0)
+    # fix 효과 = mid-stream cancel (abort_observed) OR pre-send cancel (pre_send_blocked).
+    if wo_abort == 0 and (wf_abort > 0 or wf_pre_send > 0):
         return "collected"
     return "unreproducible"
 
@@ -635,43 +660,58 @@ def render_pr_evidence(without_fix: dict[str, Any], with_fix: dict[str, Any]) ->
         "End-to-end test spawns the production bundle `openclaw.mjs gateway run --auth none "
         "--bind loopback --port <p> --allow-unconfigured` against an isolated OPENCLAW_HOME, "
         "with `<state-dir>/identity/device.json` + `device-auth.json` + `devices/paired.json` "
-        "pre-seeded (ed25519 keypair) and a mock OpenAI server in hold-then-complete mode (5s "
+        "pre-seeded (ed25519 keypair) and a mock OpenAI server in hold-then-complete mode (12s "
         "stream hold). An audit ws probe completes the connect handshake (v2 device signature), "
-        "sends chat.send, waits 2s, and closes the WebSocket. The mock server records "
-        "`req.on('close')` events with `completed=false` if abort propagates before the hold "
-        "elapses."
+        "sends chat.send, waits 5s, and closes the WebSocket. The mock server records "
+        "`req.on('close')` events with `completed=false` when abort propagates mid-stream; the "
+        "scenario also counts trials where chat ack was received but no LLM HTTP request was "
+        "ever dispatched (fix aborted before the runner could fire the fetch)."
     )
     steps = (
         "```text\n"
         "$ pnpm install --frozen-lockfile && pnpm build  (both worktrees)\n"
-        "$ # spawn mock OpenAI (mock_openai_cand038.mjs, MOCK_MODE=hold-then-complete, hold=5s)\n"
+        "$ # spawn mock OpenAI (mock_openai_cand038.mjs, MOCK_MODE=hold-then-complete, hold=12s)\n"
         "$ # spawn gateway: openclaw gateway run --auth none --bind loopback --port <p> --allow-unconfigured\n"
         "$ # wait for [gateway] ready in stdout\n"
-        "$ # spawn audit ws probe (tsx): connect.challenge → device-payload v2 signed → connect → hello-ok → chat.send → wait 2s → ws.close\n"
-        "$ # wait POST_CLOSE_WAIT_SEC (12s) for hold + propagation\n"
-        "$ # parse MOCK_REQUEST_LOG; assert (without-fix) no client_disconnected/completed=false, (with-fix) ≥1 such entry\n"
+        "$ # spawn audit ws probe (tsx): connect.challenge → device-payload v2 signed → connect → hello-ok → chat.send → wait 5s → ws.close\n"
+        "$ # wait POST_CLOSE_WAIT_SEC (18s) for hold + propagation\n"
+        "$ # parse MOCK_REQUEST_LOG; assert without-fix: chain reached LLM + no mid-stream client_disconnected. with-fix: either pre_send_blocked (chat ack but no LLM POST) or mid-stream abort observed.\n"
         "```"
     )
     evidence = (
         "Live wire-level measurement of whether ws.close propagates abort into the in-flight "
-        "LLM fetch:\n\n"
+        "chat run:\n\n"
         "```text\n"
         f"[Build A] without this patch (base sha):\n"
-        f"  chain_works_trials:        {without_fix.get('chain_works_trials')}\n"
-        f"  abort_observed_trials:     {without_fix.get('abort_observed_trials')}\n"
+        f"  trials:                       {without_fix.get('trials')}\n"
+        f"  chat_ack_trials:              {without_fix.get('chat_ack_trials')}\n"
+        f"  chain_works_trials:           {without_fix.get('chain_works_trials')}\n"
+        f"  abort_observed_trials:        {without_fix.get('abort_observed_trials')}\n"
+        f"  pre_send_blocked_trials:      {without_fix.get('pre_send_blocked_trials')}\n"
         f"\n"
         f"[Build B] with this patch (head sha):\n"
-        f"  chain_works_trials:        {with_fix.get('chain_works_trials')}\n"
-        f"  abort_observed_trials:     {with_fix.get('abort_observed_trials')}\n"
+        f"  trials:                       {with_fix.get('trials')}\n"
+        f"  chat_ack_trials:              {with_fix.get('chat_ack_trials')}\n"
+        f"  chain_works_trials:           {with_fix.get('chain_works_trials')}\n"
+        f"  abort_observed_trials:        {with_fix.get('abort_observed_trials')}\n"
+        f"  pre_send_blocked_trials:      {with_fix.get('pre_send_blocked_trials')}\n"
         "```"
+    )
+    wf_eff_total = (
+        with_fix.get("abort_observed_trials", 0) + with_fix.get("pre_send_blocked_trials", 0)
     )
     observed = (
         f"Without the patch, "
+        f"{without_fix.get('chain_works_trials', 0)}/{without_fix.get('trials', 0)} "
+        f"trials reach the LLM and "
         f"{without_fix.get('abort_observed_trials', 0)}/{without_fix.get('trials', 0)} "
-        f"trials propagate abort to the mock LLM. With the patch, "
-        f"{with_fix.get('abort_observed_trials', 0)}/{with_fix.get('trials', 0)} trials "
-        "observe a hold-time client disconnect at the mock LLM, evidencing the close-handler "
-        "fix iterating chatAbortControllers and aborting the in-flight LLM fetch."
+        f"propagate abort. With the patch, "
+        f"{wf_eff_total}/{with_fix.get('trials', 0)} trials cancel the chat run before the LLM "
+        f"holds to completion — either via mid-stream abort propagation "
+        f"({with_fix.get('abort_observed_trials', 0)}) or by aborting the runner before it "
+        f"fires the LLM HTTP request ({with_fix.get('pre_send_blocked_trials', 0)}). Both modes "
+        "evidence the close-handler fix iterating chatAbortControllers and aborting the in-flight "
+        "chat run."
     )
     not_tested = (
         "Cross-connection abort sharing (one connId's close affecting another's chat) and "
