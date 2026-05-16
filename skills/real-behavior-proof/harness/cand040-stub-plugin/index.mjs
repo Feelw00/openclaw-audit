@@ -76,25 +76,111 @@ function makeStubChannelPlugin() {
     // promise must hold until abortSignal fires; otherwise server-channels.ts:535
     // treats the channel as "exited without an error" and triggers auto-restart.
     gateway: {
-      startAccount: async ({ accountId, abortSignal }) => {
+      startAccount: async ({ accountId, abortSignal, channelRuntime }) => {
         await appendSideband("calls.jsonl", {
           call: "gateway.startAccount.enter",
           accountId,
+          hasChannelRuntime: !!channelRuntime,
+          hasRuntimeContexts: !!channelRuntime?.runtimeContexts,
+          runtimeContextsKeys: channelRuntime?.runtimeContexts
+            ? Object.keys(channelRuntime.runtimeContexts)
+            : null,
         });
-        await new Promise((resolve) => {
-          if (abortSignal?.aborted) {
-            resolve();
-            return;
+        // register the native approval runtime context on the SERVER-SIDE store
+        // (caller passes channelRuntimeForTask from server-channels.ts:526 — same
+        // store used by startChannelApprovalHandlerBootstrap via
+        // getChannelRuntimeContext / watchChannelRuntimeContexts).
+        // capability constant from src/infra/approval-handler-adapter-runtime.ts:8.
+        let lease;
+        if (channelRuntime?.runtimeContexts?.register) {
+          try {
+            lease = channelRuntime.runtimeContexts.register({
+              channelId: "audit-stub-c040",
+              accountId,
+              capability: "approval.native",
+              context: { source: "audit-stub-c040", token: "stub" },
+              abortSignal,
+            });
+            await appendSideband("lease.jsonl", {
+              call: "registered-on-startAccount",
+              accountId,
+              at: Date.now(),
+            });
+          } catch (err) {
+            await appendSideband("lease.jsonl", {
+              call: "register-error-on-startAccount",
+              accountId,
+              error: String(err),
+            });
           }
-          abortSignal?.addEventListener("abort", () => resolve(), { once: true });
-        });
-        await appendSideband("calls.jsonl", {
-          call: "gateway.startAccount.exit",
-          accountId,
-        });
+        } else {
+          await appendSideband("lease.jsonl", {
+            call: "no-runtimeContexts-in-startAccount",
+            accountId,
+          });
+        }
+        // background watcher: dispose-lease.release file flag from the audit
+        // probe triggers server-side lease dispose so onStopped fires while
+        // deliverPending is parked.
+        let watcherStop = false;
+        let leaseDisposedByFlag = false;
+        void (async () => {
+          while (!watcherStop && !leaseDisposedByFlag) {
+            if (existsSync(sidebandPath("dispose-lease.release"))) {
+              try {
+                lease?.dispose?.();
+                leaseDisposedByFlag = true;
+                await appendSideband("lease.jsonl", {
+                  call: "startAccount-lease-disposed-by-flag",
+                  accountId,
+                  at: Date.now(),
+                });
+              } catch (err) {
+                await appendSideband("lease.jsonl", {
+                  call: "startAccount-lease-dispose-error",
+                  accountId,
+                  error: String(err),
+                });
+              }
+              return;
+            }
+            await new Promise((r) => setTimeout(r, 100));
+          }
+        })();
+        try {
+          await new Promise((resolve) => {
+            if (abortSignal?.aborted) {
+              resolve();
+              return;
+            }
+            abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+          });
+        } finally {
+          watcherStop = true;
+          if (!leaseDisposedByFlag) {
+            try {
+              lease?.dispose?.();
+            } catch {}
+          }
+          await appendSideband("calls.jsonl", {
+            call: "gateway.startAccount.exit",
+            accountId,
+          });
+        }
       },
     },
     approvalCapability: {
+      // ChannelApprovalNativeAdapter — populates resolveChannelNativeApprovalDeliveryPlan
+      // so the runtime actually iterates targets and calls prepareTarget/deliverTarget.
+      // Without this, deliveryPlan.targets is [] and the race window never opens.
+      native: {
+        describeDeliveryCapabilities: () => ({
+          enabled: true,
+          preferredSurface: "origin",
+          supportsOriginSurface: true,
+        }),
+        resolveOriginTarget: async () => ({ to: "audit-stub-origin", threadId: "stub" }),
+      },
       nativeRuntime: {
         eventKinds: new Set(["exec"]),
         resolveApprovalKind: () => "exec",
@@ -113,8 +199,13 @@ function makeStubChannelPlugin() {
             await appendSideband("calls.jsonl", {
               call: "prepareTarget",
               requestId: request?.id,
+              surface: plannedTarget?.surface,
             });
-            return { kind: "audit-stub-target", target: plannedTarget };
+            // dedupeKey required by approval-native-runtime.ts:96 deliveredKeys.has.
+            return {
+              dedupeKey: `audit-stub:${request?.id}:${plannedTarget?.surface}`,
+              target: { kind: "audit-stub-prepared", planned: plannedTarget },
+            };
           },
           deliverPending: async ({ request, approvalKind }) => {
             await appendSideband("calls.jsonl", {

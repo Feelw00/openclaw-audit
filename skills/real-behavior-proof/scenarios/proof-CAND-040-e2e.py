@@ -267,6 +267,48 @@ def _build_ws_probe_ts(*, gateway_port: int, device: dict, control_dir: Path) ->
                 }},
               }});
               step("exec.approval.request.sent");
+              // Don't wait for ack — the gateway forwards exec.approval.request
+              // to the plugin handler synchronously, and the ack response is
+              // emitted only AFTER deliverPending resolves. Since our stub
+              // parks deliverPending behind the IPC gate, the ack would never
+              // arrive in time. Start polling immediately for the stub's
+              // deliverPending.enter sideband line and drive the race from
+              // there.
+              const waitDeliverDeadline = Date.now() + 15_000;
+              const waitForDeliverEnter = setInterval(() => {{
+                const calls = readCalls();
+                const enter = calls.find((c) => c.call === "deliverPending.enter");
+                if (enter) {{
+                  clearInterval(waitForDeliverEnter);
+                  step("deliverPending.enter.observed");
+                  // STEP A: trigger lease dispose so onStopped fires while
+                  // deliverPending is parked.
+                  fs.writeFileSync(path.join(controlDir, "dispose-lease.release"), "1");
+                  step("dispose-lease.release.written");
+                  // STEP B: small delay to let onStopped → activeEntries.clear,
+                  // then release the deliverPending gate so wrapped is set on
+                  // the cleared Map (without-fix bug).
+                  setTimeout(() => {{
+                    fs.writeFileSync(path.join(controlDir, "deliver-pending.release"), "1");
+                    step("deliver-pending.release.written");
+                    // wait for unbindPending observation window
+                    setTimeout(() => {{
+                      out.finalCalls = readCalls();
+                      ws.close(1000, "audit-c040-done");
+                      setTimeout(() => {{
+                        process.stdout.write(JSON.stringify(out));
+                        process.exit(0);
+                      }}, 1500);
+                    }}, 4_000);
+                  }}, 1_500);
+                }} else if (Date.now() > waitDeliverDeadline) {{
+                  clearInterval(waitForDeliverEnter);
+                  step("deliverPending.enter.timeout");
+                  out.finalCalls = readCalls();
+                  process.stdout.write(JSON.stringify(out));
+                  process.exit(0);
+                }}
+              }}, 100);
               return;
             }} else {{
               process.stdout.write(JSON.stringify(out)); process.exit(0);
@@ -276,43 +318,7 @@ def _build_ws_probe_ts(*, gateway_port: int, device: dict, control_dir: Path) ->
           if (frame.type === "res" && frame.id === execApprovalReqId) {{
             if (frame.ok) {{ out.execApprovalAck = frame.payload; }}
             else {{ out.execApprovalErr = frame.error; }}
-            step("exec.approval.request.res", {{ ok: frame.ok }});
-            // wait until deliverPending stub has logged enter (race window open)
-            const waitDeliverDeadline = Date.now() + 15_000;
-            const waitForDeliverEnter = setInterval(() => {{
-              const calls = readCalls();
-              const enter = calls.find((c) => c.call === "deliverPending.enter");
-              if (enter) {{
-                clearInterval(waitForDeliverEnter);
-                step("deliverPending.enter.observed");
-                // STEP A: trigger lease dispose so onStopped fires while
-                // deliverPending is parked.
-                fs.writeFileSync(path.join(controlDir, "dispose-lease.release"), "1");
-                step("dispose-lease.release.written");
-                // STEP B: small delay to let onStopped → activeEntries.clear,
-                // then release the deliverPending gate so wrapped is set on
-                // the cleared Map (without-fix bug).
-                setTimeout(() => {{
-                  fs.writeFileSync(path.join(controlDir, "deliver-pending.release"), "1");
-                  step("deliver-pending.release.written");
-                  // wait for unbindPending observation window
-                  setTimeout(() => {{
-                    out.finalCalls = readCalls();
-                    ws.close(1000, "audit-c040-done");
-                    setTimeout(() => {{
-                      process.stdout.write(JSON.stringify(out));
-                      process.exit(0);
-                    }}, 1500);
-                  }}, 4_000);
-                }}, 1_500);
-              }} else if (Date.now() > waitDeliverDeadline) {{
-                clearInterval(waitForDeliverEnter);
-                step("deliverPending.enter.timeout");
-                out.finalCalls = readCalls();
-                process.stdout.write(JSON.stringify(out));
-                process.exit(0);
-              }}
-            }}, 100);
+            step("exec.approval.request.res.late", {{ ok: frame.ok }});
             return;
           }}
         }});

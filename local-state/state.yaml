@@ -2080,7 +2080,7 @@ items:
     updated_at: '2026-05-15T06:17:13+00:00'
   CAND-040:
     kind: cand
-    state: proof-blocked-pre
+    state: proof-collected-pre
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2106,8 +2106,15 @@ items:
       reason: '옵션 C 진행 2세션 중 1차: gateway boot path + install + register 도달. handler.start
         wire 안 됨. record=proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md'
       at: '2026-05-15T11:44:45+00:00'
+    - from: proof-blocked-pre
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: '옵션 C 성공 (이 세션 2026-05-16): silent skip 5 발견 정리 + stub 보강. trials=3
+        chain_works=3 leak=3 fix_observed=0 fire_rate=1.0. unbindPending=0 직접 측정.
+        record=proofs/PROOF-CAND-040-pre-20260516-105708.md'
+      at: '2026-05-16T01:58:58+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-15T11:44:45+00:00'
+    updated_at: '2026-05-16T01:58:58+00:00'
   CAND-041:
     kind: candidate
     state: pending_gatekeeper

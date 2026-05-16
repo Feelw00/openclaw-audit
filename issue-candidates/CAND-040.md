@@ -42,20 +42,43 @@ upstream_dup_check:
   cross_refs_other_cells: []
 cross_refs: []
 pre_sol_proof:
-  status: blocked-external-dep
-  proof_record: proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md
+  status: collected
+  proof_record: proofs/PROOF-CAND-040-pre-20260516-105708.md
+  prior_proof_records:
+  - proofs/PROOF-CAND-040-pre-20260514-102041.md  # unit-level (2026-05-14)
+  - proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md  # blocked (2026-05-15)
   measurements:
     scenario: proof-CAND-040-e2e
-    trials: 0
-    e2e_attempt: true
-    progress: '옵션 C (gateway + stub plugin + sideband) 진행 — 2 세션 추정 중 이번 세션은
-      gateway boot path 까지 도달. install + plugin load + register + lease store 일치 +
-      gateway.startAccount + exec.approval.request RPC ack 모두 OK. 그러나 approval handler
-      가 stub 의 nativeRuntime 와 wire 안 됨 (availability.isConfigured 호출 0).'
-    blocked_reason: 'approval handler.start 가 stub plugin 의 nativeRuntime 와 wire 안 됨
-      (silent skip). 다음 세션 trial-and-error: channelConfigs / capabilities / 누락 adapter
-      / origin. 또는 옵션 B (in-process, CAL-003 risk) 또는 unit-level final 으로 전환.'
-    next_session: skills/real-behavior-proof/harness/cand040-stub-plugin/README.md
+    trials: 3
+    chain_works_trials: 3
+    leak_trials: 3
+    fix_observed_trials: 0
+    fire_rate: 1.0
+    per_trial_counts:
+    - prepareTarget: 1
+      'deliverPending.enter': 1
+      'deliverPending.exit': 1
+      bindPending: 1
+      unbindPending: 0
+    - prepareTarget: 1
+      'deliverPending.enter': 1
+      'deliverPending.exit': 1
+      bindPending: 1
+      unbindPending: 0
+    - prepareTarget: 1
+      'deliverPending.enter': 1
+      'deliverPending.exit': 1
+      bindPending: 1
+      unbindPending: 0
+    base_sha: 859286b95e
+    summary: '옵션 C 성공 (이 세션, 2026-05-16). silent skip root cause = (a) plugin-loader-side
+      store ≠ caller-side store, (b) register 시점은 startAccount(opts) 안에서 opts.channelRuntime
+      사용 (telegram pattern), (c) capability.native (ChannelApprovalNativeAdapter) 없으면
+      deliveryPlan.targets=[], (d) prepareTarget 반환에 dedupeKey 필요, (e) server-side lease
+      dispose 별도 file-flag watcher 필요. 5 발견 정리 + stub 보강 + probe ack-wait 제거.
+      race window 직접 측정: deliverPending park → server-side onStopped fire (activeEntries.clear)
+      → deliverPending release → bindPending → activeEntries.set 재삽입 → unbindPending 영구
+      미호출. 3/3 trial leak.'
     stub_plugin_dir: skills/real-behavior-proof/harness/cand040-stub-plugin/
     scenario_file: skills/real-behavior-proof/scenarios/proof-CAND-040-e2e.py
   scenario: proof-CAND-040-e2e

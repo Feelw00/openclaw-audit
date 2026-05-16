@@ -25,31 +25,45 @@ OPENCLAW_HOME=<isolated home> OPENCLAW_AUDIT_STUB_C040_DIR=<control dir> \
   `presentation.{buildPendingPayload,buildResolvedResult,buildExpiredResult}`,
   `observe.onDelivered`)
 
-## 현재 진행 상태 (2026-05-15)
+## 현재 진행 상태 (2026-05-16)
 
-**완료 — gateway boot path 까지 도달**:
-- install --link 성공 (installs.json 에 audit-stub-c040 등록)
-- boot 시 plugin 11개 인식 (audit-stub-c040 포함)
-- `register(api)` 호출 (discovery + full mode 둘 다)
-- `channelRuntime.runtimeContexts.register` 성공 + **자기 lease readback 가능** → store 일치 확인
-- `gateway.startAccount` 호출 + abort.signal 까지 영구 유지
-- audit ws probe 가 `exec.approval.request` RPC 발사 → ack `{id, decision:null}` 받음
+**✅ collected — race window 직접 측정 성공** (`proofs/PROOF-CAND-040-pre-20260516-105708.md`):
+- trials=3 chain_works=3 leak=3 fix_observed=0 fire_rate=1.0
+- 각 trial: prepareTarget=1, deliverPending.enter=1, deliverPending.exit=1, bindPending=1, unbindPending=0
 
-**막힘 — approval handler 가 stub 와 wire 안 됨**:
-- stub 의 `availability.isConfigured`, `shouldHandle`, `transport.*`, `presentation.*` 호출 0회
-- 즉 `startChannelApprovalHandlerBootstrap` → `createChannelApprovalHandlerFromCapability` →
-  `handler.start()` 의 어딘가에서 silent skip
-- boot log 에 error/retry 메시지 없음 → silent fail path
+## silent skip root cause — 5 발견 정리 (이 plugin 의 design lesson)
 
-## 가능한 빠진 것 (다음 세션 trial-and-error 후보)
+직전 세션 (2026-05-15) "handler wire 안 됨" 막힘의 정확한 원인:
 
-1. **`openclaw.plugin.json#channelConfigs`** — boot 경고 명시. capability config schema + setup
-   surface 지정. approval bootstrap 가 이걸 보고 진입 가드 통과 여부 결정 가능.
-2. **`ChannelPlugin.capabilities`** — 현재 `{}`. `{approvals: true}` 또는 다른 flag 필요할 수도.
-3. **누락 adapter** — `outbound`, `status`, `messaging` 등. mattermost / discord 의 minimal
-   ChannelPlugin 과 비교해서 우리 stub 에 빠진 필수 surface 식별.
-4. **`origin`** 가 "bundled" 가 아닌 다른 값 — server-channels.ts:327 의 분기에서 startup
-   runtime 못 받을 수도. linked plugin 의 origin 확인.
+1. **plugin-loader-side store ≠ caller-side store** — `loader.ts:1621 createPluginRuntime()` 가
+   매번 별개 `createRuntimeChannel()` instance 생성. plugin 의 `register(api)` 가 받는 api
+   의 channelRuntime.runtimeContexts 는 server-side (`server.impl.ts:164 getChannelRuntime` cache)
+   와 다른 store. self-loop readback 은 일치 증명 아님.
+
+2. **register 시점/위치** — `register(api)` 안에서 등록하지 말 것. **`gateway.startAccount(opts)`
+   안에서 `opts.channelRuntime`** (caller 가 server-side store wrap 으로 전달) 사용해서
+   `registerChannelRuntimeContext` 호출. telegram pattern: `extensions/telegram/src/monitor.ts:163-170, 215-222`.
+
+3. **`capability.native` 필수** — `ChannelApprovalNativeAdapter` 가 없으면
+   `approval-native-delivery.ts:42-56` 가 `targets: []` 반환 → `prepareTarget` 호출 안 됨.
+   minimal: `{describeDeliveryCapabilities: () => ({enabled: true, preferredSurface: "origin",
+   supportsOriginSurface: true}), resolveOriginTarget: async () => ({to: "...", threadId: "..."})}`.
+
+4. **`prepareTarget` 반환에 `dedupeKey`** — `approval-native-runtime.ts:96`
+   `deliveredKeys.has(preparedTarget.dedupeKey)`. 부재 시 첫 trial 만 진행, 이후 undefined 가
+   key 가 되어 skip.
+
+5. **server-side lease dispose 별도 watcher** — scenario 의 `dispose-lease.release` flag 는
+   stub 의 startAccount lease 만 dispose 시키도록 별도 file-flag watcher 필요. plugin-loader-side
+   lease 만 dispose 해도 `approval-handler-bootstrap.ts:179 stopHandler` 가 fire 안 됨 — server-side
+   lease dispose 가 emitRuntimeContextEvent("unregistered") 발사 →
+   `approval-handler-bootstrap.ts:179` watch onEvent → stopHandler → handler.stop → onStopped → race 발현.
+
+## scenario 추가 발견 (probe pattern)
+
+- gateway exec.approval.request 의 ack 는 plugin 의 deliverPending 완료 후 회신. probe 가
+  ack 대기하면 race window trigger 안 됨. probe 가 `exec.approval.request.sent` 직후 calls.jsonl
+  polling 시작해서 `deliverPending.enter` 직접 관측 + race trigger 발사.
 
 ## 검증 도구
 

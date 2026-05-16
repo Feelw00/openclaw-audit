@@ -217,7 +217,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   | CAND-037 | ❌ blocked-module-level (2026-05-15) | context-engine plugin loader. factory inject + dispose 측정에 instrumentation 의존. production binary 실행 path 없음 + 외부 환경 무관. 사용자 결정 (2026-05-15): 건너뜀 | unit-level final 후보 |
 #   | CAND-038 | ✅ **collected** (2026-05-15 3차, 옵션 A) | chain_works_trials=1 + abort_observed_trials=0. mock req.on("close") 미 fire 로 close handler 결함 직접 측정. SOL 작성 또는 post-sol 진입 가능. | proofs/PROOF-CAND-038-pre-20260515-085213.md |
 #   | CAND-039 | ✅ **collected** (2026-05-15 다음 세션) | 5/5 trial fire. recovery IIFE production-faithful 발현 직접 관측. close prelude 43ms↔2.3s 두 패턴. SOL 작성 진입 가능. | proofs/PROOF-CAND-039-pre-20260515-061713.md |
-#   | CAND-040 | ⏳ in-progress (2026-05-15 옵션 C, 2세션 중 1차) | gateway boot path 까지 도달 — install + plugin load + register + lease store 일치 + gateway.startAccount + exec.approval.request RPC ack 모두 OK. **막힘**: approval handler 가 stub 의 nativeRuntime 와 wire 안 됨 (silent skip). 다음 세션 trial-and-error: channelConfigs / capabilities / 누락 adapter / origin. 또는 옵션 B (in-process, CAL-003 risk) 또는 unit-level final 전환. | proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md |
+#   | CAND-040 | ✅ **collected** (2026-05-16 옵션 C 2차) | trials=3 leak=3 fire_rate=1.0. silent skip 5 발견 정리 + stub 보강: (a) plugin-loader-side store ≠ caller-side store (b) startAccount(opts.channelRuntime) 에서 register (c) capability.native 필수 (d) prepareTarget dedupeKey 필요 (e) server-side lease dispose file-flag watcher. race window 직접 측정: deliverPending park → onStopped → release → bindPending → activeEntries.set 재삽입 → unbindPending 영구 미호출. SOL 작성 또는 post-sol 진입 가능. | proofs/PROOF-CAND-040-pre-20260516-105708.md |
 #
 #   **분류 키**:
 #   - ✅ wire-level: 외부 의존 0 + production binary spawn + 실 wire 통과 (CAND-026 만 해당)
@@ -314,18 +314,23 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   `proofs/PROOF-CAND-{038,039,040}-pre-20260515-052108-e2e-blocked.md` 3건 + CAND
 #   frontmatter `blocked-external-dep` + state transition `proof-blocked-pre`.
 #
-#   다음 세션 진행 순서 권고 (가성비 순) — 2026-05-15 4차 갱신:
+#   다음 세션 진행 순서 권고 (가성비 순) — 2026-05-16 5차 갱신:
 #   1. ~~CAND-039~~ ✅ collected (2026-05-15). SOL 작성 진입 가능.
 #   2. ~~CAND-038~~ ✅ collected (2026-05-15 옵션 A). SOL 작성 또는 post-sol 진입 가능.
-#   3. **CAND-040 ⏳ 옵션 C 2세션 중 1차 완료 (2026-05-15)** — gateway boot path 까지 도달.
-#      install + plugin load + register + lease store 일치 + RPC ack 모두 OK. **다음 세션
-#      첫 결정**: (a) 옵션 C trial-and-error 더 진행 (channelConfigs / capabilities /
-#      누락 adapter / origin), (b) 옵션 B (in-process, CAL-003 risk) 전환, (c) unit-level
-#      final 채택 + PR body `proof: supplied` 만. 자세한 가설/검증 결과 + 다음 세션 후보 →
-#      `proofs/PROOF-CAND-040-pre-20260515-104500-e2e-blocked-handler-wire.md` 와
-#      `skills/real-behavior-proof/harness/cand040-stub-plugin/README.md`.
-#   4. SOL-CAND-038 / SOL-CAND-039 작성 (fix surface 결정 → R-11 post-harness cross-review
-#      → post-sol with-fix 비교 → PR 발행).
+#   3. ~~CAND-040~~ ✅ collected (2026-05-16 옵션 C 2차). silent skip 5 발견 + stub 보강 후
+#      race window 직접 측정 (trials=3 leak=3 fire_rate=1.0). SOL 작성 또는 post-sol 진입 가능.
+#      detail → proofs/PROOF-CAND-040-pre-20260516-105708.md.
+#   4. **SOL-CAND-038 / SOL-CAND-039 / SOL-CAND-040** 작성 (fix surface 결정 → R-11
+#      post-harness cross-review → post-sol with-fix 비교 → PR 발행). 셋 다 P3 이므로
+#      Option C hybrid 에 따라 cross-review 는 사용자 요청 시만.
+#      • SOL-CAND-038 fix surface: ws close handler 가 chatAbortControllers 에서 ownerConnId
+#        매칭 entry 의 controller.abort() 호출 + entry delete (gateway/server/ws-connection.ts:354-424).
+#      • SOL-CAND-039 fix surface: 옵션 A (isClosing 가드 + timer handle 반환) / 옵션 B
+#        (AbortSignal 전파). 둘 중 결정 필요. server-runtime-services.ts 자체 +
+#        activateGatewayScheduledServices 반환 타입에 recovery stop handle 추가 필요.
+#      • SOL-CAND-040 fix surface: 옵션 A (deliverTarget 각 await 후 stopped flag 체크 +
+#        native cleanup) / 옵션 B (AbortSignal 전파) / 옵션 C (Mutex). 옵션 A 가 minimal
+#        (in-file 만 변경). approval-handler-runtime.ts:498-537.
 #
 #   각 CAND 진행 시작 시 `gateway-e2e.md` §CAND-NNN starting points 부터 읽어라.
 #
