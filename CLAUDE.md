@@ -72,6 +72,19 @@ feature 제안, 리팩터만 하는 PR, CI 수정 PR 은 금지 (CONTRIBUTING.md
 **새 세션에서 가장 먼저**: `NEXT.md` 의 결정 트리에 따라 다음 액션 선택.
 이 CLAUDE.md 는 규칙 참조용, NEXT.md 는 실행 가이드.
 
+### NEXT.md 작성 규율 (강제)
+
+- **NEXT.md 는 부팅용 파일** — 다음 액션 결정 트리 + 현재 활성 상태 (OPEN PR /
+  진행 중 사이클 목록 + 다음 우선순위) 만.
+- **히스토리성 이력 작성 금지**: 완료된 사이클의 진행 디테일 / 폐기 사유 /
+  과거 시도 / 버전별 outcome 변천사는 NEXT.md 에 *절대* 적지 않는다.
+  부팅용 파일을 무겁게 만들지 말 것.
+- 히스토리는 git log + commit 메시지 + `solutions/SOL-*.md` 본문 +
+  `proofs/PROOF-*.md` + `openclaw-pr-tracker.md` + `calibration/CAL-*.md` 에
+  보관한다. NEXT.md 가 참조 링크만 두면 충분.
+- 사이클이 종료되면 NEXT.md 의 해당 항목은 *삭제* 한다 (몇 줄로 압축 X,
+  외부 파일 위임). active queue + 다음 결정에 필요한 정보만 남긴다.
+
 ## 세션 시작 체크리스트
 
 ```bash
