@@ -4,16 +4,6 @@
 
 ## 내 active PR (Feelw00)
 
-### #82426 — fix(mcp): forward host cancellation signal to plugin tool.execute
-
-- **유형**: 파이프라인 CAND-026 → SOL-0010, scope-down FIND-mcp-lifecycle-002 단독 (post-harness cross-review avg 0.84, critical scope-down high → drain axis abandon)
-- **상태**: OPEN (2026-05-16 발행), head `36b9e73e38` (fix `aeaa6e902e` + test `36b9e73e38`). 라벨 미부여 (clawsweeper 평가 대기)
-- **fix scope**: XS (3 hunk / 2 files) — setRequestHandler `(request, extra)` + extra.signal 전달 + callTool 시그니처 signal 추가 + tool.execute 4번째 인자
-- **proof**: pre-sol `proofs/PROOF-CAND-026-pre-20260515-002424.md` + post-sol `proofs/PROOF-SOL-0010-post-20260516-023051.md` (base 3b663ad1c1 vs head aeaa6e902e, signalDefined false→true / abortObserved false→true)
-- **CI**: pnpm build + check green. pnpm test 1057/1058 (1 unrelated failure in `extensions/slack/src/send.identity-fallback.test.ts`, upstream `cb695b0986` 의 stale test — PR Risks 섹션 명시)
-- **결정**: 메인테이너 리뷰 대기
-- **관련**: Closes #82424
-
 ### #68669 — fix(agents): dedupe subagent browser session cleanup wrapper with dispatch flag
 
 - **유형**: 파이프라인 CAND-011, post-harness + pre-pr + post-commit cross-review (총 11 agent) 모두 real
@@ -34,6 +24,16 @@
 - **관련**: Closes #71646
 
 ## 종결된 PR
+
+### #82426 (CAND-026 → SOL-0010, **CLOSED 2026-05-16 — indirect-merge with credit, CAL-010 두 번째 사례**)
+- **결과**: 사실상 win — 직접 merge 아님. 메인테이너 joshavant 가 commit `b7d61c8daf` (PR #82443, "fix: forward MCP tool abort signals") 로 우월한 fix 를 main 에 직접 머지 + closeout 코멘트로 우리 진단·소스 fix 인정 + closeout 호출
+- **경로**: 2026-05-15 wire-level e2e proof (production bundle stdio + 실 SDK Client + notifications/cancelled, signalDefined false→true) → 2026-05-16 발행 (clawsweeper Codex 평가 "Sufficient + needs maintainer landing choice") → 동일 06:33 - 05:07 sub 1h closeout. 사람 리뷰 0건 / clawsweeper 라벨링 + Codex 평가만
+- **fix (우리)**: setRequestHandler `(request, extra)` + extra.signal → callTool signal param → tool.execute 4번째 인자 (XS, 3 hunk / 2 files)
+- **fix (main, 우월)**: 동일 core wiring (SDK signal preserve + tool.execute(..., signal) 전달). 핵심 차이는 **regression test 의 timing 견고성** — 우리: fixed `setTimeout(r, 20)` 후 abort. 머지본: tool.execute 가 signal 수신할 때까지 await 후 abort → assertion 이 timing 의존 없음
+- **메인테이너 코멘트**: "Your diagnosis and source fix were correct ... #82443 became the closeout PR because its regression test waits until `tool.execute` has actually received the signal before aborting, which makes the cancellation assertion less timing-dependent than a fixed sleep. Appreciate the careful report, patch, and proof."
+- **clawsweeper Codex 평가**: 5가지 모두 인정 (Current main drops the SDK handler extra / Current main calls execute without a signal / Tool contract already has a cancellation parameter / MCP SDK contract supplies the signal / PR forwards the existing signal path)
+- **교훈 (CAL-010 확장)**: 다음 SOL 의 regression test 는 sleep-based timing 회피 → "await actual state transition before triggering action" 패턴 사용. fixed sleep 의 race window 가 closeout PR 의 머지 우선순위를 결정한 첫 사례 (이전 CAL-010 #70142 는 helper 반환 contract 활용 차이)
+- **관련**: Closes #82424. closeout PR #82443
 
 ### #78243 (CAND-024 → SOL-0009, **MERGED 2026-05-11** — cron manual-run mark/clear)
 - **결과**: merged — SOL-0007 (PR #71040 closed CAL-011) 의 manual-only scope-down 후속이 채택됨

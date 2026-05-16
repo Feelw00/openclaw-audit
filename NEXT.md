@@ -53,8 +53,8 @@ open PR worktree 는 `fix/*` 브랜치라 main 업데이트와 독립. rebase �
 | 조건 | 액션 |
 |---|---|
 | **메인테이너 (CODEOWNERS / maintainers.md 인물) CHANGES_REQUESTED / COMMENT** | **R-10 필수** — 답변 쓰기 전 3 agent cross-review (positive/critical/neutral) 먼저. 특히 critical agent 에 "메인테이너가 놓친 edge case 도 함께 탐색" 프롬프트. pushback 톤 금지. `calibration/CAL-006-maintainer-review-tone.md` 참조 |
-| PR 에 follow-up commit push 완료 | **Greptile 자동 재리뷰 없음** — PR 에 `@greptile review and provide confidence score` 코멘트로 수동 트리거 |
-| **PR 에 Codex / Greptile bot P1+ 지적** | **CAL-009 프로토콜** — 병렬 2-agent (positive + critical) 로 지적 검증 → 반박 가능 시 공손 reply + `gh api graphql resolveReviewThread` / 반영 필요 시 worktree 에서 수정 → push → Greptile 재트리거 |
+| PR 에 follow-up commit push 완료 | **Greptile**: 자동 재리뷰 없음 — `@greptile review and provide confidence score` 수동 트리거. **clawsweeper**: synchronize 이벤트로 자동 재리뷰 OK (sha 기반). 단 reply 본문은 컨텍스트 미반영 — `clawsweeper-triggers.md` 참조 |
+| **PR 에 Codex / Greptile bot P1+ 지적** | **CAL-009 프로토콜** — 병렬 2-agent (positive + critical) 로 지적 검증 → 반박 가능 시 공손 reply (clawsweeper 케이스: 본문 끝에 `@clawsweeper review` 필수, 안 그러면 reply 본문이 router 에 전달 안 됨, `clawsweeper-triggers.md` §2) + `gh api graphql resolveReviewThread` / 반영 필요 시 worktree 에서 수정 → push → Greptile 재트리거 |
 | PR 에 bot 리뷰/코멘트 있음 (P2+) | 해당 worktree 에서 대응 → push → Greptile 재트리거 |
 | `findings/drafts/` 에 파일 있음 | `validate.py --all --move` |
 | `findings/ready/` ≥ 2 건 (같은 도메인 누적) | clusterer 페르소나 호출 |
@@ -98,17 +98,16 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # OPEN openclaw PR (다음 세션에서 상태 확인 우선):
 #   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`. 무대응 유지.
 #   • #71648 (CAND-025→SOL-0008) — `proof: supplied` 만. 메인테이너 리뷰 대기.
-#   • #82426 (CAND-026→SOL-0010) — `proof: supplied` 만. 메인테이너 리뷰 대기.
-#   • #82483 (CAND-038→SOL-0011, issue #82484) — 2026-05-16 발행. Greptile/메인테이너 반응 대기.
-#   • #82482 (CAND-040→SOL-0013, issue #82485) — 2026-05-16 발행. Greptile/메인테이너 반응 대기.
+#   • #82483 (CAND-038→SOL-0011, issue #82484) — `proof: supplied+sufficient` 자동 라벨링. 사람 리뷰 대기.
+#   • #82482 (CAND-040→SOL-0013, issue #82485) — `proof: supplied+sufficient` 자동 라벨링. 사람 리뷰 대기.
 # 상세 본문 / merged history / 종결된 PR / 폐기 사유 → openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
 #
 # 활성 큐 + 다음 우선순위:
 #
 #   ## 0. PR 모니터링 (최우선)
-#   - #82482 / #82483 신규 PR 의 Greptile bot review + clawsweeper bot label 평가 (24h 안).
+#   - #82482 / #82483 — clawsweeper `proof: sufficient` 라벨 자동 부여 완료. Greptile/메인테이너 사람 리뷰 대기.
 #     bot 지적 시 CAL-009 프로토콜, 메인테이너 CHANGES_REQUESTED 시 R-10 cross-review.
-#   - #82426 / #71648 / #68669 — 메인테이너 리뷰 대기 / 무대응 유지.
+#   - #71648 / #68669 — 메인테이너 리뷰 대기 / 무대응 유지.
 #
 #   ## 1. 새 셀 또는 새 audit 단계
 #   - Phase 5 후속 셀 후보: mcp-lifecycle / mcp-concurrency / mcp-memory v2 /
@@ -314,6 +313,8 @@ guard `_check_no_inline_heading` 가 line-start `# ` 패턴 (policy 가 거기�
   - **CAL-011 (TODO 작성)** — alternative-axis acceptance + cross-review-driven retract. CAL-008 (dup-axis 선제) + CAL-010 (indirect-merge with credit) 의 hybrid 패턴. 메인테이너가 다른 axis 로 동일 문제 해결 시 우리 PR close + 잔여 영역만 follow-up issue 로 좁게 분리.
 - **PR 트래커 (모든 내 openclaw PR)**: `openclaw-pr-tracker.md`
   - 파이프라인 외 PR + 종결된 PR + Greptile 재리뷰 수동 트리거 절차
+- **Bot 리뷰 트리거 (clawsweeper)**: `clawsweeper-triggers.md`
+  - 자동/명시 트리거 + regex + 라벨 시스템. PR push 후 bot 무반응 / reply 가 평가에 반영 안 될 때 우선 참조
 - **Telegram E2E 인프라**: `telegram-e2e.md`
   - CAND-031/032/033 e2e 작업 시에만 읽어라. bot 인벤토리 / Telethon driver / 결정 배경 / 트러블슈팅 포함
 - **Gateway E2E 인프라**: `gateway-e2e.md`

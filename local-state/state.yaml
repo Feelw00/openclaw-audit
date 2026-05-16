@@ -2160,8 +2160,8 @@ items:
     created_at: '2026-05-14T07:11:24+00:00'
     updated_at: '2026-05-14T07:11:24+00:00'
   SOL-0010:
-    kind: find
-    state: pr-opened
+    kind: sol
+    state: abandoned
     transitions:
     - from: null
       to: drafted
@@ -2183,8 +2183,16 @@ items:
         pushed to Feelw00/openclaw. PR body 에 6 필드 evidence + Closes #82424 + slack
         pre-existing failure unrelated 명시.'
       at: '2026-05-16T03:56:38+00:00'
+    - from: pr-opened
+      to: abandoned
+      actor: human
+      reason: 'PR #82426 closed 2026-05-16 — indirect-merge with credit (CAL-010 2번째).
+        메인테이너 joshavant 가 PR #82443 (b7d61c8daf, fix: forward MCP tool abort signals)
+        로 우월한 fix 직접 머지 + 우리 진단·소스 fix credit. 우리 regression test 의 fixed sleep timing
+        이 closeout 우선순위 차이 사유.'
+      at: '2026-05-16T07:07:12+00:00'
     created_at: '2026-05-16T02:16:22+00:00'
-    updated_at: '2026-05-16T03:56:38+00:00'
+    updated_at: '2026-05-16T07:07:12+00:00'
   SOL-0011:
     kind: sol
     state: proof-collected-post

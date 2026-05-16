@@ -31,6 +31,15 @@ openclaw 프로젝트의 신뢰성 감사 파이프라인 홈.
 | `skills/cross-review/` | 다중 agent cross-review skill (post-harness/pre-pr/maintainer-response) |
 | `skills/real-behavior-proof/` | SOL 전/후 production env 결함 재현/검증 skill (pre-sol/post-sol) |
 
+## Bot 리뷰 트리거 (openclaw)
+
+`clawsweeper-triggers.md` 에 정리. clawsweeper 자동/명시 트리거 + regex + 라벨
+시스템 + Greptile 비교. **PR push 후 bot 무반응 / 우리 reply 가 평가에 반영
+안 되는 듯할 때 우선 참조**.
+
+핵심: reply 본문에 `@clawsweeper review` 키워드 없으면 router dispatch 안 됨.
+force-push 의 synchronize 는 sha 기반 재리뷰 자동 트리거 OK.
+
 ## openclaw 기여 규칙 필독
 
 `openclaw-contribution.md` 에 정리됨 (CONTRIBUTING.md + pull_request_template.md + CODEOWNERS 통합). PR 준비 전 반드시 스캔.
