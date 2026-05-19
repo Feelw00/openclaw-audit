@@ -25,6 +25,24 @@
 
 ## 종결된 PR
 
+### #82482 (CAND-040 → SOL-0013, **MERGED 2026-05-16** infra approval handler drop stopped delivery)
+- **결과**: merged by steipete at 2026-05-16T15:41:08Z. merge_commit `2fcaab0010e5b44b1c4de22aa24edc12ff3e6abc`, head SHA `47c2487b797dc7bbe5dd4812c0b4b538bba28e60`. closing issue #82485
+- **fix**: approval-handler-runtime.ts onStopped 시 in-flight `deliverPending` 의 후속 `bindPending` 을 차단하고 activeEntries 재삽입 leak 회피. 추가로 matrix channel cleanup hook (`cancelDelivered`) 옵셔널 정의 + matrix config-update test + 채널 플러그인 docs
+- **evidence**: PROOF-CAND-040-pre / PROOF-SOL-0013-post (production-faithful e2e, with-fix 0 leak vs without-fix 3/3 leak, fire_rate 1.0)
+- **steipete merge 코멘트 (Gate)**: pnpm test src/infra/approval-handler-runtime.test.ts + pnpm test extensions/matrix/src/matrix/config-update.test.ts + pnpm lint:extensions + pnpm docs:list + git diff --check + codex-review clean + CI 47c2487b green (check-lint, check-additional-extension-bundled, checks-node-core-fast/runtime-shared, build-artifacts, CodeQL critical quality, real behavior proof)
+- **라벨 시소**: `proof: sufficient` clawsweeper 부여 ↔ openclaw-barnacle bot 제거 4회 반복. 머지 직전 unlabeled 상태로 머지 (메인테이너 manual judgment). R2 5-agent codex-rebuttal + R3 3-agent self-review 사이클 (commit c8d8629) 이 sufficient retention 에 기여
+- **clawsweeper Codex 평가**: "Codex review: needs maintainer review before merge. Sufficient (logs)" + actionable finding 없음
+- **교훈**: clawsweeper sufficient 라벨이 머지 보장 아님. 메인테이너가 proof 라벨과 무관하게 manual merge 가능. 단 라벨 시소 자체가 force-push synchronize 흐름과 충돌하지 않음 (#82482 는 force-push 후에도 머지 도달)
+
+### #82483 (CAND-038 → SOL-0011, **CLOSED 2026-05-16 — maintainer-verdict reject, invariant 위반**)
+- **결과**: closed (not merged) by steipete at 2026-05-16T15:25:42Z. mergedAt null. 16분 후 #82482 머지된 동일 세션
+- **fix (우리)**: gateway/server/ws-connection.ts close handler 에 chat-abort helper import + ownerConnId 매칭 `chatAbortControllers` entry 일괄 abort + 단위 테스트
+- **evidence**: PROOF-CAND-038-pre (production bundle + mock OpenAI, 3 trials, mock_client_disconnected=[], probe_wsCloseCode=1000) 으로 ws close 후 close handler 의 abort 미실행 직접 측정
+- **메인테이너 verdict (steipete close 코멘트)**: "WebSocket disconnect is not the ownership boundary for an active run. The socket is primarily an observation/control channel: a tab refresh, transient network drop, or another client in the same session should be able to reconnect and observe the still-running agent. Treating every WS close as cancellation would regress that intended behavior. Explicit cancellation should continue to go through the existing stop / abort paths, and abandoned runs remain covered by the timeout cleanup path."
+- **clawsweeper Codex P2 (06:39 review)**: "Preserve reconnectable runs on transient WS closes (`src/gateway/server/ws-connection.ts:395-396`)" + Best solution: "grace/rebind-aware cleanup path that preserves reconnect" — 메인테이너 verdict 와 본질 동일 지적. 우리는 CAL-009 프로토콜에서 반박 가능 판단했으나 invariant 자체가 무너짐
+- **교훈 후보 (CAL 작성 대상)**: cross-review 5-agent (positive/critical/hot-path-tracer/reproduction-realist/upstream-dup-checker) 가 모두 fix scope 만 검증하고 lifecycle invariant 자체 (ws = observation/control vs ownership) 를 흔들지 못함. CAL-001 (post-merge reject) 과 다른 결: **pre-merge reject 이며 bot 도 같은 지적을 했으나 우리가 반박**. 신규 cross-review 역할 후보 — "lifecycle-invariant-challenger" (메인테이너 시각에서 fix 의 핵심 가정 자체를 의심)
+- **답변 (2026-05-18 Feelw00)**: stop/abort + timeout cleanup 분리 수용. closing makes sense
+
 ### #82426 (CAND-026 → SOL-0010, **CLOSED 2026-05-16 — indirect-merge with credit, CAL-010 두 번째 사례**)
 - **결과**: 사실상 win — 직접 merge 아님. 메인테이너 joshavant 가 commit `b7d61c8daf` (PR #82443, "fix: forward MCP tool abort signals") 로 우월한 fix 를 main 에 직접 머지 + closeout 코멘트로 우리 진단·소스 fix 인정 + closeout 호출
 - **경로**: 2026-05-15 wire-level e2e proof (production bundle stdio + 실 SDK Client + notifications/cancelled, signalDefined false→true) → 2026-05-16 발행 (clawsweeper Codex 평가 "Sufficient + needs maintainer landing choice") → 동일 06:33 - 05:07 sub 1h closeout. 사람 리뷰 0건 / clawsweeper 라벨링 + Codex 평가만

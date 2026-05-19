@@ -96,23 +96,23 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ mcp-memory  (cap/FIFO 후속 v2 셀 보류 — PR #71648 머지 후 착수)
 #
 # OPEN openclaw PR (다음 세션에서 상태 확인 우선):
-#   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`. 무대응 유지.
-#   • #71648 (CAND-025→SOL-0008) — `proof: supplied` 만. 메인테이너 리뷰 대기.
-#   • #82483 (CAND-038→SOL-0011, issue #82484) — `proof: supplied+sufficient` 자동 라벨링. 사람 리뷰 대기.
-#   • #82482 (CAND-040→SOL-0013, issue #82485) — `proof: supplied+sufficient` 자동 라벨링. 사람 리뷰 대기.
+#   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`. CONFLICTING (upstream rebase 필요).
+#   • #71648 (CAND-025→SOL-0008) — `proof: supplied` 만. CLEAN, 메인테이너 리뷰 대기.
 # 상세 본문 / merged history / 종결된 PR / 폐기 사유 → openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
 #
 # 활성 큐 + 다음 우선순위:
 #
-#   ## 0. PR 모니터링 (최우선)
-#   - #82482 / #82483 — clawsweeper `proof: sufficient` 라벨 자동 부여 완료. Greptile/메인테이너 사람 리뷰 대기.
-#     bot 지적 시 CAL-009 프로토콜, 메인테이너 CHANGES_REQUESTED 시 R-10 cross-review.
-#   - #71648 / #68669 — 메인테이너 리뷰 대기 / 무대응 유지.
+#   ## 0. PR 모니터링
+#   - #68669 — upstream/main 930 commit 진행으로 conflict. worktree 에서 rebase upstream/main 필요.
+#   - #71648 — CLEAN. 메인테이너 무대응. upstream 의 mcp/channel-bridge 영역 superseded 여부 점검 가치.
 #
-#   ## 1. 새 셀 또는 새 audit 단계
+#   ## 1. CAL 작성 후보
+#   - CAL-011 placeholder (alternative-axis acceptance, PR #71040)
+#   - CAL-012 후보 (#82483 invariant 가정 오류 — ws = observation/control vs ownership, cross-review 5-agent 가 lifecycle invariant 자체를 못 흔든 패턴)
+#
+#   ## 2. 새 셀 또는 새 audit 단계
 #   - Phase 5 후속 셀 후보: mcp-lifecycle / mcp-concurrency / mcp-memory v2 /
 #     agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
-#   - 또는 CAL-011 calibration 정식 문서 작성 (alternative-axis acceptance 패턴, PR #71040 사례).
 #
 # 신규 셀 정의 시 grid.yaml §types 에 id 추가 후 §cells 확장.
 ```
