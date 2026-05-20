@@ -254,3 +254,128 @@ eecb36eff4 fix(ci): stabilize zero-delay retry ...
   retention 분석에서 caller 책임으로 분리됨. R-3 규율상 unconditional cleanup 경로
   발견 시 FIND 생성 금지.
 
+---
+
+### error-boundary-auditor (2026-05-20)
+
+셀: `infra-retry-error-boundary`. allowed_paths: `src/infra/retry*.ts`,
+`src/infra/backoff.ts`. 도메인: infra-retry. upstream HEAD: `0c67dc7f82`
+(2026-05-20). 축: 재시도/백오프 코드의 error boundary (catch 누락 / 에러 swallow /
+콜백 throw 누출).
+
+#### 산출: FIND 2건
+
+- **FIND-infra-retry-error-boundary-001 (P2)** — `retryAsync` options 경로의
+  `shouldRetry`/`retryAfterMs`/`onRetry` 콜백 (retry.ts:126,130,166) 이 `catch
+  (err)` 블록 안에서 무방비 호출. try 는 `await fn()` (L122-123) 만 보호.
+  콜백 throw 시 retry loop 밖으로 누출 + 원본 `lastErr` swallow.
+- **FIND-infra-retry-error-boundary-002 (P3)** — `throw lastErr ?? new
+  Error("Retry failed")` (retry.ts:105, 179) 가 `fn` 의 falsy reject 값
+  (undefined/null) 을 generic Error 로 silent 치환. 원본 실패 식별자 손실.
+
+#### hint 별 검증 결과
+
+grid.yaml 이 제시한 5개 hint 를 코드와 대조:
+
+1. **retry.ts shouldRetry/onRetry 콜백 throw → catch 부재 누출** — 성립 →
+   FIND-001. shouldRetry(L126)/retryAfterMs(L130)/onRetry(L166) 셋 다 무방비.
+2. **최종 attempt 실패 + abort 경합 시 error 전파** — FIND 아님. `retryAsync`
+   는 options/number 양 경로 모두 AbortSignal 개념이 *없다* (`rg -n
+   "AbortController|AbortSignal|signal\.abort|\.aborted" src/infra/retry.ts`
+   → 0 매치). abort 경합 자체가 retry.ts 내부에서 성립 불가. abort 미전파는
+   별개 축 (FIND-infra-retry-concurrency-001 이 이미 다룸).
+3. **retry-policy.ts 정책 평가 throw → 호출자 도달 형태** — 독립 FIND 아님,
+   FIND-001 에 흡수. `resolveChannelApiShouldRetry` (retry-policy.ts:18-30) 와
+   `getChannelApiRetryAfterMs` (L32-52) 가 retry.ts 콜백 슬롯으로 주입됨.
+   `getChannelApiRetryAfterMs` 자체는 모든 객체 접근에 typeof 가드가 촘촘해
+   throw 안 함. 그러나 retry-policy 가 만든 predicate 가 retry.ts 의 무방비
+   콜백 슬롯에 들어간다는 것이 FIND-001 의 메커니즘 일부 → 별도 FIND 불필요.
+4. **backoff.ts delay 계산 NaN/음수/Infinity** — FIND 아님 (R-7 적용).
+   `computeBackoff` (backoff.ts:8-12) 는 `policy.initialMs/factor/maxMs/jitter`
+   에 유효성 검사가 전혀 없어 NaN policy 면 `Math.round(base+jitter)=NaN` 반환,
+   이게 `sleepWithAbort` 의 `ms` 로 가면 `ms<=0` 이 NaN 에서 false → `setTimeout(fn,
+   NaN)` 즉시 fire. 그러나 `computeBackoff` 의 production caller 3곳 (`rg -n
+   "computeBackoff" src` → `server-channels.ts:591` CHANNEL_RESTART_POLICY,
+   `context.ts:212` CONFIG_LOAD_RETRY_POLICY, `logs-cli.ts:343`
+   FOLLOW_BACKOFF_POLICY) 의 정책이 **전부 정적 상수 리터럴**이며 모두 유한
+   양수 (initialMs/maxMs/factor/jitter 직접 확인). `attempt` 인자도 정수
+   카운터. 동적/외부 입력 정책을 만드는 caller 가 없어 production hot-path 에서
+   NaN/Infinity 가 `computeBackoff` 에 도달하는 branch 가 존재하지 않음 (R-7).
+   순수 이론적 결함이라 FIND 미생성. `retry.ts` 의 `resolveRetryConfig` 는
+   `asFiniteNumber`/`clampNumber` 로 철저히 방어하는 것과 대조적이나, backoff.ts
+   의 미방어가 현재 결함으로 발현되지 않음.
+5. **sleepWithAbort 이중 settle / unhandled rejection** — FIND 아님. `settled`
+   플래그 (backoff.ts:19) + `addEventListener("abort", onAbort, { once: true })`
+   (L37) + onAbort/timer-callback 양 분기 모두 명시 cleanup (L22-23 settled
+   체크, L26-29 clearTimeout, L31/47 removeEventListener). 이중 settle 방어가
+   unconditional 하게 존재 → R-5 상 FIND 금지. backoff.test.ts:71-89
+   "listener-registration-race" 가 이를 lock.
+
+#### R-3 Grep 결과
+
+```
+rg -n "try\s*\{|catch\s*\(|finally" src/infra/retry.ts src/infra/retry-policy.ts src/infra/backoff.ts
+  → retry.ts:94 try / :96 catch (number 경로, fn() 만 보호)
+  → retry.ts:122 try / :124 catch (options 경로, fn() 만 보호)
+  → retry-policy.ts / backoff.ts: 0 매치 (try/catch 자체 없음)
+
+rg -n "AbortController|AbortSignal|signal\.abort|\.aborted" 위 3파일
+  → backoff.ts:14,38,54 (sleepWithAbort 만). retry.ts/retry-policy.ts: 0 매치
+
+rg -n "Number.isFinite|asFiniteNumber|Infinity|NaN" 위 3파일
+  → retry.ts:1,35,114,131 (resolveRetryConfig/retryAfterMs 방어)
+  → retry-policy.ts:51 (getChannelApiRetryAfterMs 의 retry_after 가드)
+  → backoff.ts: 0 매치 (computeBackoff NaN 미방어 - hint 4 참조)
+```
+
+#### R-5 실행 조건 분류표 (콜백 경로)
+
+| 경로 | 파일:라인 | 실행 조건 | 비고 |
+|---|---|---|---|
+| `try { return await fn() }` | retry.ts:122-123 | unconditional | fn() 만 보호 |
+| `shouldRetry(err, attempt)` | retry.ts:126 | conditional-edge (catch 진입 시) | 무방비 → FIND-001 |
+| `retryAfterMs?.(err)` | retry.ts:130 | conditional-edge | 무방비 → FIND-001 |
+| `onRetry?.(info)` | retry.ts:166 | conditional-edge | 무방비 → FIND-001 |
+| 콜백 throw 포착 try/catch | N/A | **부재** | FIND-001 근거 |
+| `sleepWithAbort` 이중 settle 방어 | backoff.ts:19,22-23,37 | unconditional | FIND 금지 |
+| `computeBackoff` 입력 유효성 검사 | N/A | **부재** | 단 caller 정책 전부 정적 안전 → FIND 아님 (R-7) |
+
+#### 카테고리별 적용/skip (페르소나 §탐지 카테고리 A~E)
+
+- [x] A. unhandledRejection / handler chain — skip. retry/backoff 파일에
+  `process.on` 핸들러 없음 (allowed_paths 밖). 단 콜백 누출 throw 가 호출자
+  try 밖이면 unhandledRejection 으로 격상 가능 (FIND-001 영향에 기술).
+- [x] B. Floating promise — skip. `retryAsync` 는 `for + await` 시퀀셜,
+  `sleepWithAbort` 는 단일 await Promise. fire-and-forget 패턴 없음.
+- [x] C. JSON.parse 미보호 — skip. 세 파일에 JSON.parse 없음.
+- [x] D. AbortController 전파 — 부분 적용. `sleepWithAbort` 는 abort 를
+  올바르게 처리 (이중 settle 방어 unconditional). `retryAsync` 는 abort 개념
+  부재 (별개 축 FIND-infra-retry-concurrency-001).
+- [x] E. fs/network 동기 호출 — skip. 세 파일 모두 순수 timing/제어 유틸,
+  동기 IO 없음.
+- [x] 추가 (콜백 무방비) — 적용 → FIND-001.
+- [x] 추가 (falsy throw 값 silent 치환) — 적용 → FIND-002.
+
+#### CAL-007 — upstream fix 검사
+
+`git log --oneline -15 -- src/infra/retry.ts`:
+- 최근 retry.ts 변경 (b7fc2451e7, a77bd213ce, 317e474b84, 62dff64700,
+  d49480527e) 은 전부 jitter / Retry-After contract 수치 축 — error-boundary
+  축 (콜백 throw 처리 / lastErr 치환) 을 손댄 commit 없음.
+- L122-123 의 try 범위 (`return await fn()` 만 보호) 는 `e5f677803f1`
+  (2025-11-26) 이후 미변경. L105/L179 의 `?? new Error("Retry failed")` 도
+  동일 시기 도입 후 미변경 (git blame 확인).
+- 즉 FIND-001/002 의 의심 지점은 upstream 에서 fix 되지 않은 stale 아닌 현행
+  결함.
+
+#### 확인 못 한 영역 (self-critique)
+
+- `src/infra/errors.ts` 의 `formatErrorMessage` 가 순환참조/getter throw 등에서
+  실제 throw 가능한지 (allowed_paths 밖). FIND-001 의 shouldRetry throw 시나리오
+  중 retry-policy predicate 경로의 현실성은 이 함수 거동에 의존.
+- retryAsync caller (`media/fetch.ts`, `agents/compaction.ts`,
+  `plugin-sdk/*`) 의 `fn` 내부가 falsy 값으로 reject 하는 경로가 있는지
+  (allowed_paths 밖) — FIND-002 의 production 재현 정량화 제약, severity P3 절제.
+- `computeBackoff` 의 hint 4 결함은 caller 정책이 모두 정적 안전이라 미발현이나,
+  미래에 동적 정책 caller 가 추가되면 재평가 필요. 본 감사 시점 기준 FIND 아님.
+
