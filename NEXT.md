@@ -96,19 +96,27 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ mcp-memory  (cap/FIFO 후속 v2 셀 보류 — PR #71648 머지 후 착수)
 #
 # OPEN openclaw PR (다음 세션에서 상태 확인 우선):
-#   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`. CONFLICTING (upstream rebase 필요).
-#   • #71648 (CAND-025→SOL-0008) — `proof: supplied` 만. CLEAN, 메인테이너 리뷰 대기.
+#   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`, MERGEABLE/CLEAN.
+#     clawsweeper [P2] 해소 (d4276de7b5 — guard 를 cleanup wrapper 로 축소 + held-first-cleanup
+#     regression). `status: ready for maintainer look`, rating platinum hermit. 메인테이너 머지 대기.
+#   • #71648 (CAND-025→SOL-0008) — `proof: supplied`, MERGEABLE/CLEAN. R-13 post-sol proof collected
+#     (PROOF-SOL-0008-post-20260520): without-fix 100 잔존 / with-fix 0 drain, real wall-clock 70min.
+#     PR body Real behavior proof 섹션을 fake-timer → real setInterval 측정으로 교체 + @clawsweeper
+#     review 트리거. clawsweeper `proof: sufficient` 평가 대기.
 # 상세 본문 / merged history / 종결된 PR / 폐기 사유 → openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
 #
 # 활성 큐 + 다음 우선순위:
 #
 #   ## 0. PR 모니터링
-#   - #68669 — upstream/main 930 commit 진행으로 conflict. worktree 에서 rebase upstream/main 필요.
-#   - #71648 — CLEAN. 메인테이너 무대응. upstream 의 mcp/channel-bridge 영역 superseded 여부 점검 가치.
+#   - #68669 — 메인테이너 머지 대기. greptile 재리뷰 응답 점검 (트리거 완료, 무응답 상태).
+#   - #71648 — clawsweeper 재리뷰 verdict 확인. `proof: sufficient` 부여 여부 / 추가 지적.
 #
 #   ## 1. CAL 작성 후보
 #   - CAL-011 placeholder (alternative-axis acceptance, PR #71040)
 #   - CAL-012 후보 (#82483 invariant 가정 오류 — ws = observation/control vs ownership, cross-review 5-agent 가 lifecycle invariant 자체를 못 흔든 패턴)
+#   - CAL-013 후보 (#68669 종결 후 작성) — cross-review 2-agent 가 만장일치 rebut 했으나 봇 P2 가 valid.
+#     early-return 분기가 그 caller 의 후속 tail 경로 전체를 소멸시키는 함의를 끝까지 추적 못 함.
+#     사용자 "더 깊게 봐라" 편향 경고로 포착. CAL-009 §내부판단편향 강화 사례.
 #
 #   ## 2. 새 셀 또는 새 audit 단계
 #   - Phase 5 후속 셀 후보: mcp-lifecycle / mcp-concurrency / mcp-memory v2 /

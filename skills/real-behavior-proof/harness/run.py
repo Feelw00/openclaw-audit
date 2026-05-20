@@ -152,6 +152,10 @@ def _run_post_sol(args, mode_cfg: dict, scenario_mod) -> dict[str, Any]:
             base_sha=args.base_sha,
             head_sha=args.head_sha,
             skip_install=args.skip_install,
+            # tsx scenarios (skip_build) import src directly, so the head
+            # worktree needs its own node_modules — it cannot rely on the
+            # base worktree's install.
+            skip_head_install=args.skip_install,
             skip_build=args.skip_build,
         )
     except Exception as e:
