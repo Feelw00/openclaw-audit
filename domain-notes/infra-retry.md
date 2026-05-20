@@ -379,3 +379,57 @@ rg -n "Number.isFinite|asFiniteNumber|Infinity|NaN" 위 3파일
 - `computeBackoff` 의 hint 4 결함은 caller 정책이 모두 정적 안전이라 미발현이나,
   미래에 동적 정책 caller 가 추가되면 재평가 필요. 본 감사 시점 기준 FIND 아님.
 
+---
+
+### clusterer (2026-05-20)
+
+error-boundary-auditor (2026-05-20) 가 산출한 FIND 2건을 클러스터링.
+
+- **CAND-044 (epic)**: FIND-infra-retry-error-boundary-001 (P2) +
+  FIND-infra-retry-error-boundary-002 (P3) 를 하나의 epic 으로 묶음.
+
+#### 1개 epic vs 2개 single 판정 근거
+
+두 FIND 는 같은 파일 (`src/infra/retry.ts`) + 같은 함수 (`retryAsync`) +
+같은 `symptom_type` (`error-boundary-gap`) — clusterer.md Step 2 (동일 파일
+내 같은 함수 + 같은 symptom_type → merge/epic) 대상이다.
+
+- Step 1 (정확 중복) 아님: line_range 가 겹치지 않는다. FIND-001 은 콜백
+  호출부 (retry.ts:122-130), FIND-002 는 종료 throw (retry.ts:105). 메커니즘도
+  다르다 (콜백 무방비 누출 vs `??` falsy 치환).
+- 그러나 단순 2 single 로 가르지 않은 이유 — 두 FIND 의 root_cause_chain 이
+  같은 종료 라인을 지목한다:
+  - FIND-001 `root_cause_chain[1]` 이 L179 의 `throw lastErr` 를 명시 인용
+    하며 "콜백 throw 가 그 throw 에 도달하기 전 함수를 벗어나 `lastErr` 를
+    대체" 를 결함으로 진단.
+  - FIND-002 `root_cause_chain[0]` 이 L105/L179 의 `throw lastErr ?? new
+    Error(...)` 표현식 자체를 결함으로 진단.
+  - 즉 두 FIND 는 `retryAsync` 의 **단일 에러 종료 경계** (catch 블록의
+    무방비 콜백 슬롯 + L105/L179 종료 throw) 가 서로 다른 방향에서 원본 실패
+    `lastErr` 를 손실시키는 동일 boundary 의 두 면이다.
+  - 두 FIND 모두 `impact_hypothesis: data-loss` (진단 정보 / 에러 식별자
+    손실) 로 동일.
+  - 두 FIND 의 `root_cause_chain[2]` 가 모두 "retry.test.ts/retry-policy.test.ts
+    가 happy-path 콜백 + truthy Error reject 만 lock, 에러 경계 스펙 부재" 라는
+    동일 테스트 공백을 결함 유지 원인으로 지목.
+- fix surface 가 retryAsync 본문 (retry.ts:90-179) 의 catch 블록 콜백 호출부
+  + 종료 throw 라는 인접 영역으로 수렴 + 회귀 테스트가 retry.test.ts 같은
+  describe 에서 "콜백 throw 시 원본 보존" / "falsy reject 시 원본 보존" 한
+  쌍으로 검증 가능 → one thing per PR 관점에서 단일 task. **epic 정당**.
+
+#### 분할 가능성 메모
+
+FIND-001 (P2) 과 FIND-002 (P3) 는 severity / 재현 난이도가 다르다. epic
+severity 는 max = P2 상속 (clusterer.md 규약). gatekeeper/solution 단계에서
+P3 축 (FIND-002 falsy 치환) 분리 또는 P2 축 단독 진행하는 scope-down 이
+정당할 수 있음을 CAND-044 본문에 명시함. clusterer 는 해결책 미기술.
+
+#### cross-cell 관찰
+
+- CAND-009 (FIND-infra-retry-concurrency-003, PR #68543 merged) 와 같은 함수
+  `retryAsync` 이나 axis 가 직교 (jitter/Retry-After 타이밍 vs 에러 경계).
+  CAND-044 의 cross_refs 로만 연결.
+- backoff.ts / retry-policy.ts 는 error-boundary 축 FIND 0건 (위
+  error-boundary-auditor 섹션 hint 4/5 참조). 본 epic 은 retry.ts 의
+  `retryAsync` 단일 함수에 국한.
+

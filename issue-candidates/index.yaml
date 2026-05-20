@@ -455,6 +455,22 @@ candidates:
     - CAND-035
     - CAND-036
     - CAND-037
+- id: CAND-044
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'FIND-infra-retry-error-boundary-001/002 — retryAsync (src/infra/retry.ts)
+    의 에러 종료 경계가 원본 fn() 실패(lastErr)를 호출자에게 전달하지 못함. (1) options
+    경로 catch 블록의 호출자 콜백 shouldRetry/retryAfterMs/onRetry (L126,130,166) 가
+    try/.catch() 무방비 → 콜백 throw 시 retry loop 밖 누출 + L179 throw lastErr 미도달로
+    원본 swallow (P2). (2) 종료 지점 L105/L179 의 throw lastErr ?? new Error("Retry
+    failed") 가 fn 의 falsy reject 값(undefined/null)을 ?? fallback 으로 오인해 generic
+    Error 로 silent 치환 (P3). 같은 파일/같은 함수/같은 symptom_type(error-boundary-gap)
+    + 두 FIND 모두 종착점이 retry.ts:105/179 의 종료 throw + impact_hypothesis data-loss
+    공유 → Step 2 epic. severity P2 상속. gatekeeper/solution 단계 P3축 분리 scope-down
+    가능.'
+  cross_refs:
+    - CAND-009
 published:
 - cand_id: CAND-004
   issue: 68487
