@@ -458,7 +458,8 @@ candidates:
 - id: CAND-044
   type: single
   finding_count: 1
-  state: gatekeeper-approved
+  state: abandoned
+  retracted_reason: '2026-05-20 abandon — R-12 pre-sol real-behavior-proof 가 production-faithful 하게는 unreproducible. FIND-001 (retryAsync 콜백 무방비) 은 실재 코드 결함이나 in-repo caller 전수 방어적 + production trigger 0건. retry-callback-throw 시나리오는 trigger 를 직접 주입한 unit test 라 collected 오측정 → PROOF status unreproducible 로 정정. 결정 트리 pre-sol unreproducible → false-positive-by-reproduction abandon. cross-review reproduction-realist 의 synthetic_risk/CAL-003 신호를 4단계가 확정.'
   note: 'FIND-infra-retry-error-boundary-001 — retryAsync (src/infra/retry.ts) options
     경로 catch 블록의 호출자 콜백 shouldRetry/retryAfterMs/onRetry (L126,130,166) 가
     try/.catch() 무방비 → 콜백 throw 시 retry loop 밖 누출 + L179 throw lastErr 미도달로

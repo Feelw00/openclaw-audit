@@ -2,64 +2,73 @@
 candidate_id: CAND-044
 type: single
 finding_ids:
-  - FIND-infra-retry-error-boundary-001
-cluster_rationale: |
-  두 FIND 는 같은 파일 (src/infra/retry.ts) 의 같은 함수 (retryAsync) 안에서,
-  같은 symptom_type (error-boundary-gap) 으로, **retryAsync 의 에러 종료 경계가
-  fn() 의 원본 실패 (lastErr) 를 호출자에게 충실히 전달하지 못한다** 는 단일
-  계약 위반을 서로 다른 라인에서 드러낸다. clusterer.md Step 2 (동일 파일 +
-  동일 함수 + 동일 symptom_type → merge/epic) 적용 대상.
-
-  단순 line-overlap merge (Step 1) 는 아니다 — FIND-001 은 콜백 호출부
-  (retry.ts:122-130, options 경로의 catch 블록 내 콜백 슬롯), FIND-002 는 최종
-  throw 지점 (retry.ts:105/179) 으로 라인이 겹치지 않고 결함 메커니즘도 다르다.
-  그러나 Step 2 의 "같은 symptom_type → merge" 에 해당하며, 두 FIND 를 잇는
-  실질 공통 축이 존재하므로 두 single CAND 가 아닌 **하나의 epic CAND** 로 묶는다.
-
-  공통 축 (각 FIND root_cause_chain 에서 직접 인용):
-  - FIND-001 root_cause_chain[1].because: "원본 작업 실패는 lastErr 에 저장되고
-    (L125) 정상 종료 시 L179 의 throw lastErr 로 전파된다. 콜백이 catch 블록
-    안에서 throw 하면 제어가 L179 에 도달하기 전에 함수를 벗어나므로, lastErr 는
-    throw 되지 못하고 콜백 에러가 그 자리를 대체한다."
-  - FIND-002 root_cause_chain[0].because: "L105/L179 의 lastErr ?? new
-    Error(\"Retry failed\") 에서 ?? 는 좌변이 null/undefined 이면 우변을
-    택한다. fn() 이 throw undefined/reject(null) 하면 lastErr 가 정확히 그
-    값이 되어, retry 가 추적한 \"실제 마지막 실패값\" 이 fallback 조건과 충돌한다."
-
-  두 FIND 모두 종착점이 동일 코드 라인 (retry.ts:179 의 throw lastErr 표현식,
-  number 경로는 L105) 이다. FIND-001 은 그 throw 에 *도달하기 전에* 콜백 throw
-  가 lastErr 를 가로채고, FIND-002 는 그 throw 표현식 *자체* 가 falsy lastErr 를
-  generic Error 로 치환한다. 즉 retryAsync 의 단일 에러 종료 경계 (L105/L179 의
-  throw lastErr ?? ... + 그 직전 catch 블록의 무방비 콜백) 가 두 방향에서
-  원본 실패 식별자를 손실시키는 동일 boundary 의 결함이다. 두 FIND 모두
-  impact_hypothesis 가 data-loss (진단 정보 손실 / 에러 식별자 손실) 로 같다.
-
-  epic 으로 묶는 이유 (해결책 자체는 기술 금지, 공통성만):
-  1. 단일 파일 / 단일 함수 / 단일 종료 경계. fix surface 가 retryAsync 본문 내
-     catch 블록 + 종료 throw 라는 인접 영역으로 자연 수렴 — openclaw 의 one
-     thing per PR 관점에서 "retryAsync 의 에러 종료 경계 정합성" 한 task.
-  2. 단일 회귀 테스트 축: retry.test.ts 에 "콜백 throw 시 원본 lastErr 보존" +
-     "fn 이 falsy 값으로 reject 시 원본 값 보존" 두 케이스가 같은 파일 같은
-     describe 블록에서 retryAsync 의 에러 전파 계약을 한 번에 검증 가능.
-  3. 두 FIND 모두 retry.test.ts/retry-policy.test.ts 가 happy-path 콜백 +
-     truthy Error reject 만 lock 하고 있어 에러 경계 스펙이 통째로 비어있다는
-     동일 테스트 공백 (FIND-001 root_cause_chain[2], FIND-002
-     root_cause_chain[2]) 을 공유.
-
-  단 FIND-001 (P2) 과 FIND-002 (P3) 는 severity 와 재현 난이도가 다르므로,
-  gatekeeper/solution 단계에서 P3 축 (FIND-002) 만 분리하거나 P2 축만 좁게
-  진행하는 scope-down 결정이 정당할 수 있다. 본 CAND 는 epic 으로 두 FIND 의
-  공통 boundary 를 기록하되, 분할 가능성을 명시한다.
-proposed_title: "fix(infra): retryAsync 에러 종료 경계가 원본 fn() 실패를 호출자에게 전달하지 못한다"
+- FIND-infra-retry-error-boundary-001
+cluster_rationale: "두 FIND 는 같은 파일 (src/infra/retry.ts) 의 같은 함수 (retryAsync) 안에서,\n\
+  같은 symptom_type (error-boundary-gap) 으로, **retryAsync 의 에러 종료 경계가\nfn() 의 원본 실패\
+  \ (lastErr) 를 호출자에게 충실히 전달하지 못한다** 는 단일\n계약 위반을 서로 다른 라인에서 드러낸다. clusterer.md Step\
+  \ 2 (동일 파일 +\n동일 함수 + 동일 symptom_type → merge/epic) 적용 대상.\n\n단순 line-overlap merge\
+  \ (Step 1) 는 아니다 — FIND-001 은 콜백 호출부\n(retry.ts:122-130, options 경로의 catch 블록 내\
+  \ 콜백 슬롯), FIND-002 는 최종\nthrow 지점 (retry.ts:105/179) 으로 라인이 겹치지 않고 결함 메커니즘도 다르다.\n\
+  그러나 Step 2 의 \"같은 symptom_type → merge\" 에 해당하며, 두 FIND 를 잇는\n실질 공통 축이 존재하므로 두 single\
+  \ CAND 가 아닌 **하나의 epic CAND** 로 묶는다.\n\n공통 축 (각 FIND root_cause_chain 에서 직접 인용):\n\
+  - FIND-001 root_cause_chain[1].because: \"원본 작업 실패는 lastErr 에 저장되고\n  (L125) 정상\
+  \ 종료 시 L179 의 throw lastErr 로 전파된다. 콜백이 catch 블록\n  안에서 throw 하면 제어가 L179 에 도달하기\
+  \ 전에 함수를 벗어나므로, lastErr 는\n  throw 되지 못하고 콜백 에러가 그 자리를 대체한다.\"\n- FIND-002 root_cause_chain[0].because:\
+  \ \"L105/L179 의 lastErr ?? new\n  Error(\\\"Retry failed\\\") 에서 ?? 는 좌변이 null/undefined\
+  \ 이면 우변을\n  택한다. fn() 이 throw undefined/reject(null) 하면 lastErr 가 정확히 그\n  값이 되어,\
+  \ retry 가 추적한 \\\"실제 마지막 실패값\\\" 이 fallback 조건과 충돌한다.\"\n\n두 FIND 모두 종착점이 동일 코드\
+  \ 라인 (retry.ts:179 의 throw lastErr 표현식,\nnumber 경로는 L105) 이다. FIND-001 은 그 throw\
+  \ 에 *도달하기 전에* 콜백 throw\n가 lastErr 를 가로채고, FIND-002 는 그 throw 표현식 *자체* 가 falsy lastErr\
+  \ 를\ngeneric Error 로 치환한다. 즉 retryAsync 의 단일 에러 종료 경계 (L105/L179 의\nthrow lastErr\
+  \ ?? ... + 그 직전 catch 블록의 무방비 콜백) 가 두 방향에서\n원본 실패 식별자를 손실시키는 동일 boundary 의 결함이다.\
+  \ 두 FIND 모두\nimpact_hypothesis 가 data-loss (진단 정보 손실 / 에러 식별자 손실) 로 같다.\n\nepic\
+  \ 으로 묶는 이유 (해결책 자체는 기술 금지, 공통성만):\n1. 단일 파일 / 단일 함수 / 단일 종료 경계. fix surface 가 retryAsync\
+  \ 본문 내\n   catch 블록 + 종료 throw 라는 인접 영역으로 자연 수렴 — openclaw 의 one\n   thing per PR\
+  \ 관점에서 \"retryAsync 의 에러 종료 경계 정합성\" 한 task.\n2. 단일 회귀 테스트 축: retry.test.ts 에 \"\
+  콜백 throw 시 원본 lastErr 보존\" +\n   \"fn 이 falsy 값으로 reject 시 원본 값 보존\" 두 케이스가 같은 파일\
+  \ 같은\n   describe 블록에서 retryAsync 의 에러 전파 계약을 한 번에 검증 가능.\n3. 두 FIND 모두 retry.test.ts/retry-policy.test.ts\
+  \ 가 happy-path 콜백 +\n   truthy Error reject 만 lock 하고 있어 에러 경계 스펙이 통째로 비어있다는\n \
+  \  동일 테스트 공백 (FIND-001 root_cause_chain[2], FIND-002\n   root_cause_chain[2]) 을\
+  \ 공유.\n\n단 FIND-001 (P2) 과 FIND-002 (P3) 는 severity 와 재현 난이도가 다르므로,\ngatekeeper/solution\
+  \ 단계에서 P3 축 (FIND-002) 만 분리하거나 P2 축만 좁게\n진행하는 scope-down 결정이 정당할 수 있다. 본 CAND 는\
+  \ epic 으로 두 FIND 의\n공통 boundary 를 기록하되, 분할 가능성을 명시한다.\n"
+proposed_title: 'fix(infra): retryAsync 에러 종료 경계가 원본 fn() 실패를 호출자에게 전달하지 못한다'
 proposed_severity: P2
 existing_issue: null
 created_at: 2026-05-20
-state: gatekeeper-approved
-revision_note: '2026-05-20 cross-review scope_down — FIND-002 (falsy reject 치환) abandon, FIND-001 단독으로 epic→single 재편. type/finding_ids 갱신.'
+state: abandoned
+revision_note: 2026-05-20 cross-review scope_down — FIND-002 (falsy reject 치환) abandon,
+  FIND-001 단독으로 epic→single 재편. type/finding_ids 갱신.
+retracted_reason: '2026-05-20 abandon — pre-sol real-behavior-proof 가 production-faithful
+  하게는 unreproducible. FIND-001 (retryAsync 콜백 무방비) 은 실재하는 코드 결함이나 in-repo caller
+  전수 방어적 + production trigger 0건. 최초 retry-callback-throw 시나리오는 trigger 를 직접 주입한
+  unit test 라 collected 오측정 (PROOF frontmatter status_original 참조 — unreproducible 로 정정).
+  결정 트리 pre-sol unreproducible → CAND abandon (false-positive-by-reproduction). 사용자 기준
+  "문제처럼 보이는 게 아니라 확인된 문제를 찾는 게 목적".'
 cross_review_metric: metrics/cross-review-CAND-044-20260520-174033.jsonl
-cross_review_decision: 'scope_down (5-agent: real-problem-real-fix 2 / real-problem-fix-insufficient 3). 결함 코드 실재 + upstream 중복 아님. in-repo caller 가 throwing 콜백/falsy reject 를 생성 안 함 → FIND-002 synthetic-only abandon. FIND-001 은 plugin-SDK RetryOptions 콜백 계약 hardening 으로 reframe 후 단독 진행. gatekeeper shadow verdict=uncertain 을 cross-review + 사용자 결정으로 approve(scoped).'
+cross_review_decision: 'scope_down (5-agent: real-problem-real-fix 2 / real-problem-fix-insufficient
+  3). 결함 코드 실재 + upstream 중복 아님. in-repo caller 가 throwing 콜백/falsy reject 를 생성 안
+  함 → FIND-002 synthetic-only abandon. FIND-001 은 plugin-SDK RetryOptions 콜백 계약 hardening
+  으로 reframe 후 단독 진행. gatekeeper shadow verdict=uncertain 을 cross-review + 사용자 결정으로
+  approve(scoped).'
 cross_refs:
-  - CAND-009  # infra-retry 도메인, retryAsync retryAfterMs 하방 위반 (pr-merged, 다른 axis)
+- CAND-009
+pre_sol_proof:
+  status: unreproducible
+  status_note: '최초 collected 는 오측정 — retry-callback-throw 시나리오가 trigger 를 직접 주입한
+    unit test 라 production flow 재현이 아님. production-faithful pre-sol 은 unreproducible.'
+  proof_record: proofs/PROOF-CAND-044-pre-20260520-085929.md
+  measurements:
+    scenario: retry-callback-throw
+    trials: 20
+    original_preserved: 0
+    callback_error_leaked: 20
+    other: 0
+    sample_caught:
+    - CALLBACK_BOOM_0
+    - CALLBACK_BOOM_1
+    - CALLBACK_BOOM_2
+  scenario: retry-callback-throw
 ---
 
 # fix(infra): retryAsync 에러 종료 경계가 원본 fn() 실패를 호출자에게 전달하지 못한다
@@ -249,3 +258,26 @@ cross-review (5-agent, `metrics/cross-review-CAND-044-20260520-174033.jsonl`)
   방지" 로 정직하게 표기할 것 (reproduction-realist 권고).
 - 사용자 결정 (2026-05-20): scope-down 진행. gatekeeper shadow verdict
   `uncertain` 은 cross-review + 사용자 판단으로 approve(scoped) 처리.
+
+## Abandon (2026-05-20)
+
+scope-down 후 R-12 pre-sol real-behavior-proof 단계에서 **abandon** 으로 종결.
+
+- **pre-sol proof 정정**: 최초 `retry-callback-throw` 시나리오는 `shouldRetry:
+  () => { throw }` trigger 를 probe 가 직접 주입한 unit test 라, 실제 production
+  flow 재현이 아니다. 구조적으로 `collected` 만 낼 수 있어 false positive
+  안전망 (pre-sol 단계) 을 우회했다. production-faithful pre-sol 의 정직한
+  결과는 `unreproducible` 이다 (실제 caller 가 throwing 콜백을 안 주므로 결함
+  미발현). PROOF 기록 frontmatter `status` 를 `unreproducible` 로 정정.
+- **결정 트리**: `pre-sol unreproducible → CAND abandon
+  (false-positive-by-reproduction)`. cross-review 가 놓칠 수 있는 false
+  positive 의 마지막 안전망.
+- **이미 나온 신호**: cross-review 3 단계의 reproduction-realist 가 FIND-001 에
+  `test_can_match_prod_branch: false`, `synthetic_risk: medium`,
+  `cal003_parallel: resembles CAL-003` 을 명시했다. 4 단계가 그 신호를 확정.
+- **판정**: FIND-001 (retryAsync 콜백 무방비 누출) 은 실재하는 코드 결함이고
+  retryAsync 는 deprecated 도 아니다 (활발히 유지보수 중). 그러나 production
+  에서 발생하거나 검증 가능한 스코프 내 발생을 확신할 수 없는 latent 계약
+  gap 이다. 감사 파이프라인의 목적은 "확인된 실제 문제" 발견이므로 abandon.
+- `retry-callback-throw.py` 시나리오 제거 (valid real-behavior 시나리오 아님).
+- FIND-infra-retry-error-boundary-001 → `findings/rejected/`.

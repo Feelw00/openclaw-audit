@@ -605,7 +605,7 @@ cells:
     type: error-boundary
     state: done
     phase: 7
-    note: 'Phase 7 감사 (2026-05-20): 2 FIND (1 P2 + 1 P3) validate 통과 → ready. FIND-001 (P2) retryAsync catch 블록 내 콜백(shouldRetry/retryAfterMs/onRetry) throw 무방비 누출. FIND-002 (P3) throw lastErr ?? new Error 가 falsy reject 값 generic 치환.'
+    note: 'Phase 7 감사 (2026-05-20): 2 FIND → CAND-044. 최종 outcome: 2 FIND 전부 abandon. FIND-002 (P3 falsy reject 치환) cross-review scope_down 으로 synthetic-only abandon. FIND-001 (P2 콜백 무방비 누출) R-12 pre-sol proof 가 production-faithful 하게 unreproducible → false-positive-by-reproduction abandon (in-repo caller 전수 방어적, production trigger 0건, latent 계약 gap). 상세 CAND-044.md.'
     hints:
       - 'retry.ts: retryAsync 의 shouldRetry / onRetry 콜백이 throw 할 때 처리 — catch 부재 시 retry loop 밖 누출 경로.'
       - 'retry.ts: 최종 attempt 실패와 abort 가 경합할 때 어느 error 가 전파되는지 (마지막 error swallow 가능성).'
