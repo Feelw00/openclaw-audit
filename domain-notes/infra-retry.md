@@ -433,3 +433,146 @@ P3 축 (FIND-002 falsy 치환) 분리 또는 P2 축 단독 진행하는 scope-do
   error-boundary-auditor 섹션 hint 4/5 참조). 본 epic 은 retry.ts 의
   `retryAsync` 단일 함수에 국한.
 
+---
+
+### plugin-lifecycle-auditor (2026-05-20)
+
+셀: `infra-retry-lifecycle`. allowed_paths: `src/infra/retry*.ts`,
+`src/infra/backoff.ts`. 도메인: infra-retry. upstream HEAD: `0c67dc7f82`
+(2026-05-20). 축: 재시도/백오프 코드의 lifecycle 결함 (초기화·해제 비대칭 /
+shutdown 시 in-flight 처리 / dispose 경로 부재 / 상태 drift).
+
+#### 결론: lifecycle-axis FIND 0건 (no lifecycle gap found)
+
+본 셀의 retry/backoff 코드는 **per-key 누적 상태도, 모듈 레벨 mutable 자료구조도,
+장기 timer 도, 해제가 필요한 자원 핸들도 보유하지 않는 순수 stateless 함수형
+유틸리티**다. lifecycle 결함 5 카테고리 (A. load 실패 rollback / B. dispose/unload
+경로 누락 / C. dynamic import 격리 / D. partial state / E. enable/disable drift)
+모두 적용 불가하거나 부재 확인. 유일하게 실재하는 lifecycle-shaped gap (in-flight
+retry 의 shutdown 미반응) 은 기존 `FIND-infra-retry-concurrency-001` 이 이미
+`symptom_type: shutdown-gap` 으로 명시적으로 다뤘으며, 동일 root cause 의 재포장이
+되므로 신규 FIND 미생성.
+
+#### hint 별 검증 결과
+
+grid.yaml 이 제시한 5개 hint 를 코드와 대조:
+
+1. **retry.ts in-flight retry 의 SIGTERM/shutdown 종료 + caller cancellation
+   통로** — 실재하나 신규 FIND 아님. `retryAsync` 의 `await sleep(delay)`
+   (retry.ts:174) 는 취소 불가. shutdown 시 caller 가 abort 해도 sleep 이 완주
+   후 다음 `fn()` 을 한 번 더 시도한다. 그러나 이 정확한 gap (AbortSignal 부재로
+   in-flight sleep 이 완주 + 추가 fn() 시도 + shutdown 지연) 은 이미
+   `FIND-infra-retry-concurrency-001` 이 `symptom_type: shutdown-gap`,
+   `impact_hypothesis: hang` 으로 다뤘다 (해당 FIND 의 mechanism 4-5번,
+   impact_detail "process exit 이 `delay * (attempts-1)` 만큼 지연" 참조).
+   호출 컨텍스트의 "중복 회피용 알려진 인접 사실" 에도 명시. lifecycle 축으로
+   재포장하면 중복 FIND → 미생성.
+2. **retryAsync 가 AbortSignal 을 받지 않는 lifecycle gap** — hint 1 과 동일
+   결함. 마찬가지로 concurrency-001 에 흡수됨.
+3. **createChannelApiRetryRunner / createRateLimitRetryRunner 의 dispose/teardown
+   hook** — FIND 아님. 두 runner factory (retry-policy.ts:54-83, 85-119) 는
+   `resolveRetryConfig` 결과 + 콜백을 closure 로 캡처한 함수를 반환할 뿐, 해제가
+   필요한 자원 (timer / listener / handle / 외부 연결) 을 일절 보유하지 않는다.
+   `rg -n "setInterval|setTimeout|addEventListener|new Map|new Set|\.on\("
+   src/infra/retry-policy.ts` → 0 매치. closure 는 caller 가 runner 참조를
+   버리면 GC 로 회수되며 (memory-leak-hunter 섹션이 이미 "closure 크기 O(1)
+   constant" 로 확인), dispose hook 이 *필요 없는* 설계다. dispose hook 부재는
+   lifecycle 비대칭이 아니라 "해제할 것이 없음" → 카테고리 B 미해당.
+4. **sleepWithAbort 의 abort listener / timer 가 retry 중단·정상완료 양 경로에서
+   정리되는가** — FIND 아님 (이미 2개 셀이 확인). `sleepWithAbort`
+   (backoff.ts:14-59) 의 `setTimeout` timer 와 `addEventListener("abort",
+   onAbort, { once: true })` 는 (a) abort 경로: onAbort 가 `clearTimeout` +
+   `removeEventListener` 무조건 실행 (L26-32), (b) 정상 완주 경로: timer 콜백이
+   `removeEventListener` + `timer=null` (L46-50) — 양 경로 모두 unconditional
+   cleanup. `infra-retry-memory` 셀과 `infra-retry-error-boundary` 셀이 동일
+   결론. R-5 상 unconditional cleanup 존재 → FIND 금지.
+5. **backoff.ts stateless 여부 / per-key lifecycle state** — FIND 아님.
+   `computeBackoff` (backoff.ts:8-12) 는 `(policy, attempt)` 를 받아 즉시 숫자를
+   반환하는 순수 함수. per-key Map / 모듈 mutable state / 누적 카운터 일절 없음
+   (`rg -n "new Map|new Set|let |^let " src/infra/backoff.ts` → module-level
+   mutable state 0건). reset/dispose 경로가 *필요 없는* stateless 설계.
+
+#### R-3 Grep 결과 (lifecycle 대응 경로 탐색)
+
+```
+rg -n "(dispose|teardown|cleanup|shutdown|destroy|reset|unload)" \
+   src/infra/retry.ts src/infra/retry-policy.ts src/infra/backoff.ts
+  → retry-policy.ts:15  CHANNEL_API_RETRY_RE 의 "reset" 문자열 리터럴 (regex, 무관)
+  → backoff.ts:27       sleepWithAbort 내부 clearTimeout (hint 4 - unconditional)
+  → retry.ts:156        주석 텍스트 "server-cleared" (무관)
+  → 그 외 dispose/teardown/destroy/unload 함수·메서드: 0 매치
+
+rg -n "AbortSignal|AbortController|signal\.abort|\.aborted" \
+   src/infra/retry.ts src/infra/retry-policy.ts
+  → 0 매치 (retry.ts / retry-policy.ts 어디에도 abort 개념 없음)
+  → backoff.ts:14,38,54 (sleepWithAbort 만 — retry 경로는 이를 사용 안 함)
+
+rg -n "new Map|new Set|new WeakMap|setInterval|addEventListener" \
+   src/infra/retry.ts src/infra/retry-policy.ts src/infra/backoff.ts
+  → backoff.ts:37  sleepWithAbort 의 abort listener ({once:true}, hint 4)
+  → 그 외: 0 매치 (mutable 자료구조 / 장기 timer / EventEmitter 부재)
+```
+
+#### R-5 실행 조건 분류표 (lifecycle 관점)
+
+| 자원/상태 | 위치 | 해제 경로 | 실행 조건 |
+|---|---|---|---|
+| `sleepWithAbort` setTimeout timer | backoff.ts:44 | abort: L27 clearTimeout / 정상: L49 timer=null | 양 경로 모두 unconditional |
+| `sleepWithAbort` abort listener | backoff.ts:37 | `{once:true}` + L31/L47 removeEventListener | 양 경로 모두 unconditional |
+| retry runner closure (config+콜백) | retry-policy.ts:63-82, 98-118 | caller 가 runner 참조 폐기 시 GC | unconditional (자원 핸들 없음 — dispose 불요) |
+| `retryAsync` 의 `lastErr` | retry.ts:92,119,125 | 매 attempt 단일 ref 덮어쓰기 | unconditional (누적 없음) |
+| `retryAsync` in-flight `sleep(delay)` 취소 | retry.ts:174 | **부재** | concurrency-001 이 이미 다룸 — 본 셀 중복 회피 |
+
+#### 카테고리별 적용/skip (페르소나 §탐지 카테고리 A~E)
+
+- [x] A. Load 실패 rollback 부재 — skip (해당 없음). retry/backoff 에 "load /
+  register / activate" 단계 자체가 없음. 함수형 유틸.
+- [x] B. Dispose / Unload 경로 누락 — applied → FIND 아님. retry-policy runner
+  와 backoff/retry 함수 모두 해제 필요 자원이 없어 dispose 가 *불필요*.
+  "register* 있는데 unregister* 없음" 류 비대칭 부재 (애초에 register* 없음).
+- [x] C. Dynamic import 에러 격리 — skip. 세 파일에 `await import()` 없음.
+- [x] D. Manifest parse 실패 후 partial state — skip. manifest / JSON.parse /
+  registry entry 부재.
+- [x] E. Enable / Disable 상태 drift — skip. config enable flag 와 동기화할
+  runtime registry 자체가 없음. retry 는 호출 1회 수명 범위.
+- [x] 추가 (in-flight retry shutdown 미반응) — applied → 결함 실재하나
+  `FIND-infra-retry-concurrency-001` 과 동일 root cause → 중복으로 FIND 미생성.
+
+#### CAL-007 — upstream fix 검사
+
+`git log --oneline -10` (retry.ts / retry-policy.ts / backoff.ts):
+- retry.ts 최근 commit (b7fc2451e7, a77bd213ce, 317e474b84, 62dff64700,
+  d49480527e) 전부 jitter / Retry-After contract 수치 축. lifecycle (abort 전파
+  / dispose / shutdown) 을 손댄 commit 없음.
+- retry-policy.ts 최근 commit (63b728de43, 3987ca4099, eb09d8dd71 등) 은
+  Telegram shouldRetry 조합 / 421 처리 — runner lifecycle 무관.
+- backoff.ts 는 11006d1245 (`refactor: share backoff helpers`) 이후 lifecycle
+  변경 없음. `sleepWithAbort` 의 양 경로 cleanup 구조 유지.
+- 즉 in-flight shutdown gap 은 upstream 에서 fix 되지 않은 현행 상태이나, 이미
+  concurrency 축 FIND 가 다룸.
+
+#### 확인 못 한 영역 (self-critique)
+
+- `src/infra/abort-signal.ts` 의 `waitForAbortSignal` 은 abort-aware 대기를
+  제공하나 allowed_paths 밖. `plugin-sdk/runtime-env.ts` 가 `retryAsync` 와
+  `waitForAbortSignal` 을 나란히 export 한다 — abort-aware 유틸이 infra 에
+  존재하는데 retry.ts 가 안 쓴다는 점은 concurrency-001 의 근거와 일치.
+- `compaction.ts:357` 의 caller 가 `shouldRetry: (err)=>!isAbortError(err)` +
+  `fn()` 내부 `params.signal` 조합으로 abort-aware 패턴을 우회 구현한다. 이
+  패턴은 `catch` 직후 (sleep 진입 전) 에만 abort 를 평가하므로, sleep 구간에
+  들어온 abort 는 다음 attempt 의 `fn()` 호출 (이미 aborted signal → 즉시
+  reject → catch → shouldRetry false → 탈출) 까지 1 사이클 지연된다. 이는
+  concurrency-001 mechanism 의 직접 귀결이며 별개 root cause 아님 → 신규 FIND
+  부적격 (R-7: 동일 결함의 다른 표현).
+- retry runner 가 production 에서 long-lived singleton 으로 유지될 때 closure
+  retention 은 memory-leak-hunter 셀이 이미 O(1) 으로 판정. 본 셀 범위 밖.
+
+#### 산출
+
+- FIND-infra-retry-lifecycle-NNN: **0건**. 사유: retry/backoff/retry-policy 는
+  순수 stateless 함수형 유틸로 초기화·해제 비대칭 / dispose 경로 부재 / 상태
+  drift 같은 lifecycle 결함이 성립할 자원·상태·등록 단계 자체가 없다. 유일하게
+  실재하는 lifecycle-shaped gap (in-flight retry 의 shutdown 미반응) 은
+  `FIND-infra-retry-concurrency-001` 이 `symptom_type: shutdown-gap` 으로
+  이미 다룬 동일 root cause 이므로 중복 회피상 신규 FIND 미생성.
+

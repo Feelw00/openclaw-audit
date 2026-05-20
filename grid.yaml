@@ -613,9 +613,18 @@ cells:
       - 'backoff.ts: delay 계산이 NaN / 음수 / Infinity 입력에서 throw 또는 무한 대기로 빠지는 경로.'
       - 'sleepWithAbort: abort 와 timer fire 동시 시 reject/resolve 이중 settle 또는 unhandled rejection.'
 
-# ────────────────────────────────────────────────────────────
-# 상태 전이 (셀 단위, grid.yaml 내 관리)
-# ────────────────────────────────────────────────────────────
+  - id: infra-retry-lifecycle
+    domain: infra-retry
+    type: lifecycle
+    state: done
+    phase: 7
+    note: 'Phase 7 감사 (2026-05-20): 0 FIND. retry*.ts/backoff.ts 는 순수 stateless 함수형 유틸 — per-key 누적 상태 / mutable 자료구조 / 장기 timer / 해제 자원 핸들 부재라 lifecycle 결함 5 카테고리가 성립할 등록·자원·상태 단계 자체가 없음. retry-policy runner factory 는 closure 캡처만 (dispose hook 불필요, 부재가 비대칭 아님). sleepWithAbort timer/listener 는 양 경로 unconditional cleanup. 유일한 lifecycle-shaped gap (retryAsync in-flight await sleep 가 shutdown 미반응) 은 FIND-infra-retry-concurrency-001 이 shutdown-gap 으로 이미 다룸 → 중복 회피 미생성.'
+    hints:
+      - 'retry.ts: in-flight retry (await sleep 대기 중) 가 SIGTERM/shutdown 시 어떻게 종료되는가 — caller cancellation 통로 유무.'
+      - 'retry.ts: retryAsync 가 AbortSignal 을 받지 않는다 (FIND-infra-retry-concurrency-001 참조). caller 가 shutdown 해도 retry loop 가 계속 도는 lifecycle gap.'
+      - 'retry-policy.ts: createChannelApiRetryRunner / createRateLimitRetryRunner 가 dispose/teardown hook 을 갖는가 — runner 폐기 시 in-flight retry 처리.'
+      - 'sleepWithAbort: abort listener / timer 가 retry 중단·정상완료 양 경로에서 모두 정리되는가 (memory 셀은 정리 확인 — lifecycle 은 abort 미수신 시 timer 잔존 여부).'
+      - 'backoff.ts: stateless 여부 확인 — per-key lifecycle state 가 있으면 reset/dispose 경로.'
 states:
   - unseeded          # Phase 2, 아직 시작 안 함
   - planned           # Phase 1, 대기 중
