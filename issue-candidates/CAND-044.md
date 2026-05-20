@@ -1,9 +1,8 @@
 ---
 candidate_id: CAND-044
-type: epic
+type: single
 finding_ids:
   - FIND-infra-retry-error-boundary-001
-  - FIND-infra-retry-error-boundary-002
 cluster_rationale: |
   두 FIND 는 같은 파일 (src/infra/retry.ts) 의 같은 함수 (retryAsync) 안에서,
   같은 symptom_type (error-boundary-gap) 으로, **retryAsync 의 에러 종료 경계가
@@ -55,7 +54,10 @@ proposed_title: "fix(infra): retryAsync 에러 종료 경계가 원본 fn() 실�
 proposed_severity: P2
 existing_issue: null
 created_at: 2026-05-20
-state: pending_gatekeeper
+state: gatekeeper-approved
+revision_note: '2026-05-20 cross-review scope_down — FIND-002 (falsy reject 치환) abandon, FIND-001 단독으로 epic→single 재편. type/finding_ids 갱신.'
+cross_review_metric: metrics/cross-review-CAND-044-20260520-174033.jsonl
+cross_review_decision: 'scope_down (5-agent: real-problem-real-fix 2 / real-problem-fix-insufficient 3). 결함 코드 실재 + upstream 중복 아님. in-repo caller 가 throwing 콜백/falsy reject 를 생성 안 함 → FIND-002 synthetic-only abandon. FIND-001 은 plugin-SDK RetryOptions 콜백 계약 hardening 으로 reframe 후 단독 진행. gatekeeper shadow verdict=uncertain 을 cross-review + 사용자 결정으로 approve(scoped).'
 cross_refs:
   - CAND-009  # infra-retry 도메인, retryAsync retryAfterMs 하방 위반 (pr-merged, 다른 axis)
 ---
@@ -222,3 +224,28 @@ solution-drafter 가 구체 fix 를 결정. 본 CAND 는 문제/원인 공통성
   settle 방어 unconditional, `computeBackoff` NaN 미방어는 caller 정책이 전부
   정적 안전이라 R-7 상 미발현). 본 epic 은 retry.ts 의 retryAsync 단일 함수에
   국한.
+
+## Scope-down (cross-review 2026-05-20)
+
+위 본문은 epic(FIND-001 + FIND-002) 기준 분석이다. 2026-05-20 post-harness
+cross-review (5-agent, `metrics/cross-review-CAND-044-20260520-174033.jsonl`)
+결과 **scope_down** 합의에 따라 본 CAND 는 **single** 로 재편됐다.
+
+- **합의**: real-problem-real-fix 2 (positive-advocate, upstream-dup-checker) /
+  real-problem-fix-insufficient 3 (critical-devil, hot-path-tracer,
+  reproduction-realist). false-positive 0, upstream-duplicate 0.
+- **공통 관측**: retry.ts 의 두 결함 코드는 실재하고 evidence 도 정확하며
+  upstream 중복이 아니다. 그러나 in-repo caller (retry-policy channel runner,
+  media/fetch, compaction) 의 콜백이 전부 방어적이고 어느 caller 의 `fn` 도
+  falsy 값으로 reject 하지 않는다.
+- **FIND-002 abandon**: falsy reject 치환은 in-repo trigger 0건.
+  reproduction-realist 가 synthetic_risk=high, abandon-as-synthetic 권고.
+  `findings/rejected/` 로 이동, FSM `rejected`.
+- **FIND-001 유지 (단독)**: 콜백 무방비 누출은 P2 인터페이스 계약 gap.
+  production hot-path 는 아니나 `retryAsync` 가 plugin-SDK 로 re-export 되어
+  외부 plugin 이 비방어적 predicate 를 주입하면 발현. **plugin-SDK
+  RetryOptions 콜백 계약 hardening** 으로 성격을 재정의해 단독 진행한다.
+  재현 테스트는 "production hot-path 재현" 이 아니라 "공개 옵션 계약 회귀
+  방지" 로 정직하게 표기할 것 (reproduction-realist 권고).
+- 사용자 결정 (2026-05-20): scope-down 진행. gatekeeper shadow verdict
+  `uncertain` 은 cross-review + 사용자 판단으로 approve(scoped) 처리.
