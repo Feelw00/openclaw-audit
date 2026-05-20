@@ -236,12 +236,12 @@ candidates:
   type: epic
   finding_count: 2
   state: pr-merged
-  note: FIND-cron-lifecycle-001/002 — upstream 7d1575b5df (#60310, 2026-04-04) activeJobIds
+  note: 'FIND-cron-lifecycle-001/002 — upstream 7d1575b5df (#60310, 2026-04-04) activeJobIds
     도입 시 timer.ts 의 runDueJob/executeJob 2개 경로에만 mark/clear 주입하고 runStartupCatchupCandidate
     (timer.ts:1043) 와 prepareManualRun/finishPreparedManualRun (ops.ts:548-686) 경로 간과한
     partial merge gap. task-registry maintenance 의 hasBackingSession 이 isCronJobActive
     단일 신호 의존 → 해당 경로 실행 중 cron task 가 lost/missing 으로 오분류. related
-    issue #68157 이 정확한 증상 보고 (OPEN 2026-04-23). severity P2.
+    issue #68157 이 정확한 증상 보고 (OPEN 2026-04-23). severity P2.'
   related_issue: 68157
   solution_refs:
     - SOL-0007  # abandoned (CAL-011 alternative-axis): 메인테이너 1fae716a04 sweeper-side 사후복구 채택, PR #71040 close
@@ -254,13 +254,13 @@ candidates:
   type: epic
   finding_count: 2
   state: published
-  note: FIND-mcp-memory-001/002 — OpenClawChannelBridge 의 두 pending Map (pendingClaudePermissions
+  note: 'FIND-mcp-memory-001/002 — OpenClawChannelBridge 의 두 pending Map (pendingClaudePermissions
     L50, pendingApprovals L51) 이 동일 3종 가드 (TTL/sweeper, close-clear, cap) 를 동시 결여.
     같은 클래스의 queue (QUEUE_LIMIT 1000, L355) 와 pendingWaiters (close-clear L148 +
     setTimeout fallback L265) 는 모두 bounded 인데 두 pending Map 만 누락. close() (L136-152)
     가 두 Map clear 를 동시 누락 — 같은 한 줄 패턴. fix surface 단일 클래스 내 close-clear
     + 공통 sweeper + 선택적 cap 으로 자연 공유 → epic 정당. CAL-008 검사 — 6주 channel-bridge
-    커밋 모두 refactor (leak 축 0건), PR #56420 sessionKey binding 보안축 직교. severity P2.
+    커밋 모두 refactor (leak 축 0건), PR #56420 sessionKey binding 보안축 직교. severity P2.'
   upstream_head_checked: c070509b7f
   solution_refs:
     - SOL-0008
@@ -279,7 +279,7 @@ candidates:
     - SOL-0010  # FIND-mcp-lifecycle-002 단독 (scope-down 반영, FIND-001 abandoned)
   cross_review_metric: metrics/cross-review-CAND-026-20260514-081538.jsonl
   cross_review_decision: 'scope-down (avg 0.84, critical high override): SDK Protocol._onclose 가 transport.onclose 시 _requestHandlerAbortControllers unconditional abort + protocol.js:369-372 post-handler abort check 가 응답 송신 skip → FIND-001 mechanism (EPIPE/silent drop/unhandledRejection) 부정확. FIND-002 (RequestHandlerExtra.signal propagation) 만 단독 XS PR. severity P2 → P3.'
-  note: FIND-mcp-lifecycle-001/002 — standalone tools MCP server (plugin-tools / openclaw-tools
+  note: 'FIND-mcp-lifecycle-001/002 — standalone tools MCP server (plugin-tools / openclaw-tools
     가 공유하는 connectToolsMcpServerToStdio) 가 in-flight callTool lifecycle 처리를 양 끝점
     동시 결여. (1) tools-stdio-server.ts:39 의 floating `void server.close()` → SIGTERM/SIGINT/stdin
     close 시 in-flight 응답 EPIPE/silent drop + close() reject 시 unhandledRejection. (2)
@@ -290,7 +290,7 @@ candidates:
     plugin-tools-handlers.ts callTool 시그니처 1 라인 → 3 hunk / 2 files / XS-S 단일 PR. CAL-008
     검사 — 6주 file 영역 11 commits 모두 policy/serialization/보안/refactor (lifecycle 축 0),
     bundle-mcp PR #73536/#78160 은 client-side timeout 축 (server-side 와 반대), PR #71648
-    은 channel-bridge.ts 한정 (file 겹침 없음). severity P2.
+    은 channel-bridge.ts 한정 (file 겹침 없음). severity P2.'
   upstream_head_checked: 6a41a54212
   cross_refs:
     - CAND-025  # same mcp domain, different axis (memory vs lifecycle)
@@ -351,9 +351,9 @@ candidates:
   type: single
   finding_count: 1
   state: pending_gatekeeper
-  note: FIND-auto-reply-lifecycle-001 — drain.ts:239-264 collect mode 의 auth-groups inner for loop 가 snapshot 패턴으로
+  note: 'FIND-auto-reply-lifecycle-001 — drain.ts:239-264 collect mode 의 auth-groups inner for loop 가 snapshot 패턴으로
     동작 → 외부 clearSessionQueues 면역 → /stop 후에도 pre-captured group 이 모델로 전달. CAND-012 (PR #68839 MERGED) 의 identity
-    guard 는 outer finally 만 보호. severity P2.
+    guard 는 outer finally 만 보호. severity P2.'
 - id: CAND-034
   type: single
   finding_count: 1
@@ -420,9 +420,9 @@ candidates:
   state: abandoned
   cross_review_metric: metrics/cross-review-CAND-041-20260514-082000.jsonl
   retracted_reason: 'cross-review CAL-001 (avg 0.63): critical abandon/high — hidden guards 2개. (1) channels/typing.ts:72-74 `if (closed) return` (unconditional) — `fireStop` (L91) 이 closed=true 를 keepaliveLoop.stop() 호출 *이전* unconditional set, heartbeat 경로에서 race 발현 불가. (2) auto-reply/reply/typing.ts:124-127 triggerInFlight mutex — inner channels/typing.ts:71 onReplyStart 의 유일한 호출 경로 직렬화. 회귀 테스트 typing.test.ts:201-217 이 closed 가드 race-차단 이미 검증. FIND R-3 grep 5종이 simple state-flag mutex + outer wrapper 누락 — CAL-001 그대로 재발.'
-  note: FIND-channels-concurrency-001 — typing-lifecycle.ts:38-45 stop() 이 tickInFlight=false 를 unconditional reset →
+  note: 'FIND-channels-concurrency-001 — typing-lifecycle.ts:38-45 stop() 이 tickInFlight=false 를 unconditional reset →
     in-flight tick 의 ownership 토큰 가로채기 → 직후 start() 의 새 tick 이 concurrent onTick 발사. hot-path typing.ts:71-88
-    onReplyStart 의 stop→fireStart→start 시퀀스가 매 reply turn 트리거. PR #75403 은 typing.ts 측 race 만 다룸 (다른 file, 다른 axis). severity P3.
+    onReplyStart 의 stop→fireStart→start 시퀀스가 매 reply turn 트리거. PR #75403 은 typing.ts 측 race 만 다룸 (다른 file, 다른 axis). severity P3.'
 - id: CAND-042
   type: single
   finding_count: 1

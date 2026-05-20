@@ -1981,27 +1981,41 @@ items:
     created_at: '2026-05-14T06:55:22+00:00'
     updated_at: '2026-05-14T08:24:49+00:00'
   CAND-035:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (035)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: 'FSM backfill: 2026-05-14 post-harness cross-review abandon (CAND 파일
+        frontmatter state=abandoned + retracted_reason + cross-review-CAND-035-20260514
+        메트릭 존재) 이 state.yaml 에 미기록된 것을 동기화'
+      at: '2026-05-20T06:30:11+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-20T06:30:11+00:00'
   CAND-036:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from Phase 6 batch (036)
       at: '2026-05-14T06:55:22+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: 'FSM backfill: 2026-05-14 post-harness cross-review abandon (CAND 파일
+        frontmatter state=abandoned + retracted_reason + cross-review-CAND-036-20260514
+        메트릭 존재) 이 state.yaml 에 미기록된 것을 동기화'
+      at: '2026-05-20T06:30:11+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T06:55:22+00:00'
+    updated_at: '2026-05-20T06:30:11+00:00'
   CAND-037:
     kind: cand
     state: proof-collected-pre
@@ -2121,16 +2135,23 @@ items:
     created_at: '2026-05-14T06:55:23+00:00'
     updated_at: '2026-05-16T01:58:58+00:00'
   CAND-041:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from repaired FIND batch (041)
       at: '2026-05-14T07:11:24+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: 'FSM backfill: 2026-05-14 post-harness cross-review abandon (CAND 파일
+        frontmatter state=abandoned + retracted_reason + cross-review-CAND-041-20260514
+        메트릭 존재) 이 state.yaml 에 미기록된 것을 동기화'
+      at: '2026-05-20T06:30:11+00:00'
     created_at: '2026-05-14T07:11:24+00:00'
-    updated_at: '2026-05-14T07:11:24+00:00'
+    updated_at: '2026-05-20T06:30:11+00:00'
   CAND-042:
     kind: candidate
     state: abandoned
@@ -2149,16 +2170,23 @@ items:
     created_at: '2026-05-14T07:11:24+00:00'
     updated_at: '2026-05-14T08:24:49+00:00'
   CAND-043:
-    kind: candidate
-    state: pending_gatekeeper
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
       actor: clusterer
       reason: cluster from repaired FIND batch (043)
       at: '2026-05-14T07:11:24+00:00'
+    - from: pending_gatekeeper
+      to: abandoned
+      actor: human
+      reason: 'FSM backfill: 2026-05-14 post-harness cross-review abandon (CAND 파일
+        frontmatter state=abandoned + retracted_reason + cross-review-CAND-043-20260514
+        메트릭 존재) 이 state.yaml 에 미기록된 것을 동기화'
+      at: '2026-05-20T06:30:11+00:00'
     created_at: '2026-05-14T07:11:24+00:00'
-    updated_at: '2026-05-14T07:11:24+00:00'
+    updated_at: '2026-05-20T06:30:11+00:00'
   SOL-0010:
     kind: sol
     state: abandoned
