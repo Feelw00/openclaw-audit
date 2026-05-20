@@ -274,7 +274,9 @@ candidates:
 - id: CAND-026
   type: epic
   finding_count: 2
-  state: solution-drafted
+  state: abandoned
+  openclaw_pr: 82426
+  retracted_reason: 'PR #82426 (SOL-0010) CLOSED 2026-05-16 — indirect-merge with credit (CAL-010 두 번째 사례). user decision 2026-05-20 으로 종결 확정.'
   solution_refs:
     - SOL-0010  # FIND-mcp-lifecycle-002 단독 (scope-down 반영, FIND-001 abandoned)
   cross_review_metric: metrics/cross-review-CAND-026-20260514-081538.jsonl
@@ -323,7 +325,8 @@ candidates:
 - id: CAND-030
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'user decision 2026-05-20: 오픈 PR(#71648/#68669) 외 전부 abandon. pre-sol proof collected 상태에서 종결.'
   cross_review_metric: metrics/cross-review-CAND-030-20260514-081538.jsonl
   cross_review_decision: 'scope-down (avg 0.87, critical high override): lifecycle.ts:780-791 reset 분기는 commit 2f86ae71d5 "fix(subagents): recover announce cleanup after kill/complete race" by-design recovery + steer-restart.test.ts:659-688 회귀 보호. production callsite 호출 순서는 abort→markTerminated→aborted event 역순. wrong-output framing 폐기. 잔존 가치: cleanup==="keep" marker 5분 잔존 (memory hygiene) + async hook 두 번째 발사 가능성. severity P2 → P3.'
   note: FIND-agents-registry-lifecycle-001 — run-manager.ts:503-528 markSubagentRunTerminated 의 dispose loop 가
@@ -350,7 +353,8 @@ candidates:
 - id: CAND-033
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'drop-2026-05-15: authGroups>=2 trigger 조건이 single telegram account 로만 재현 불가 (FSM 동기화). user decision 2026-05-20 으로 종결 확정.'
   note: 'FIND-auto-reply-lifecycle-001 — drain.ts:239-264 collect mode 의 auth-groups inner for loop 가 snapshot 패턴으로
     동작 → 외부 clearSessionQueues 면역 → /stop 후에도 pre-captured group 이 모델로 전달. CAND-012 (PR #68839 MERGED) 의 identity
     guard 는 outer finally 만 보호. severity P2.'
@@ -385,21 +389,25 @@ candidates:
 - id: CAND-037
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'user decision 2026-05-20: 오픈 PR(#71648/#68669) 외 전부 abandon. pre-sol proof collected 상태에서 종결.'
   note: FIND-context-engine-lifecycle-001 — registry.ts:561-599 resolveContextEngine 의 contract validation fallback
     분기 (factory throw / validation throw / contractError) 에서 이미 instantiated engine 의 dispose?.() 호출 부재.
     factory 가 SQLite / chokidar / HTTP keep-alive 셋업 시 leak. caller-side dispose 는 invalid engine 미도달. severity P3.
 - id: CAND-038
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  openclaw_pr: 82483
+  retracted_reason: 'PR #82483 (SOL-0011) CLOSED 2026-05-16 — maintainer-verdict reject (steipete), invariant 위반. user decision 2026-05-20 으로 종결 확정.'
   note: FIND-gateway-lifecycle-001 — ws-connection.ts:351-421 WS close 핸들러가 session/node/presence 만 cleanup 하고
     chatAbortControllers 의 ownerConnId 매칭 entry 는 abort 안 함. maintenance sweep (expiresAtMs 최소 2분 floor) 까지
     runner 가 abort 없이 진행 → LLM 토큰 과금 + tool 실행 + 외부 API call 누적. severity P3.
 - id: CAND-039
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: abandoned
+  retracted_reason: 'user decision 2026-05-20: 오픈 PR(#71648/#68669) 외 전부 abandon. SOL-0012 drafted 후 abandoned 처리 (post-sol unreproducible).'
   note: FIND-gateway-lifecycle-002 — server-runtime-services.ts:156-190 recoverPendingOutboundDeliveries IIFE +
     recoverPendingSessionDeliveries setTimeout(1250ms) 가 stop handle 미반환 + caller (server.impl.ts) cancellation
     통로 부재. boot 직후 1250ms 이내 SIGTERM 시 tearing-down state 에서 recovery 진행 → 외부 메시지 의도치 않은 발사. 같은 파일의
@@ -407,7 +415,9 @@ candidates:
 - id: CAND-040
   type: single
   finding_count: 1
-  state: pending_gatekeeper
+  state: pr-merged
+  openclaw_pr: 82482
+  note_outcome: 'PR #82482 (SOL-0013) MERGED 2026-05-16 by steipete — infra approval handler drop stopped delivery. abandon 대상 아님.'
   cross_review_metric: metrics/cross-review-CAND-040-20260514-082000.jsonl
   cross_review_decision: 'proceed-with-caveat (avg 0.81): race mechanism 실재 (outer/inner 두 layer 모두 in-flight handleRequested promise 추적 부재). 단 FIND 가 outer approval-native-runtime.ts 만 지목하고 inner exec-approval-channel-runtime.ts:393-415 spawn detached + stop() inflight await 부재 (진짜 root enabler) 누락. PR 본문 시 fix surface 를 inner runtime stop() inflight tracking 으로 확장 권고. severity P3 유지.'
   note: FIND-infra-process-concurrency-001 — approval-handler-runtime.ts:498-537 deliverTarget 의 두 await 사이에

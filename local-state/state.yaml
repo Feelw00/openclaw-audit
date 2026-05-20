@@ -1781,7 +1781,7 @@ items:
     updated_at: '2026-05-14T06:43:41+00:00'
   CAND-026:
     kind: find
-    state: solution-drafted
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -1808,8 +1808,13 @@ items:
       actor: solution-drafter
       reason: SOL-0010 drafted (FIND-mcp-lifecycle-002 단독, scope-down 반영)
       at: '2026-05-16T02:16:24+00:00'
+    - from: solution-drafted
+      to: abandoned
+      actor: human
+      reason: 'user decision 2026-05-20: 오픈 PR 2개 외 전부 abandon'
+      at: '2026-05-20T07:21:51+00:00'
     created_at: '2026-05-14T06:55:21+00:00'
-    updated_at: '2026-05-16T02:16:24+00:00'
+    updated_at: '2026-05-20T07:21:51+00:00'
   CAND-027:
     kind: candidate
     state: abandoned
@@ -1861,8 +1866,8 @@ items:
     created_at: '2026-05-14T06:55:22+00:00'
     updated_at: '2026-05-14T08:18:45+00:00'
   CAND-030:
-    kind: cand
-    state: proof-collected-pre
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -1879,8 +1884,13 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-030 mode=pre-sol
       at: '2026-05-14T10:10:46+00:00'
+    - from: proof-collected-pre
+      to: abandoned
+      actor: human
+      reason: 'user decision 2026-05-20: 오픈 PR 2개 외 전부 abandon'
+      at: '2026-05-20T07:21:51+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T10:10:46+00:00'
+    updated_at: '2026-05-20T07:21:51+00:00'
   CAND-031:
     kind: cand
     state: abandoned
@@ -2017,8 +2027,8 @@ items:
     created_at: '2026-05-14T06:55:22+00:00'
     updated_at: '2026-05-20T06:30:11+00:00'
   CAND-037:
-    kind: cand
-    state: proof-collected-pre
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2030,11 +2040,16 @@ items:
       actor: real-behavior-proof
       reason: scenario=proof-CAND-037 mode=pre-sol
       at: '2026-05-14T10:16:20+00:00'
+    - from: proof-collected-pre
+      to: abandoned
+      actor: human
+      reason: 'user decision 2026-05-20: 오픈 PR 2개 외 전부 abandon'
+      at: '2026-05-20T07:21:51+00:00'
     created_at: '2026-05-14T06:55:22+00:00'
-    updated_at: '2026-05-14T10:16:20+00:00'
+    updated_at: '2026-05-20T07:21:51+00:00'
   CAND-038:
-    kind: cand
-    state: proof-collected-pre
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2065,11 +2080,16 @@ items:
       actor: real-behavior-proof
       reason: CAND-038 옵션 A e2e collected. chain_works=1 abort_observed=0. record=proofs/PROOF-CAND-038-pre-20260515-085213.md
       at: '2026-05-15T08:52:14+00:00'
+    - from: proof-collected-pre
+      to: abandoned
+      actor: human
+      reason: 'user decision 2026-05-20: 오픈 PR 2개 외 전부 abandon'
+      at: '2026-05-20T07:21:51+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-15T08:52:14+00:00'
+    updated_at: '2026-05-20T07:21:51+00:00'
   CAND-039:
-    kind: cand
-    state: proof-collected-pre
+    kind: find
+    state: abandoned
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2095,11 +2115,16 @@ items:
       reason: scenario=proof-CAND-039-e2e mode=pre-sol (build-worktree-bypass, main-repo
         bundle)
       at: '2026-05-15T06:17:13+00:00'
+    - from: proof-collected-pre
+      to: abandoned
+      actor: human
+      reason: 'user decision 2026-05-20: 오픈 PR 2개 외 전부 abandon'
+      at: '2026-05-20T07:21:51+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-15T06:17:13+00:00'
+    updated_at: '2026-05-20T07:21:51+00:00'
   CAND-040:
-    kind: cand
-    state: proof-collected-pre
+    kind: find
+    state: pr-merged
     transitions:
     - from: null
       to: pending_gatekeeper
@@ -2132,8 +2157,18 @@ items:
         chain_works=3 leak=3 fix_observed=0 fire_rate=1.0. unbindPending=0 직접 측정.
         record=proofs/PROOF-CAND-040-pre-20260516-105708.md'
       at: '2026-05-16T01:58:58+00:00'
+    - from: proof-collected-pre
+      to: abandoned
+      actor: human
+      reason: 'user decision 2026-05-20: 오픈 PR 2개 외 전부 abandon'
+      at: '2026-05-20T07:21:51+00:00'
+    - from: abandoned
+      to: pr-merged
+      actor: human
+      reason: 'correction: PR #82482 (SOL-0013) 2026-05-16 머지 완료 — abandoned 오기 정정'
+      at: '2026-05-20T07:24:15+00:00'
     created_at: '2026-05-14T06:55:23+00:00'
-    updated_at: '2026-05-16T01:58:58+00:00'
+    updated_at: '2026-05-20T07:24:15+00:00'
   CAND-041:
     kind: find
     state: abandoned
