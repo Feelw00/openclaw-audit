@@ -99,17 +99,18 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`, MERGEABLE/CLEAN.
 #     clawsweeper [P2] 해소 (d4276de7b5 — guard 를 cleanup wrapper 로 축소 + held-first-cleanup
 #     regression). `status: ready for maintainer look`, rating platinum hermit. 메인테이너 머지 대기.
-#   • #71648 (CAND-025→SOL-0008) — `proof: supplied`, MERGEABLE/CLEAN. R-13 post-sol proof collected
+#   • #71648 (CAND-025→SOL-0008) — `proof: supplied+sufficient`, MERGEABLE/CLEAN. R-13 post-sol proof
 #     (PROOF-SOL-0008-post-20260520): without-fix 100 잔존 / with-fix 0 drain, real wall-clock 70min.
-#     PR body Real behavior proof 섹션을 fake-timer → real setInterval 측정으로 교체 + @clawsweeper
-#     review 트리거. clawsweeper `proof: sufficient` 평가 대기.
+#     PR body Real behavior proof 섹션을 real setInterval 측정으로 교체 → clawsweeper `proof: sufficient`
+#     부여, rating platinum hermit, `status: ready for maintainer look`. blocking finding 없음.
+#     메인테이너 머지 대기 (rank-up moves 2건은 메인테이너 판단: 1h TTL 수용 + PR #56420 통합 조율).
 # 상세 본문 / merged history / 종결된 PR / 폐기 사유 → openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
 #
 # 활성 큐 + 다음 우선순위:
 #
 #   ## 0. PR 모니터링
 #   - #68669 — 메인테이너 머지 대기. greptile 재리뷰 응답 점검 (트리거 완료, 무응답 상태).
-#   - #71648 — clawsweeper 재리뷰 verdict 확인. `proof: sufficient` 부여 여부 / 추가 지적.
+#   - #71648 — 메인테이너 머지 대기. clawsweeper proof:sufficient + blocking finding 없음.
 #
 #   ## 1. CAL 작성 후보
 #   - CAL-011 placeholder (alternative-axis acceptance, PR #71040)
