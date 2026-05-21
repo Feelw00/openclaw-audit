@@ -408,3 +408,82 @@
 - plugins 도메인의 concurrency 축은 당분간 saturated. 재방문 의미 있으려면 (a) file-lock.ts HELD_LOCKS race 에 대해 maintainer 의도 재확인 (issue 으로 질의) 또는 (b) install.ts / update.ts 같은 I/O-heavy async 모듈의 새 셀 (plugins-install-concurrency) 개설.
 - install-security-scan.ts `??= import(...)` 패턴은 error-boundary 축 FIND-003 가 이미 다룸 (tech debt 유지). concurrency 축 추가 가치 없음.
 - gateway consumer 의 registry.httpRoutes snapshot vs live read 는 scope 외. 확인 필요 시 gateway 셀에서 다룰 것.
+
+# ════════════════════════════════════════════════════════════
+# 재감사 (2026-05-21) — churn-driven re-audit (1차 감사 2026-04-24 이후)
+# ════════════════════════════════════════════════════════════
+
+## 재감사 (2026-05-21) — plugins-memory
+
+upstream/main 최신 기준 fresh 재감사. FIND 1건 (FIND-plugins-memory-004, P2).
+
+확정 사실 (반증 완료, 재지적 금지):
+- registryCache 는 PluginLoaderCacheState → PluginLruCache (plugin-cache-primitives.ts:58
+  #evictOldestEntries) 의 정상 LRU. cap 128 강제. 1차 FIND-001 무효 재확인.
+- tool-descriptor-cache.ts descriptorCache: LIMIT 256 FIFO eviction.
+- host-hook-runtime.ts closedRunIds / terminalEventCleanupExpiredRunIds: CLOSED_RUN_IDS_MAX
+  512 LRU eviction.
+- public-surface-loader.ts / facade-loader.ts 모듈 캐시: bundled plugin (유한 집합) 키 → bounded.
+- plugins/ 내 setTimeout 전부 clearTimeout + unref 보유.
+- registry.ts per-instance Map (pluginHookRollback 등) 은 createPluginRegistry() 호출별 scope.
+
+신규 FIND:
+- FIND-plugins-memory-004 (P2): host-hook-runtime.ts runContextByRunId Map 이 size cap/TTL
+  없이 terminal lifecycle 이벤트 또는 registry teardown 이라는 조건부 경로에만 의존해 cleanup.
+  같은 파일 closedRunIds 와 달리 유일하게 cap 비대칭.
+
+미해결 (후속 후보): liveCatalogCache (plugin-sdk/provider-catalog-shared.ts:42) per-entry
+TTL 있으나 능동 eviction/cap 없음, in-repo caller 0건이라 FIND 보류. loader-cache-state.ts:16
+openAllowlistWarningCache Set cap 없음, 성장 극저속이라 보류.
+
+## 재감사 (2026-05-21) — plugins-lifecycle
+
+핵심 변경: 커밋 2a283e87a7 "fix(plugins): enforce synchronous registration" 에서 plugin
+register 실패 rollback 이 snapshotPluginRegistry/restorePluginRegistry 페어로 강화됨
+(loader.ts:385-468). → 1차 FIND-plugins-lifecycle-001 (httpRoutes/services/commands/hooks
+부분 등록 잔존) 메커니즘 해소. 해당 FIND rejected 유지 정당.
+
+신규 FIND:
+- FIND-plugins-lifecycle-002 (P1): restorePluginRegistry/snapshotPluginRegistry 의 배열
+  화이트리스트가 registry.hostedMediaResolvers / registry.gatewayDiscoveryServices 누락.
+  register 중 호출 후 throw 시 실패 plugin(status='error') 엔트리 잔존, 소비자 web-media.ts:79 /
+  server-discovery-runtime.ts:63 가 status 무필터 순회. 근본 원인 — PluginRegistrySnapshot 이
+  부분 타입이라 새 배열 필드 누락이 컴파일 에러 안 냄 (화이트리스트 수동 동기화 drift).
+
+후속 단서: PluginRegistry 의 다른 optional 배열 (sessionExtensions, trustedToolPolicies 등)
+도 restore 화이트리스트 누락 가능성 — register 사이트 추적 후 판단 필요.
+
+## 재감사 (2026-05-21) — plugins-concurrency
+
+결과 0건. 핵심 도메인 사실:
+- plugin 로딩 파이프라인 (discovery → manifest-registry → loader → registry-build) 은
+  의도적으로 FULLY SYNCHRONOUS. discovery.ts/manifest-registry.ts 에 async/await/listener
+  0개. → 이 경로 async-interleaving race 는 구조적으로 불가능. 향후 race FIND 전 새 async
+  도입 여부를 git log 로 확인할 것.
+- 진짜 async concurrency 표면 3곳: runtime.ts registry swap (shouldCleanup 클로저 가드),
+  host-hook-runtime.ts terminal handler cleanup (markTerminalEventCleanupExpired +
+  allowClosedRun 가드), channel-lifecycle.core.ts abort listener ({once:true}+remove).
+- cleanupPluginSessionSchedulerJobs second loop (host-hook-runtime.ts:551-594) 의
+  generation-blind jobs.delete 는 코드상 same-jobId overwrite race 가 성립하나, runtime
+  scheduler jobId 가 cron.add 고유 id + caller-stable id 재등록은 동기 load-time 에만 →
+  production trigger 부재. host-hook-scheduled-turns 가 caller-stable jobId 재등록하도록
+  바뀌면 재검토.
+
+## 재감사 (2026-05-21) — plugins-error-boundary
+
+과거 1차 FIND-001/002/003 (전부 title-length 형식 rejected) 이 가리킨 결함은 현재 코드에서
+모두 수정됨: void register async escape → bare register / runPluginRegisterSync 도입,
+loader floating Promise → runPluginRegisterSync sync throw, ??= import lazy-loader rejected
+캐시 → createLazyImportLoader (rejection 시 캐시 clear) 마이그레이션.
+
+신규 FIND:
+- FIND-plugins-error-boundary-004 (P1): loader.ts:2370-2380 activation-only registration
+  블록 (registerReload/registerNodeHostCommand/registerSecurityAuditCollector) 이 per-plugin
+  루프 본문에서 try/catch 밖. registerReload (registry.ts:1394) 가 비검증 definition.reload
+  에 (values??[]).map(v=>v.trim()) 호출 → 비배열/비문자열 시 TypeError. 메인 try 는 catch
+  없이 finally 만 → loadOpenClawPlugins 밖으로 전파, 후속 plugin 로딩 전체 중단.
+
+도메인 관찰: loader.ts per-plugin 루프는 module load·register 만 부분 try/catch, 그 사이
+구간 (definition 처리·activation-only registration) 이 구조적 무방비. registry.ts register*
+헬퍼들의 입력 검증 정책 비일관 (registerNodeInvokePolicy 는 Array.isArray 가드, registerReload
+는 미가드).

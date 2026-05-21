@@ -167,6 +167,7 @@ cells:
     type: memory
     state: done
     phase: 1
+    note: '재감사 2026-05-21: 1 FIND (FIND-plugins-memory-004 P2, host-hook-runtime runContextByRunId Map cap 비대칭). 1차 Phase 1 감사 노트 부재.'
     hints:
       - 'registryCache Map cap 후 eviction 정책 (src/plugins/loader.ts:196 근방)'
       - 'jiti-loader-cache — 동적 import 캐시 무한 누적 가능성'
@@ -177,6 +178,7 @@ cells:
     type: lifecycle
     state: done
     phase: 1
+    note: '재감사 2026-05-21: 1 FIND (FIND-plugins-lifecycle-002 P1, restorePluginRegistry 화이트리스트가 hostedMediaResolvers/gatewayDiscoveryServices 누락). 1차 Phase 1 노트 부재.'
     hints:
       - 'loader.ts 에서 load 실패 시 record.status=error 설정만, registry 에서 rollback 없음'
       - 'manifest-registry parse 실패 후 partial entry 잔존 가능성'
@@ -187,6 +189,7 @@ cells:
     type: concurrency
     state: done
     phase: 1
+    note: '재감사 2026-05-21: 0 FIND (cron 동시성 모델 성숙, locked.ts process-Map race 는 기존 rejected FIND). 1차 Phase 1 노트 부재.'
     hints:
       - 'timer.ts locked() in-memory only — 멀티 인스턴스 중복 실행 위험'
       - 'Promise.race([executeJobCore, timeout]) 후 loser promise 처리 (timer.ts:77-103)'
@@ -219,13 +222,13 @@ cells:
     type: error-boundary
     state: done
     phase: 2
-    note: 'fresh upstream 재감사 (2026-04-19, CAL-007): 이전 3 FIND 전부 upstream 에서 이미 fix (5c1d6feb33, 2a283e87a7). 0 new FIND.'
+    note: 'fresh upstream 재감사 (2026-04-19, CAL-007): 이전 3 FIND 전부 upstream 에서 이미 fix (5c1d6feb33, 2a283e87a7). 0 new FIND. 재감사 2026-05-21: 1 FIND (FIND-plugins-error-boundary-004 P1, activation-only registration try/catch 밖). 과거 3 FIND 결함은 현재 코드서 수정 확인.'
   - id: cron-memory
     domain: cron
     type: memory
     state: done
     phase: 2
-    note: 'fresh upstream 재감사 (2026-04-19): 7 Map + 5 timer + EventEmitter 전부 unconditional eviction/clear. 0 FIND.'
+    note: 'fresh upstream 재감사 (2026-04-19): 7 Map + 5 timer + EventEmitter 전부 unconditional eviction/clear. 0 FIND. 재감사 2026-05-21: 1 FIND (FIND-cron-memory-001 P3, activeJobIds Set leak on ensureLoaded throw).'
   - id: infra-retry-concurrency
     domain: infra-retry
     type: concurrency
@@ -316,7 +319,7 @@ cells:
     type: concurrency
     state: done
     phase: 4
-    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 0 FIND. priority_files 전부 sync — manifest-registry/discovery/jiti-loader-cache 완전 sync, loader async signature 도 body 내 await 0회. inFlightPluginRegistryLoads / registryCache unconditional guard. file-lock.ts HELD_LOCKS race 는 upstream PR #67876 + f45bc09206 bandaid 로 이미 인지 (CAL-008 dup). 2026-04 중순 7 fix 커밋(2a283e87a7, 59d07f0ab4, e8fd148437, c95507978f, d1e3ed3743, 13821fd54b, cc343febfb) 로 sync 강제 + rollback 확립.'
+    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 0 FIND. priority_files 전부 sync — manifest-registry/discovery/jiti-loader-cache 완전 sync, loader async signature 도 body 내 await 0회. inFlightPluginRegistryLoads / registryCache unconditional guard. file-lock.ts HELD_LOCKS race 는 upstream PR #67876 + f45bc09206 bandaid 로 이미 인지 (CAL-008 dup). 2026-04 중순 7 fix 커밋(2a283e87a7, 59d07f0ab4, e8fd148437, c95507978f, d1e3ed3743, 13821fd54b, cc343febfb) 로 sync 강제 + rollback 확립. 재감사 2026-05-21: 0 FIND (로딩 코어 fully sync, scheduler job race 는 production trigger 부재).'
     hints:
       - 'loader.ts 중복 load race — 동일 plugin id 병렬 load 시 registryCache/manifest 일관성'
       - 'registry.ts mutation race — register/unregister 중 enumerate 동시 접근'
@@ -328,7 +331,7 @@ cells:
     type: lifecycle
     state: done
     phase: 4
-    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 2 FIND (P2). upstream 7d1575b5df (#60310, 2026-04-04) 의 activeJobIds 리팩터가 runDueJob/executeJob 2 경로만 수정하고 startup catch-up + manual run 경로 간과 — partial merge gap. 관련 issue #68157 (2026-04-23 OPEN) 이 증상 보고 중. Abandon 후보 (async-stop, partial-rollback-on-start) 는 PR #43832/#68112 OPEN 으로 CAL-008 dup. FIND validate PASS → ready 승격.'
+    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 2 FIND (P2). upstream 7d1575b5df (#60310, 2026-04-04) 의 activeJobIds 리팩터가 runDueJob/executeJob 2 경로만 수정하고 startup catch-up + manual run 경로 간과 — partial merge gap. 관련 issue #68157 (2026-04-23 OPEN) 이 증상 보고 중. Abandon 후보 (async-stop, partial-rollback-on-start) 는 PR #43832/#68112 OPEN 으로 CAL-008 dup. FIND validate PASS → ready 승격. 재감사 2026-05-21: 0 new FIND (FIND-001 미수정 유효, FIND-002 는 PR #78243 머지로 해결, stop() gap 은 open PR #43832 커버).'
     hints:
       - 'scheduler stop 중 in-flight job 의 runningAtMs marker 정리 경로'
       - 'store close/reopen 시 timer.ts 의 in-memory locked() set 과 DB 상태 재동기화'
@@ -339,7 +342,7 @@ cells:
     type: error-boundary
     state: done
     phase: 4
-    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 0 FIND. resolveStorePath throw 조건 production 부재, onEvent 타입 sync (state.ts:117) 라 async injection compile-time 차단, onTimer try/finally 가 armTimer 보장 (self-healing), enqueueSystemEvent 는 module queue push 라 throw 불가. cron-memory 재감사(2026-04-19) 와 중복 축 분리 증거 명확 (memory-leak 축은 이미 처리). upstream 6주 cron fix 중 error-boundary 축 관련 없음.'
+    note: 'fresh upstream 재감사 (2026-04-24, HEAD 22f23fa5ab): 0 FIND. resolveStorePath throw 조건 production 부재, onEvent 타입 sync (state.ts:117) 라 async injection compile-time 차단, onTimer try/finally 가 armTimer 보장 (self-healing), enqueueSystemEvent 는 module queue push 라 throw 불가. cron-memory 재감사(2026-04-19) 와 중복 축 분리 증거 명확 (memory-leak 축은 이미 처리). upstream 6주 cron fix 중 error-boundary 축 관련 없음. 재감사 2026-05-21: 1 FIND (FIND-cron-error-boundary-001 P3, logCronDeliveryErrorDeferred floating promise).'
     hints:
       - 'timer callback 내 unhandled rejection (setInterval 콜백 throw)'
       - 'job handler throw 시 runningAtMs marker / locked() cleanup 보장'

@@ -398,3 +398,64 @@ cron/ 내부는 error-boundary 축에서 정합한 방어를 갖춤:
 #### 결론
 
 cron-lifecycle 셀 2 FIND (P2/P2, 둘 다 `lifecycle-gap`). 핵심은 upstream 의 부분 구현된 activeJobIds 대칭 계약의 보완. cron-concurrency (CAS race) / cron-memory (Map 성장) / cron-error-boundary (예외 격리) 가 **같은 파일들을** 이미 감사했음에도 이 축은 lifecycle 페르소나의 "init-without-init" 렌즈로만 보이는 cross-module 계약 gap. false-positive 비용 고려해 upstream open PR (#43832, #68112) 영역은 의도적으로 abandon.
+
+# ════════════════════════════════════════════════════════════
+# 재감사 (2026-05-21) — churn-driven re-audit (1차 감사 2026-04-24 이후, src/cron ~267 커밋)
+# ════════════════════════════════════════════════════════════
+
+## 재감사 (2026-05-21) — cron-concurrency
+
+결과 0건. cron 동시성 모델이 성숙:
+- 모든 claim/finalize 경로 (onTimer, prepareManualRun, runMissedJobs/start) 가 locked()
+  안에서 runningAtMs 마커를 세팅하고 lock 해제 전 persist(). 재진입은 항상
+  ensureLoaded({forceReload:true}) 로 디스크 재판독 → 디스크가 단일 진실원.
+- Stuck runningAtMs 복구 이중화: normalizeJobTickState (STUCK_RUN_MS 2h clear) +
+  markInterruptedStartupRun (재시작 시 running 잔존 job error 처리).
+- watchdog: AbortController + dispose() 가 모든 timer clear, Promise.race loser 는 공유
+  abort signal 로 취소.
+- 미해결 (신규 FIND 아님): locked.ts storeLocks 는 프로세스-내 Map — 멀티 인스턴스 race
+  (구 FIND-cron-concurrency-001) 코드상 그대로이나 이미 rejected + 단일 gateway 토폴로지라
+  production trigger 부재. CAL-007 + rejected 중복 회피로 재파일 안 함.
+
+## 재감사 (2026-05-21) — cron-memory
+
+FIND 1건 (FIND-cron-memory-001, P3).
+- FIND-cron-memory-001 (P3): onTimer post-execution locked() 블록의
+  ensureLoaded(forceReload:true) throw 시 applyOutcomeToStoredJob for-루프 skip → 전역
+  activeJobIds Set 에 jobId 미정리 잔류. markCronJobActive (timer.ts:1262) ↔
+  clearCronJobActive (timer.ts:1085) 가 try/finally 미결속. 누수 + hasActiveCronJobs()
+  영구 true 로 heartbeat 영구 deferral. 트리거 = store 파일 손상/권한 오류 (드문 edge).
+- 누수 아님 확인: cronEvalCache (LRU 512), COMPLETED_DIRECT_CRON_DELIVERIES (TTL 24h +
+  cap 2000), serializedStoreCache/storeLocks (정적 storePath 키 유계), preflightCache
+  (정적 provider config 키 유계), watchdog 3타이머 (dispose finally clearTimeout), abort
+  리스너 ({once:true}+removeEventListener) 전부 정상.
+- 신규 결함 축은 데이터 구조 cap 부재가 아니라 lifecycle pairing 누락 (획득/해제 try-finally
+  미결속). 수동 run 경로 (ops.ts finishPreparedManualRun) 는 finally 보호 → 동일 결함 없음.
+
+## 재감사 (2026-05-21) — cron-lifecycle
+
+신규 FIND 0건. activeJobIds mark/clear 매트릭스 (현재 코드):
+- runDueJob / executeJob / manual run prepareManualRun — markCronJobActive O
+- runStartupCatchupCandidate (timer.ts:1589) — markCronJobActive X ← FIND-cron-lifecycle-001
+  미수정 (e86b38f09d 는 split refactor 만, mark 미추가). 기존 FIND 유효, 중복 재발행 금지.
+- FIND-cron-lifecycle-002 (manual run mark 누락) → upstream PR #78243 (c1b59a95bf) 로 해결됨,
+  active-jobs-manual-run.test.ts 회귀 추가.
+- 신규 식별 (FIND 미발행, upstream-dup): CronService.stop() 이 stopped 플래그 없이 stopTimer
+  만 → in-flight onTimer 의 finally armTimer 재호출로 OLD 서비스 영구 self-rearm. cron config
+  hot-reload 시 leaked scheduler. → open PR #43832 (stopGraceful + stop-guard) 가 정확히 커버.
+  CAL-008 중복 회피로 미발행.
+
+## 재감사 (2026-05-21) — cron-error-boundary
+
+FIND 1건 (FIND-cron-error-boundary-001, P3).
+- FIND-cron-error-boundary-001 (P3): delivery-dispatch.ts:244 logCronDeliveryErrorDeferred
+  가 void loadDeliveryLoggerRuntime().then(...) 로 lazy-import promise 에 .catch 없이 .then
+  만 연결. import reject 시 unhandled rejection → process-level handler crash.
+- **핵심 도메인 지식**: process-level unhandledRejection 핸들러 (infra/unhandled-rejections.ts:513)
+  는 silent-log 가 아니라 generic reason 에 process.exit(1) 을 호출하는 CRASH 핸들러.
+  cron 내 floating promise 의 "상위 boundary 가 처리하니 안전" 추정은 틀림 — 오히려 crash 로
+  증폭. error-boundary FIND 작성 시 이 핸들러를 "흡수" 가 아닌 "증폭" 으로 분류할 것.
+- createLazyImportLoader 를 옵션 없이 쓴 cron lazy-loader (delivery-dispatch.ts 에만 8개) 의
+  .then 체인은 자체 catch 필요.
+- cron job 실행 경로 (runDueJob/runStartupCatchupCandidate/executeJob/manual) 는 모두
+  executeJobCoreWithTimeout 를 try/catch 로 감싸 crash 경계 확보.
