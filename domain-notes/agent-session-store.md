@@ -56,3 +56,12 @@
 - `auth-storage` 의 proper-lockfile stale lock 디렉터리가 crash 후 다음 기동 lock 획득을 막는지(lifecycle 검토 후보).
 - `appendJsonlEntr*Sync`(appendFileSync) 의 partial-line append 시 다음 read 가 마지막 깨진 줄을 어떻게 처리하는지(transcript-jsonl + session-file-repair 연계, append 손상 별도 셀).
 - atomic 변형(`writeJsonlEntriesAtomic`)이 transcript-jsonl.ts 에 부재 — rewriteFile 의 atomic 화는 헬퍼 추가가 필요(SOL 단계 참조).
+
+### clusterer (2026-05-29)
+
+- CAND-045 (epic): 공통 원인 "영속 critical 파일 writer 가 atomic 헬퍼(replaceFileAtomic) 없이 raw writeFileSync 로 in-place O_TRUNC 재기록 → crash 비원자 창. 동일 트리의 session-file-repair.ts:409 는 atomic 사용 → 파일별 규율 불균일" 으로 3 FIND 묶음.
+  - FIND-agent-session-store-data-integrity-001 (P1, auth.json) + FIND-agent-session-store-data-integrity-002 (P1, 세션 transcript .jsonl) + FIND-agent-session-store-data-integrity-003 (P2, settings.json).
+  - 클러스터링 근거: clusterer.md Step 3 (cross-file 공통 근본 원인). 세 FIND 의 root_cause_chain 이 (1) "writeFileSync O_TRUNC in-place 비원자 창" 단계(FIND-001[0]/002[0]/003[0])와 (2) "atomic sibling(session-file-repair.ts:409) 미사용 불균일" 단계(FIND-001[2]/002[2]/003[3])에서 의미론적으로 동일. 같은 인프라 축(atomic 파일 교체 규율). severity 는 최고값 P1 상속.
+  - Step 1(정확 중복) / Step 2(동일 파일 다른 각도) 해당 없음 — 세 writer 는 서로 다른 파일/모듈. 그러나 Step 4(독립 single) 대신 Step 3(epic) 선택: 근본 원인과 atomic 기준선이 단일하여 GH Issue 분산 발행보다 epic+자식 task 가 적합.
+  - 해결책은 clusterer 범위 밖 — 단 "atomic 변형 헬퍼 부재"(위 후속 단서)는 SOL 단계가 epic 공통으로 다룰 신호.
+  - state: pending_gatekeeper.

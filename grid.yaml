@@ -783,6 +783,62 @@ cells:
       - 'session-manager.ts: rewriteFile sync 전체 재기록(:800) atomic rename 여부.'
       - '반증 필수(R-3 analog): 각 writer 가 replaceFileAtomic/replaceFileAtomicSync/writeTextAtomic/@openclaw/fs-safe 사용하는지 Grep.'
 
+  # Phase 8 후속 셀 (신규 도메인 × 정찰 STRONG 축). seed: domain-notes/domain-expansion-2026-05.md
+  - id: config-io-data-integrity
+    domain: config-io
+    type: data-integrity
+    state: done
+    phase: 8
+    note: 'data-integrity-auditor. seed: io.ts:1093 복구 raw write, io.ts:1429 롤백 raw write, 반증 io.ts:1445 replaceFileAtomicSync.'
+  - id: task-registry-store-cross-store-consistency
+    domain: task-registry-store
+    type: cross-store-consistency
+    state: done
+    phase: 8
+    note: 'data-integrity-auditor(cross-store 겸업). seed: task-registry.ts:261-326 persist try/catch 부재 → 인메모리/sqlite 발산; sqlite 비트랜잭션 변형.'
+  - id: secrets-apply-cross-store-consistency
+    domain: secrets-apply
+    type: cross-store-consistency
+    state: done
+    phase: 8
+    note: 'data-integrity-auditor. seed: apply.ts:835-855 config+N auth-store+.env 순차쓰기 + best-effort 롤백.'
+  - id: infra-state-migrations-cross-store-consistency
+    domain: infra-state-migrations
+    type: cross-store-consistency
+    state: done
+    phase: 8
+    note: 'data-integrity-auditor. seed: state-migrations.ts 다단계 renameSync + :996 수동 롤백(트랜잭션 부재 방증), fs.ts try/catch-swallow.'
+  - id: infra-delivery-queue-ordering-causality
+    domain: infra-delivery-queue
+    type: ordering-causality
+    state: done
+    phase: 8
+    note: 'ordering-causality-auditor. seed: delivery-queue-recovery.ts:411-417 blind replay 거부, send_attempt_started/unknown_after_send; 평행 2큐 정책 불일치.'
+  - id: session-events-ordering-causality
+    domain: session-events
+    type: ordering-causality
+    state: done
+    phase: 8
+    note: 'ordering-causality-auditor. seed: user-turn-transcript.ts:407-417 영속-후-emit; transcript-events.ts:50-56 전역 Set 동기 fan-out + throw swallow.'
+  - id: diagnostic-recovery-ordering-causality
+    domain: diagnostic-recovery
+    type: ordering-causality
+    state: done
+    phase: 8
+    note: 'ordering-causality-auditor. seed: coordinator.ts:118-141 generation 갱신 인과; 중복 in-flight Set 2개 키 비대칭(coordinator ref:generation vs runtime ref).'
+  - id: acp-control-plane-concurrency
+    domain: acp-control-plane
+    type: concurrency
+    state: done
+    phase: 8
+    note: 'concurrency-auditor. seed: manager.core.ts:1093/1136-1145 turn timeout 후 turnPromise detach + late emit; cleanupTimedOutTurn:1162. 데몬 hot-path 싱글톤.'
+  - id: bash-process-execution-memory
+    domain: bash-process-execution
+    type: memory
+    state: done
+    phase: 8
+    note: 'memory-leak-hunter. seed: bash-process-registry.ts:98-99 runningSessions/finishedSessions 무경계 Map + :335 sweeper 의존.'
+
 states:
   - unseeded          # Phase 2, 아직 시작 안 함
   - planned           # Phase 1, 대기 중

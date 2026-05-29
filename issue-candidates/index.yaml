@@ -471,6 +471,115 @@ candidates:
   cross_review_decision: 'scope_down (5-agent: real-problem-real-fix 2 / real-problem-fix-insufficient 3). in-repo caller 가 throwing 콜백/falsy reject 미생성 → FIND-002 abandon, FIND-001 단독 진행. gatekeeper shadow verdict=uncertain → cross-review + 사용자 결정으로 approve(scoped).'
   cross_refs:
     - CAND-009
+- id: CAND-045
+  type: epic
+  finding_count: 3
+  state: pending_gatekeeper
+  note: 'agent-session-store data-integrity — auth.json(FIND-001 P1) / 세션 transcript
+    .jsonl(FIND-002 P1) / settings.json(FIND-003 P2) writer 가 모두 raw writeFileSync
+    in-place O_TRUNC 로 재기록 → crash 비원자 창. 공통 원인: 동일 트리에 존재·사용되는 atomic
+    헬퍼(replaceFileAtomic, session-file-repair.ts:409)를 이 critical writer 들만 미사용
+    → atomic 규율 파일별 불균일. severity 는 최고값 P1 상속.'
+- id: CAND-046
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'config-io data-integrity — config/io.ts 의 prefix-recovery(FIND-001 P2) 와
+    install-records rollback(FIND-002 P3) 의 복구/보상 경로가 atomic 헬퍼(replaceFileAtomic,
+    io.ts:359/1445/2414) 없이 raw write 로 in-place 덮어쓰기 → crash 시 truncate. 공통
+    원인: 정상/롤백 경로는 atomic 인데 복구/보상 경로만 raw write — atomic 규율 경로별 불균일.
+    severity 최고값 P2 상속.'
+- id: CAND-047
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'task-registry-store cross-store-consistency — task-registry.ts 의
+    deleteTaskRecordById(FIND-001 P1) / updateTask(FIND-002 P2) 가 in-memory Map 을 먼저
+    commit 후 sqlite persist 를 try/catch/rollback 없이 호출 → persist throw(BUSY/FULL/IOERR)
+    시 in-memory↔sqlite 발산(lost-delete / stale-read). 공통 원인: sqlite 측은
+    withWriteTransaction 으로 원자적이나 in-memory↔sqlite 교차-스토어 경계 부재. severity
+    최고값 P1 상속.'
+- id: CAND-048
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'secrets-apply cross-store-consistency — secrets/apply.ts 의 config↔auth-store
+    다중스토어 커밋(write 모드)이 파일 간 트랜잭션 경계(FIND-001 P1)와 AUTH_STORE_LOCK
+    획득(FIND-002 P1)을 모두 결여 → 중간 throw 시 부분 마이그레이션 / 동시 OAuth refresh
+    lost-update. 공통 원인: config 경로는 withFileLock+CAS 보호인데 satellite auth-store
+    write 만 무보호(lock/경계 한쪽에만). severity 둘 다 P1.'
+- id: CAND-049
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'infra-state-migrations cross-store-consistency — infra/state-migrations.ts 의
+    legacy→target 마이그레이션이 트랜잭션/체크포인트/백업 경계 없이(grep match 0) 비가역 fs
+    연산 커밋 → 손상 target sessions.json 의 legacy-only 덮어쓰기 영구 유실(FIND-001 P1) +
+    멀티스토어 시퀀스 중간 throw 시 split state(FIND-002 P2). 공통 원인: 마이그레이션 모듈에
+    교차-스토어 경계 프리미티브 부재. severity 최고값 P1 상속.'
+- id: CAND-050
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: 'infra-delivery-queue ordering-causality — session-delivery-queue-recovery.ts 의
+    drainQueuedEntry(FIND-001 P1)가 unacked agentTurn 을 reconciliation 없이 blind replay
+    → deliver 성공 후 ack 전 crash 시 턴 중복 실행 + 응답 중복 전송. session 큐 storage 에
+    recoveryState/send-attempt 마커 부재. 평행 outbound 큐(reconcileUnknownSend + blind
+    replay 거부) 대비 비대칭. severity P1.'
+- id: CAND-051
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'session-events ordering-causality — session 이벤트 emit payload 의 단조 순서 토큰
+    부재. inline transcript emit(user-turn-transcript.ts:410)이 messageSeq 누락(FIND-001
+    P2) + lifecycle 이벤트(session-lifecycle-events.ts:20-28)에 seq/version 부재 +
+    무조건 fan-out(FIND-002 P3). 공통 원인: producer-side 단조 토큰 enforcement 부재로
+    소비자가 인과 순서를 권위적으로 복원 불가 → 측면 카운터 재추정 fragility / 지연
+    reason:"create" 인과 역전. happens-before 자체는 보장(write lock+FIFO / fresh
+    snapshot 재조회)이라 역전 아닌 토큰 손실. severity 최고값 P2 상속.'
+- id: CAND-052
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'diagnostic-recovery ordering-causality — 복구 apply(coordinator.ts:95-131)의
+    staleness 가드 정합성 결함. idle 분기 generation+1 완화로 async 윈도우 중 도착한 새
+    메시지/큐를 stale 처리 못 하고 queueDepth=0 clear → 메시지 소실 + 영구 복구 제외(FIND-002
+    P1, data-loss) + peek-가드/get-mutate 가 split-state 에서 다른 엔트리로 resolve →
+    가드 검증한 generation 과 다른 엔트리를 idle 강제(FIND-003 P2). 공통 원인: 가드가
+    검증한 세계(시간축 generation / 주소축 엔트리)와 실제 mutate 대상 세계 불일치. FIND
+    본문 상호 cross_ref. severity 최고값 P1 상속.'
+- id: CAND-053
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: 'diagnostic-recovery ordering-causality — in-flight 추적 2-Set 키 비대칭
+    (coordinator recoveryRequestsInFlight=ref:generation vs runtime recoveriesInFlight=ref,
+    coordinator.ts:68 / runtime.ts:55-57). generation bump 후 재요청이 coordinator dedup
+    통과(새 키)·runtime skip(같은 ref) → 두 번째 session.recovery.requested 이벤트 발행되나
+    실제 복구 없음 → 복구 관측 메트릭 부풀림 + dedup 계층 불일치(FIND-001 P2). CAND-052
+    (apply 가드 정합성)와 다른 축(요청 dedup 입도)이라 single 분리. state mutate 없음
+    (skipped non-mutating)이라 데이터 손상 아님. severity P2.'
+- id: CAND-054
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'acp-control-plane concurrency — ACP turn 동시성이 SessionActorQueue 단일 +
+    eventGate boolean 플래그에만 의존(외부 Mutex/Semaphore rg match 0). cancelSession
+    active-turn 분기가 actor queue 를 우회 → cancel↔동일 handle close 경합(FIND-001 P2,
+    oneshot 한정) + eventGate per-iteration single-check 후 onEvent await 동안 timeout
+    이 gate 닫아도 진행 중 이벤트 1건 caller 누출 + error 삼킴(FIND-002 P3). 공통 원인:
+    handle 별 atomic cut-off/회수 프리미티브 부재. FIND 본문 상호 cross_ref. severity
+    최고값 P2 상속.'
+- id: CAND-055
+  type: epic
+  finding_count: 2
+  state: pending_gatekeeper
+  note: 'bash-process-execution memory — exec/session 수명 cleanup 누락. exec abort
+    리스너가 per-run 공유 AbortSignal 에 {once:true} 등록되나 정상 종료 경로 removeEventListener
+    부재(FIND-001 P2) + finishedSessions Map size cap/LRU 부재, 자동 제거가 TTL
+    prune(sweeper 의존) 하나뿐(FIND-002 P2). 공통 원인: set/add(hot-path 무조건)에 대응하는
+    unconditional eviction 경로 부재(제거가 conditional-edge 또는 dead)로 보유 컨테이너
+    선형/무제한 성장, retained 가 exec 출력 버퍼. FIND 본문 상호 cross_ref. severity 둘 다 P2.'
 published:
 - cand_id: CAND-004
   issue: 68487

@@ -2503,3 +2503,201 @@ items:
       at: '2026-05-29T02:10:27+00:00'
     created_at: '2026-05-29T02:10:27+00:00'
     updated_at: '2026-05-29T02:10:27+00:00'
+  FIND-config-io-data-integrity-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:00+00:00'
+    created_at: '2026-05-29T05:25:00+00:00'
+    updated_at: '2026-05-29T05:25:00+00:00'
+  FIND-config-io-data-integrity-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:00+00:00'
+    created_at: '2026-05-29T05:25:00+00:00'
+    updated_at: '2026-05-29T05:25:00+00:00'
+  FIND-infra-delivery-queue-ordering-causality-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:00+00:00'
+    created_at: '2026-05-29T05:25:00+00:00'
+    updated_at: '2026-05-29T05:25:00+00:00'
+  FIND-infra-state-migrations-cross-store-consistency-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:00+00:00'
+    created_at: '2026-05-29T05:25:00+00:00'
+    updated_at: '2026-05-29T05:25:00+00:00'
+  FIND-infra-state-migrations-cross-store-consistency-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:00+00:00'
+    created_at: '2026-05-29T05:25:00+00:00'
+    updated_at: '2026-05-29T05:25:00+00:00'
+  FIND-secrets-apply-cross-store-consistency-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:01+00:00'
+    created_at: '2026-05-29T05:25:01+00:00'
+    updated_at: '2026-05-29T05:25:01+00:00'
+  FIND-secrets-apply-cross-store-consistency-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:01+00:00'
+    created_at: '2026-05-29T05:25:01+00:00'
+    updated_at: '2026-05-29T05:25:01+00:00'
+  FIND-task-registry-store-cross-store-consistency-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:01+00:00'
+    created_at: '2026-05-29T05:25:01+00:00'
+    updated_at: '2026-05-29T05:25:01+00:00'
+  FIND-task-registry-store-cross-store-consistency-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:25:01+00:00'
+    created_at: '2026-05-29T05:25:01+00:00'
+    updated_at: '2026-05-29T05:25:01+00:00'
+  FIND-acp-control-plane-concurrency-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:03+00:00'
+    created_at: '2026-05-29T05:36:03+00:00'
+    updated_at: '2026-05-29T05:36:03+00:00'
+  FIND-acp-control-plane-concurrency-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:03+00:00'
+    created_at: '2026-05-29T05:36:03+00:00'
+    updated_at: '2026-05-29T05:36:03+00:00'
+  FIND-bash-process-execution-memory-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:03+00:00'
+    created_at: '2026-05-29T05:36:03+00:00'
+    updated_at: '2026-05-29T05:36:03+00:00'
+  FIND-bash-process-execution-memory-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:04+00:00'
+    created_at: '2026-05-29T05:36:04+00:00'
+    updated_at: '2026-05-29T05:36:04+00:00'
+  FIND-diagnostic-recovery-ordering-causality-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:04+00:00'
+    created_at: '2026-05-29T05:36:04+00:00'
+    updated_at: '2026-05-29T05:36:04+00:00'
+  FIND-diagnostic-recovery-ordering-causality-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:04+00:00'
+    created_at: '2026-05-29T05:36:04+00:00'
+    updated_at: '2026-05-29T05:36:04+00:00'
+  FIND-diagnostic-recovery-ordering-causality-003:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:04+00:00'
+    created_at: '2026-05-29T05:36:04+00:00'
+    updated_at: '2026-05-29T05:36:04+00:00'
+  FIND-session-events-ordering-causality-001:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:05+00:00'
+    created_at: '2026-05-29T05:36:05+00:00'
+    updated_at: '2026-05-29T05:36:05+00:00'
+  FIND-session-events-ordering-causality-002:
+    kind: find
+    state: discovered
+    transitions:
+    - from: null
+      to: discovered
+      actor: validate
+      reason: validate passed
+      at: '2026-05-29T05:36:05+00:00'
+    created_at: '2026-05-29T05:36:05+00:00'
+    updated_at: '2026-05-29T05:36:05+00:00'
