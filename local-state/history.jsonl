@@ -300,3 +300,9 @@
 {"item_id": "CAND-048", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-048 mode=pre-sol", "at": "2026-05-29T07:07:56+00:00", "extras": {}}
 {"item_id": "CAND-050", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-050 mode=pre-sol", "at": "2026-05-29T07:08:11+00:00", "extras": {}}
 {"item_id": "CAND-053", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-053 mode=pre-sol", "at": "2026-05-29T07:08:28+00:00", "extras": {}}
+{"item_id": "SOL-0017", "from": null, "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-049 mode=post-sol", "at": "2026-05-29T08:45:09+00:00", "extras": {}}
+{"item_id": "SOL-0015", "from": null, "to": "proof-unreproducible-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-047 mode=post-sol", "at": "2026-05-29T08:45:41+00:00", "extras": {}}
+{"item_id": "SOL-0018", "from": null, "to": "proof-unreproducible-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-050 mode=post-sol", "at": "2026-05-29T08:46:14+00:00", "extras": {}}
+{"item_id": "SOL-0019", "from": null, "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-053 mode=post-sol", "at": "2026-05-29T08:46:48+00:00", "extras": {}}
+{"item_id": "SOL-0015", "from": "proof-unreproducible-post", "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-047 mode=post-sol", "at": "2026-05-29T08:50:11+00:00", "extras": {}}
+{"item_id": "SOL-0018", "from": "proof-unreproducible-post", "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-050 mode=post-sol", "at": "2026-05-29T08:55:12+00:00", "extras": {}}

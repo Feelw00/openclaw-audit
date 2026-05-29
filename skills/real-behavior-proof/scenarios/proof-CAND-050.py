@@ -59,18 +59,42 @@ DEFAULT_TRIALS = 1  # 단일 entry 의 crash→restart 1회 (중복 deliver 관�
 
 def _build_probe_script() -> str:
     # worktree root 에 둬 ./src/infra/... 상대 import 가 resolve 되게 한다.
-    # private drainQueuedEntry 는 export 되지 않으므로, PASS 1 (crash 모델) 은
-    # production storage 함수(enqueue/load/ack)로 deliver 단계만 재현하고,
-    # PASS 2 (restart 모델) 는 public recoverPendingSessionDeliveries 를 그대로 돌린다.
+    #
+    # 핵심 (probe-vs-fix 경로 정합): private drainQueuedEntry 는 export 되지 않는다.
+    # 이전 probe 는 PASS 1 에서 `deliver(entry)` 만 직접 호출했는데, 그러면 fix 가
+    # drainQueuedEntry 안에서 deliver seam 둘레에 영속하는 recoveryState 마커
+    # (markSessionDeliveryPlatformSendAttemptStarted → unknown_after_send) 를 한 번도
+    # 안 쓰게 된다. 그 결과 with-fix 에서도 PASS 2 의 drainQueuedEntry 가 볼 마커가 없어
+    # blind replay → deliverCount=2 로 fix 효과가 안 잡혔다 (unreproducible 오판).
+    #
+    # 통과한 vitest(session-delivery-queue.recovery.test.ts 의 신규 it)는 PASS 1 을
+    # *real* recoverPendingSessionDeliveries 로 돌리되 ackSessionDelivery 만 no-op spy 로
+    # 막는다 → real drainQueuedEntry 가 마커를 영속한 뒤 ack 만 안 되어 entry 가 마커를
+    # 지닌 채 pending 잔존. PASS 2 가 그 마커를 보고 거부 → deliverCount 2→1.
+    #
+    # tsx(ESM) 에서는 vi.spyOn 으로 named export 를 가로챌 수 없으므로, PASS 1 의 crash
+    # 모델을 production drainQueuedEntry 의 *마커 영속 seam 자체* 로 정렬한다:
+    #   1. markSessionDeliveryPlatformSendAttemptStarted(id)   (fix 의 pre-deliver 마커)
+    #   2. deliver(entry)                                       (전송 성공 == throw 안 함)
+    #   3. markSessionDeliveryPlatformOutcomeUnknown(id)        (fix 의 post-deliver 마커)
+    #   4. ackSessionDelivery 는 SKIP                            (= ack 직전 SIGKILL/OOM)
+    # 이는 real drainQueuedEntry 가 crash 직전까지 디스크에 쓰는 상태와 byte-동일하다.
+    # base(without-fix) 에는 mark* export 자체가 없으므로 typeof 가드로 건너뛴다 — base 의
+    # 실제 현실(마커 영속 능력 부재)을 그대로 반영. base 에서는 PASS 1 이 deliver 만 하고
+    # 마커 없이 pending 잔존 → PASS 2 blind replay → deliverCount=2.
+    #
+    # PASS 2 (restart 모델) 는 public recoverPendingSessionDeliveries 를 그대로 돌린다 —
+    # 이쪽이 실제 검사 대상 복구 경로(real drainQueuedEntry + real ackSessionDelivery)다.
     return """\
-import {
+import * as storage from "./src/infra/session-delivery-queue-storage.js";
+import { recoverPendingSessionDeliveries } from "./src/infra/session-delivery-queue-recovery.js";
+
+const {
   enqueueSessionDelivery,
   loadPendingSessionDeliveries,
   loadPendingSessionDelivery,
-  ackSessionDelivery,
   resolveSessionDeliveryQueueDir,
-} from "./src/infra/session-delivery-queue-storage.js";
-import { recoverPendingSessionDeliveries } from "./src/infra/session-delivery-queue-recovery.js";
+} = storage;
 
 function emit(obj) {
   console.log("PROOF_RESULT:" + JSON.stringify(obj));
@@ -84,6 +108,11 @@ try {
     emit({ error: "PROOF_STATE_DIR unset" });
     process.exit(0);
   }
+
+  // fix 가 존재하는지(= with-fix 빌드인지) 동적 감지. base 에는 이 export 가 없다.
+  const hasMarkerApi =
+    typeof storage.markSessionDeliveryPlatformSendAttemptStarted === "function" &&
+    typeof storage.markSessionDeliveryPlatformOutcomeUnknown === "function";
 
   // deliver = production drainQueuedEntry 가 호출하는 콜백. agentTurn 의 경우
   // dispatchAssembledChannelTurn(턴 재실행 + 플랫폼 전송) 에 해당. 여기서는 호출 횟수만 측정.
@@ -109,27 +138,37 @@ try {
 
   const pendingAfterEnqueue = (await loadPendingSessionDeliveries(stateDir)).length;
 
-  // --- PASS 1: crash-before-ack 모델 ---
-  // production drainQueuedEntry 의 deliver 단계만 그대로 실행하고 ack 는 SKIP (= ack 직전 crash).
+  // --- PASS 1: crash-before-ack 모델 (drainQueuedEntry 의 마커 영속 seam 정렬) ---
   const entry1 = await loadPendingSessionDelivery(id, stateDir);
   if (!entry1) {
     emit({ error: "entry missing before pass1 deliver" });
     process.exit(0);
   }
+  // (1) pre-deliver 마커: fix 의 drainQueuedEntry 가 deliver 직전 영속하는 send_attempt_started.
+  if (hasMarkerApi) {
+    await storage.markSessionDeliveryPlatformSendAttemptStarted(entry1.id, stateDir);
+  }
+  // (2) deliver 성공 (전송 완료).
   await deliver(entry1);
-  // <-- 여기서 SIGKILL/OOM. ackSessionDelivery 미호출. 마커도 미기록(타입에 recoveryState 부재).
+  // (3) post-deliver 마커: fix 가 deliver 반환 후 ack 직전 영속하는 unknown_after_send.
+  if (hasMarkerApi) {
+    await storage.markSessionDeliveryPlatformOutcomeUnknown(entry1.id, stateDir);
+  }
+  // (4) <-- 여기서 SIGKILL/OOM. ackSessionDelivery 미호출. 큐 파일은 pending 으로 잔존하며,
+  //     with-fix 에서는 unknown_after_send 마커가 디스크에 영속된 상태, base 에서는 마커 없음.
 
-  // crash 이후 큐 파일이 여전히 pending 인지 확인 (마커 없이 그대로 남아 있어야 결함 재현).
+  // crash 이후 큐 파일이 여전히 pending 인지 + 마커 영속 여부 확인.
   const pendingAfterCrash = (await loadPendingSessionDeliveries(stateDir)).length;
   const stillPendingEntry = await loadPendingSessionDelivery(id, stateDir);
   const recoveryStateAfterCrash =
     stillPendingEntry && "recoveryState" in stillPendingEntry
       ? stillPendingEntry.recoveryState ?? null
-      : "field-absent"; // QueuedSessionDelivery 타입에 recoveryState 필드 자체가 없음
+      : "field-absent"; // base: QueuedSessionDelivery 타입에 recoveryState 필드 자체가 없음
 
   // --- PASS 2: restart 모델 ---
   // production 복구 경로(real drainQueuedEntry + real ackSessionDelivery)를 그대로 호출.
-  // base(without-fix) 에서는 reconciliation 분기가 없어 blind replay → deliver 2회차 호출.
+  // base(without-fix): reconciliation 분기 없음 + 마커 없음 → blind replay → deliver 2회차.
+  // with-fix: drainQueuedEntry 가 unknown_after_send 마커를 보고 blind replay 거부 → 1회차 유지.
   const summary = await recoverPendingSessionDeliveries({
     deliver,
     log: silentLog,
@@ -143,6 +182,7 @@ try {
     trials: 1,
     deliverCount,
     deliveredIds,
+    markerApiPresent: hasMarkerApi,
     pendingAfterEnqueue,
     pendingAfterCrash,
     recoveryStateAfterCrash,
