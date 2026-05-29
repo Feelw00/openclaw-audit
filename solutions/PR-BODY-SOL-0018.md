@@ -6,8 +6,8 @@ fix(infra): reconcile unacked session deliveries to prevent duplicate replay on 
 
 - **Problem**: The session-delivery recovery queue blind-replays an unacked agent-turn delivery after a crash. If a restart-continuation `agentTurn` delivery succeeds (the turn re-runs and the platform reply is sent) but the process dies before the entry is acked, the next recovery re-delivers the same entry unconditionally - re-running a non-idempotent turn and re-sending its reply.
 - **Why it matters**: This is a reliability / crash-recovery correctness gap on a hot restart path. The harm is duplicate execution of a user turn (non-idempotent LLM/tool side-effects, which no message-level dedup can absorb) plus a duplicate platform reply.
-- **What changed**: Port the outbound queue's existing reconciliation pattern to the session queue. Persist a `send_attempt_started` / `unknown_after_send` marker around the delivery seam, and on recovery refuse a blind replay of an entry that carries that marker (fail-safe: move to `failed/`), exactly like the outbound queue already does.
-- **What did NOT change**: No adapter contract change, no channel adapter touched, no new config / permission / secret / network surface. `server-restart-sentinel.ts` is unchanged - the markers wrap the existing `deliver(entry)` seam in the recovery code, which is the production platform-send seam (`deliver` is `deliverQueuedSessionDelivery`). Normal (non-crash) recovery, retry budget, backoff, and startup-cutoff behavior are unchanged.
+- **What changed**: Persist a `send_attempt_started` / `unknown_after_send` recovery marker around the delivery, and on recovery refuse a blind replay of an entry whose marker shows the platform send may already have happened (fail-safe: move to `failed/`), aligning the session queue with the outbound queue's reconciliation guarantee. Critically, the delivery seam (`deliverQueuedSessionDelivery`) now persists the `unknown_after_send` marker when `sendDurableMessageBatch` returns `partial_failed` (some payloads already sent, `sentBeforeError === true`) before it throws, and the recovery catch only clears the marker for a proven pre-send failure (nothing sent) - a sent-before-error failure keeps the marker and is moved to `failed/` instead of being blind-replayed. This mirrors the outbound queue, which never clears its marker once the platform send has started.
+- **What did NOT change**: No adapter contract change, no channel adapter touched, no new config / permission / secret / network surface. Normal (non-crash) recovery, retry budget, backoff, and startup-cutoff behavior are unchanged: a genuine pre-send transient failure still clears the marker and stays retryable (at-least-once preserved); only a crash (which never reaches the catch) or a sent-before-error failure leaves the marker durable so recovery refuses a blind replay.
 
 ## Change Type
 
@@ -20,15 +20,17 @@ fix(infra): reconcile unacked session deliveries to prevent duplicate replay on 
 
 - [x] `src/infra/` (session-delivery durable queue: storage + recovery)
 - [ ] Channel adapters
-- [ ] Gateway
+- [x] Gateway (`server-restart-sentinel.ts` delivery seam: mark `unknown_after_send` on `partial_failed` before throwing)
 - [ ] Cron
 - [ ] Plugins
 - [ ] Security-sensitive paths
 
-Touched files (2 source + 1 test):
-- `src/infra/session-delivery-queue-storage.ts`
-- `src/infra/session-delivery-queue-recovery.ts`
-- `src/infra/session-delivery-queue.recovery.test.ts`
+Touched files (4 source + 1 test):
+- `src/infra/session-delivery-queue-storage.ts` (marker fields + `mark*` / `clear*` helpers)
+- `src/infra/session-delivery-queue-recovery.ts` (refuse-blind-replay; clear marker only for pre-send failures)
+- `src/infra/session-delivery-queue.ts` (re-export `markSessionDeliveryPlatformOutcomeUnknown`)
+- `src/gateway/server-restart-sentinel.ts` (mark `unknown_after_send` on `partial_failed` before throwing)
+- `src/infra/session-delivery-queue.recovery.test.ts` (regression tests)
 
 ## Linked Issue
 
@@ -42,15 +44,17 @@ So if the process is killed in the window after `deliver` succeeds (turn re-run 
 
 The missing guardrail is the reconciliation marker. The parallel outbound queue already guards exactly this scenario: it persists `send_attempt_started` / `unknown_after_send` markers (`src/infra/outbound/deliver.ts`) and on recovery refuses a blind replay for those states when it cannot confirm via adapter reconciliation (`src/infra/outbound/delivery-queue-recovery.ts`, "refusing blind replay without adapter reconciliation"). The session queue replicated none of this, so the two queues' durability guarantees diverged.
 
+There are two windows where a queued entry's platform send may already have happened: (1) a crash after the send but before the ack, and (2) an in-process failure thrown *after* a partial send - `deliverQueuedSessionDelivery` calls `sendDurableMessageBatch`, which returns `partial_failed` with `sentBeforeError === true` (a reply chunk already delivered) and then throws (`src/gateway/server-restart-sentinel.ts`). Window (2) is the one the recovery catch must not treat as a fresh, replayable failure. The outbound queue handles window (2) by never clearing the marker once the platform send has started (it has no clear path; `failDelivery` runs only when the send had not started, i.e. `!platformResultsReturned`). The fix gives the session queue the same property: the delivery seam marks `unknown_after_send` on `partial_failed` before throwing, and the recovery catch clears the marker only for a proven pre-send failure.
+
 ## Regression Test Plan
 
-Added one regression test to the existing recovery suite:
-- `src/infra/session-delivery-queue.recovery.test.ts` -> `"does not re-deliver a session entry whose first delivery succeeded but was left unacked by a crash"` (profile: `infra`, `test/vitest/vitest.infra.config.ts`).
+Added two regression tests to the existing recovery suite (`src/infra/session-delivery-queue.recovery.test.ts`, profile `infra`, `test/vitest/vitest.infra.config.ts`):
 
-It models crash-before-ack by letting `deliver` succeed in PASS 1 while skipping the ack (the entry stays pending with the send marker - byte-identical on-disk state to a real crash before ack's atomic rename), then runs a second real `recoverPendingSessionDeliveries` restart pass (PASS 2) and asserts the same entry is not re-delivered.
+1. `"does not re-deliver a session entry whose first delivery succeeded but was left unacked by a crash"` - models crash-before-ack by letting `deliver` succeed in PASS 1 while skipping the ack (the entry stays pending with the `unknown_after_send` marker - byte-identical on-disk state to a real crash before ack's atomic rename), then runs a second real recovery pass (PASS 2) and asserts the same entry is not re-delivered.
+2. `"does not re-deliver a session entry whose delivery partially sent before throwing"` - models the `partial_failed` / sent-before-error window: PASS 1's `deliver` persists `unknown_after_send` (as `deliverQueuedSessionDelivery` does on `partial_failed`) and then throws; the entry is moved to `failed/` rather than requeued with the marker cleared, and PASS 2 (with `bypassBackoff` so the entry is actually re-attempted) does not re-deliver it.
 
-- Without the fix: `deliverCount === 2` (blind replay) -> test FAILS.
-- With the fix: `deliverCount === 1` (recovery sees the marker and refuses) -> test PASSES.
+- Without the fix: each test reaches `deliverCount === 2` (blind replay) -> test FAILS (verified RED on the working tree by reverting the catch to the unconditional clear).
+- With the fix: `deliverCount === 1` (recovery sees the marker and refuses) -> tests PASS.
 
 Run:
 ```text
@@ -58,7 +62,7 @@ pnpm test src/infra/session-delivery-queue.recovery.test.ts
 # or: pnpm vitest -c test/vitest/vitest.infra.config.ts run session-delivery-queue.recovery
 ```
 
-The pre-existing recovery cases (success->ack, transient throw->requeue, retry budget, startup cutoff, backoff tier) all stay green: they never set `recoveryState`, so they never hit the new refuse branch. The storage round-trip tests (`session-delivery-queue.storage.test.ts`) also stay green - the new fields are optional and are not serialized when undefined.
+The pre-existing recovery cases (success->ack, transient throw->requeue, retry budget, startup cutoff, backoff tier) all stay green. The transient-throw->requeue case is a pre-send failure: the marker set before deliver is cleared in the catch, so the entry stays retryable exactly as before. The storage round-trip tests (`session-delivery-queue.storage.test.ts`) also stay green - the new fields are optional and are not serialized when undefined.
 
 ## Security Impact
 
@@ -84,16 +88,17 @@ The pre-existing recovery cases (success->ack, transient throw->requeue, retry b
 Failing before, passing after, on this branch (profile `infra`):
 
 ```text
-# BEFORE (source reverted to base, new test present):
+# BEFORE (recovery catch reverted to the unconditional marker-clear):
 pnpm vitest -c test/vitest/vitest.infra.config.ts run session-delivery-queue.recovery
-  x does not re-deliver a session entry whose first delivery succeeded but was left unacked by a crash
-    AssertionError: expected 2 to be 1  (deliverCount: blind replay)
-  Tests  1 failed | 5 passed (6)
+  x does not re-deliver a session entry whose delivery partially sent before throwing
+    AssertionError: expected [ { kind: 'agentTurn', ... } ] to strictly equal []  (entry still replayable -> blind replay)
+  Tests  1 failed | 6 passed (7)
 
 # AFTER (this branch):
 pnpm vitest -c test/vitest/vitest.infra.config.ts run session-delivery-queue.recovery
   ok does not re-deliver a session entry whose first delivery succeeded but was left unacked by a crash
-  Tests  6 passed (6)
+  ok does not re-deliver a session entry whose delivery partially sent before throwing
+  Tests  7 passed (7)
 ```
 
 Type checks clean on this branch:
@@ -134,32 +139,32 @@ Live Node.js measurement of deliver() invocation count for one unacked agentTurn
 ```
 
 - **Observed result after fix**: With the patch, deliver() is invoked 1x for the unacked agentTurn (vs 2x without the patch). The persisted recovery marker lets the session queue refuse blind replay of an already-sent turn, matching the outbound queue's reconciliation guarantee.
-- **What was not tested**: Real adapter-side reconcileUnknownSend round-trip (the post-sol fix scope; this proof measures replay suppression via the persisted marker). Real OS-level SIGKILL between deliver and ack (modelled here as ack-skip + restart pass; post-sol uses a real forked process restart). Platform-side message dedup inside dispatchAssembledChannelTurn (turn/kernel path out of scope).
+- **What was not tested**: Real adapter-side reconcileUnknownSend round-trip (the post-sol fix scope; this proof measures replay suppression via the persisted marker). Real OS-level SIGKILL between deliver and ack (modelled here as ack-skip + restart pass; post-sol uses a real forked process restart). Platform-side message dedup inside dispatchAssembledChannelTurn (turn/kernel path out of scope). The live two-build probe above measures the crash-before-ack window; the `partial_failed` / sent-before-error window (delivery seam marks `unknown_after_send` before throwing, recovery refuses replay) is covered by the added `"...partially sent before throwing"` regression test (RED before / GREEN after on this branch) rather than by this live probe.
 
 ## Human Verification
 
 - Confirmed the production wiring: `recoverPendingSessionDeliveries` is invoked from `server-restart-sentinel.ts` with `deliver: (entry) => deliverQueuedSessionDelivery(...)`, so the markers in `drainQueuedEntry` wrap the real turn-re-run + platform-send seam.
-- Confirmed the fix mirrors the outbound queue's accepted pattern (`send_attempt_started` / `unknown_after_send` + refuse-blind-replay), so the two queues now converge.
-- Confirmed at-least-once is not broadly weakened: an in-process thrown failure calls `clearSessionDeliveryRecoveryState` so transient failures stay replayable; only a genuine crash (which never reaches the catch) leaves the marker durable.
+- Confirmed the fix mirrors the outbound queue's accepted pattern (`send_attempt_started` / `unknown_after_send` + refuse-blind-replay). Verified the outbound queue has no marker-clear path and only calls `failDelivery` when the platform send had not started (`!platformResultsReturned`); the session queue now matches by clearing the marker only for a proven pre-send failure.
+- Confirmed at-least-once is not broadly weakened, and the sent-before-error window is closed: a genuine pre-send transient failure (nothing delivered) clears the marker and stays replayable; a crash (never reaches the catch) or a `partial_failed` / sent-before-error failure (marker advanced to `unknown_after_send` by the delivery seam before it throws) keeps the marker durable, so recovery refuses a blind replay and fail-safes to `failed/`. This closes the gap where clearing the marker on every thrown failure could still blind-replay an already partially sent reply.
 - Ran the regression test RED (base source) then GREEN (this branch), plus `tsgo:core` and `tsgo:core:test` (both exit 0).
 
 I have not exercised a real separate-process SIGKILL between deliver and ack (the crash is modelled as ack-skip + a real restart-recovery pass; the on-disk state is byte-identical). Calling that out explicitly under What was not tested.
 
 ## Review Conversations
 
-No bot comments yet at submission time. Will address `@clawsweeper` / Greptile / reviewer comments as they arrive.
+`@clawsweeper` raised a [P1] on the first revision: the recovery catch cleared the marker for *every* thrown delivery failure, so a `partial_failed` (sent-before-error) throw could still leave the entry replayable and duplicate an already-sent reply. This revision addresses it directly: the delivery seam now persists `unknown_after_send` on `partial_failed` before throwing, and the recovery catch clears the marker only for a proven pre-send failure. Added a regression test for the partial-sent path. Thanks for catching it. Will address further `@clawsweeper` / Greptile / reviewer comments as they arrive.
 
 ## Compatibility / Migration
 
 - Backward compatible. `platformSendStartedAt` and `recoveryState` are optional fields on `QueuedSessionDelivery`; existing on-disk queue entries without them deserialize unchanged and take the normal (non-refuse) path.
-- No migration step. Newly written entries only carry a marker transiently during a recovery attempt; it is cleared on in-process failure and removed with the entry on ack.
+- No migration step. Newly written entries only carry a marker transiently during a recovery attempt; it is cleared on a pre-send in-process failure and removed with the entry on ack (a sent-before-error failure keeps the marker and moves the entry to `failed/`).
 - No config, schema, or API surface change.
 
 ## Risks and Mitigations
 
-- **Risk**: A narrow at-least-once weakening. If a crash happens after the `send_attempt_started` marker is persisted but before the platform send actually went out, that entry is failed (moved to `failed/`) rather than replayed, so a never-sent message could be dropped in that window.
-  - **Mitigation / rationale**: This is the same fail-safe tradeoff the outbound queue already makes when it cannot reconcile. Avoiding a duplicate non-idempotent turn re-run and duplicate reply is prioritized over replaying in this narrow crash window. A follow-up can add adapter-side `reconcileUnknownSend` to recover full at-least-once for the confirmable case (out of scope here to keep this PR small and adapter-contract-free).
+- **Risk**: A narrow at-least-once weakening. When the send outcome cannot be confirmed not to have happened - a crash after the marker is persisted, or a `partial_failed` / sent-before-error failure - the entry is moved to `failed/` rather than replayed, so in that window a message that was not actually delivered would not be retried.
+  - **Mitigation / rationale**: This is the same fail-safe tradeoff the outbound queue already makes when it cannot reconcile (it never clears the marker once the send has started). Avoiding a duplicate non-idempotent turn re-run and duplicate reply is prioritized over replaying in this narrow uncertain window. A genuine pre-send failure (nothing delivered) is unaffected: its marker is cleared and it stays retryable. A follow-up can add adapter-side `reconcileUnknownSend` to recover full at-least-once for the confirmable case (out of scope here to keep this PR small and adapter-contract-free).
 - **Risk**: Marker write adds extra small disk writes on the recovery path.
   - **Mitigation**: Recovery is a cold/infrequent path (process restart), not steady-state delivery; the writes mirror what the outbound queue already does.
 - **Risk**: Scope creep into the gateway sentinel.
-  - **Mitigation**: Avoided. Markers wrap the existing `deliver` seam in recovery, so `server-restart-sentinel.ts` is untouched; the change is confined to the two `infra` queue files plus the test.
+  - **Mitigation**: Minimized. `server-restart-sentinel.ts` gets one added line - a `markSessionDeliveryPlatformOutcomeUnknown(entry.id)` call on the existing `partial_failed` branch before the existing `throw`. No control-flow or behavior change beyond persisting the marker; this is required because only the delivery seam knows the send was `partial_failed` (sent-before-error). The rest of the change stays in the `infra` queue files plus the test.
