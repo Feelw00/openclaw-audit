@@ -770,6 +770,19 @@ cells:
       - 'retry-policy.ts: createChannelApiRetryRunner / createRateLimitRetryRunner 가 dispose/teardown hook 을 갖는가 — runner 폐기 시 in-flight retry 처리.'
       - 'sleepWithAbort: abort listener / timer 가 retry 중단·정상완료 양 경로에서 모두 정리되는가 (memory 셀은 정리 확인 — lifecycle 은 abort 미수신 시 timer 잔존 여부).'
       - 'backoff.ts: stateless 여부 확인 — per-key lifecycle state 가 있으면 reset/dispose 경로.'
+  # ─── Phase 8 (2026-05-29 x+y축 확장 1차) ───
+  - id: agent-session-store-data-integrity
+    domain: agent-session-store
+    type: data-integrity
+    state: in_progress
+    phase: 8
+    note: '2026-05-29 x+y축 확장 첫 셀. data-integrity-auditor -> agent-session-store. seed: domain-notes/domain-expansion-2026-05.md.'
+    hints:
+      - 'auth-storage.ts: auth.json raw writeFileSync(:119,164) vs exec-approvals.ts:710 atomic. crash 시 자격증명 lockout 경로.'
+      - 'settings-manager.ts: 세션 settings raw write(:216).'
+      - 'session-manager.ts: rewriteFile sync 전체 재기록(:800) atomic rename 여부.'
+      - '반증 필수(R-3 analog): 각 writer 가 replaceFileAtomic/replaceFileAtomicSync/writeTextAtomic/@openclaw/fs-safe 사용하는지 Grep.'
+
 states:
   - unseeded          # Phase 2, 아직 시작 안 함
   - planned           # Phase 1, 대기 중

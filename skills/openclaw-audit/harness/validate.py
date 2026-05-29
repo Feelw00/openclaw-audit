@@ -52,6 +52,8 @@ SEVERITY_VALUES = {"P0", "P1", "P2", "P3"}
 SYMPTOM_VALUES = {
     "memory-leak", "lifecycle-gap", "concurrency-race",
     "error-boundary-gap", "shutdown-gap", "other",
+    # 2026-05-29 신규 축 (grid.yaml §types 확장)
+    "data-integrity-gap", "cross-store-gap", "ordering-causality-gap",
 }
 IMPACT_VALUES = {
     "memory-growth", "crash", "hang", "data-loss", "wrong-output", "resource-exhaustion",

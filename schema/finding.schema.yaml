@@ -68,6 +68,9 @@ required_fields:
       - concurrency-race     # Promise.race loser 처리, 공유 state 락 없음
       - error-boundary-gap   # unhandledRejection 누락, floating promise, process.exit pre-cleanup
       - shutdown-gap         # cleanup ordering, async cleanup 누락
+      - data-integrity-gap   # atomic-write 규율 불균일, raw writeFileSync crash 손상, 부분 multi-write (2026-05-29 신규축)
+      - cross-store-gap      # 복수 영속 스토어 트랜잭션 경계 부재, lock/CAS 한쪽만 → lost-update (2026-05-29 신규축)
+      - ordering-causality-gap # fire-and-forget 영속 + 무조건 상태갱신 인과역전 (2026-05-29 신규축)
       - other                # 위 분류에 맞지 않음 — rationale 에 사유 기술
     description: '증상 유형. 에이전트 페르소나별 자연스러운 분류와 일치.'
 
