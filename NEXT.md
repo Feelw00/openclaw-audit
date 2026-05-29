@@ -122,24 +122,22 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     early-return 분기가 그 caller 의 후속 tail 경로 전체를 소멸시키는 함의를 끝까지 추적 못 함.
 #     사용자 "더 깊게 봐라" 편향 경고로 포착. CAL-009 §내부판단편향 강화 사례.
 #
-#   ## 2. 새 셀 (구조 4축 40 셀 소진 — 2026-05-29 x축+y축 동시 확장 완료)
-#   - y축(types): 신규 3축 data-integrity / cross-store-consistency / ordering-causality + idempotency(DEFERRED).
-#     seed/REJECT: domain-notes/axis-expansion-2026-05.md.
-#   - x축(domains): 5-agent 도메인 정찰로 STRONG 10 도메인 등록.
-#     seed evidence + deferred(wave-2)/SKIP: domain-notes/domain-expansion-2026-05.md.
-#     신규 도메인: agent-session-store / session-events / config-io / task-registry-store /
-#       secrets-apply / infra-state-migrations / infra-delivery-queue / diagnostic-recovery /
-#       acp-control-plane / bash-process-execution.
-#   첫 셀 우선순위 (재현/수정 최소 + maintainer-fit 순, (domain × axis) 모두 grid 에 존재):
-#     1) agent-session-store × data-integrity — auth.json raw writeFileSync → 자격증명 lockout. fix 1줄.
-#     2) config-io × data-integrity — config 손상 = 부팅 실패. 동일 파일 atomic 반증 기준선 존재.
-#     3) task-registry-store × cross-store-consistency — 인메모리↔sqlite 발산(lost-delete).
-#     4) session-events × ordering-causality — 영속-후-emit + 전역 listener 누적.
-#   착수 전 필수: persona 작성 (data-integrity-auditor / ordering-causality-auditor, R-1~R-7 상속) + PR 큐 ≤7.
-#   주의: gmail-watcher = SKIP(upstream 활발 수정, CAL-008). auth-profiles/device-pairing = CODEOWNERS *auth* 게이트.
-#   기존 mcp 4축·agents-registry 전 축은 done — 후보 아님(혼동 주의).
+#   ## 2. 신규 축/도메인 CAND 백로그 (2026-05-29 일괄 감사 완료 → gatekeeper 대기)
+#   x+y축 확장 후 10 도메인 첫 셀 일괄 실행: 21 FIND → 11 CAND (045~055), 전부 pending_gatekeeper.
+#   상세: issue-candidates/CAND-04[5-9]/05[0-5].md + 각 domain-notes/{domain}.md.
+#   다음 액션 = gatekeep 3-step (sanitize → agent → apply --shadow). P2+ 우선:
+#     P1: CAND-045(agent-session-store) / 047(task-registry) / 048(secrets-apply) /
+#         049(state-migrations) / 050(delivery-queue) / 052(diagnostic-recovery)
+#     P2: 046(config-io) / 051(session-events) / 053(diagnostic-recovery) / 054(acp-control-plane) /
+#         055(bash-process-execution)
+#   주의: 048 secrets-apply·(향후)auth 계열은 CODEOWNERS *auth* 게이트 → PR 비용 높음.
+#   gatekeeper approve 후 P2+ 는 cross-review(사용자 허락) → pre-sol proof → SOL → PR.
 #
-# grid.yaml §types(8)·§domains(20) 등록 완료. 셀 실행 시 §cells 에 (domain × type) 추가 + local_state 등록.
+#   ## 2b. wave-2 도메인 (미실행, STRONG 백로그)
+#   acp-gateway-agent / embedded-agent-run-lifecycle / process-command-lanes /
+#   infra-gateway-single-instance / llm-codex-websocket. + 기존 도메인 × 신규 3축 미실행 조합 다수.
+#   SKIP: gmail-watcher(upstream 경합). CODEOWNERS 게이트: auth-profiles / device-pairing.
+#   상세: domain-notes/domain-expansion-2026-05.md. grid §types(8)·§domains(20)·신규 persona 2종 등록 완료.
 ```
 
 셀 실행 프롬프트 템플릿 (Agent 도구, `subagent_type=general-purpose`):
