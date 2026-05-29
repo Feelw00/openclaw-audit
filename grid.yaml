@@ -774,9 +774,9 @@ cells:
   - id: agent-session-store-data-integrity
     domain: agent-session-store
     type: data-integrity
-    state: in_progress
+    state: done
     phase: 8
-    note: '2026-05-29 x+y축 확장 첫 셀. data-integrity-auditor -> agent-session-store. seed: domain-notes/domain-expansion-2026-05.md.'
+    note: '2026-05-29 x+y축 확장 첫 셀. data-integrity-auditor -> 3 FIND validate 3/3 PASS. FIND-001 auth.json raw writeFileSync(:119,164) crash truncate -> 자격증명 lockout (P1), FIND-002 session-manager rewriteFile(:804) migration 중 transcript 전소실(P1), FIND-003 settings.json raw write(:216) silent default reset(P2). 공통 반증 기준선 session-file-repair.ts:409 replaceFileAtomic (불균일 입증). domain-notes/agent-session-store.md 신규.'
     hints:
       - 'auth-storage.ts: auth.json raw writeFileSync(:119,164) vs exec-approvals.ts:710 atomic. crash 시 자격증명 lockout 경로.'
       - 'settings-manager.ts: 세션 settings raw write(:216).'
