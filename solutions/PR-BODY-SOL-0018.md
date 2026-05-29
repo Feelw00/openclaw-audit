@@ -32,7 +32,7 @@ Touched files (2 source + 1 test):
 
 ## Linked Issue
 
-No tracking issue filed yet. This PR stands alone; happy to open one and link `Closes #N` if maintainers prefer an issue first.
+Closes #88015
 
 ## Root Cause
 
