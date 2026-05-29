@@ -35,7 +35,7 @@ required_fields:
 
   symptom_type:
     type: enum
-    values: [memory-leak, lifecycle-gap, concurrency-race, error-boundary-gap, shutdown-gap, other]
+    values: [memory-leak, lifecycle-gap, concurrency-race, error-boundary-gap, shutdown-gap, data-integrity-gap, cross-store-gap, ordering-causality-gap, other]
 
   severity:
     type: enum

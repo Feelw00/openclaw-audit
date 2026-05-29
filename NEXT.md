@@ -126,16 +126,17 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   11 CAND(045~055) gatekeeper shadow 완료(shadow 47→58, 졸업 58/23/10).
 #   gatekeeper verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
 #
-#   approve 6건(045 047 048 049 050 053) R-11 cross-review proceed(6/6) → R-12 pre-sol proof 완료:
-#     → 6건 전부 status = **collected** (without-fix 빌드 c559776c51 에서 결함 결정론적 재현).
-#     proofs/PROOF-CAND-0NN-pre-20260529-*.md + scenarios/proof-CAND-0NN.py + CAND frontmatter pre_sol_proof.
-#     050 crash-before-ack / 045 crash-truncate 는 결정론적 주입으로 모델(post-sol 은 real process boundary 권장).
-#     다음 액션 = **SOL 작성** (사람 최종 검토 후) → R-13 post-sol proof → pre-pr cross-review → PR.
-#     SOL 작성 시 cross-review scope-down 권고 반영(epic→대표 FIND):
-#       045 → FIND-001(auth.json) 우선, 003 최약(후순위). 047 → FIND-002(즉시관측) 대표.
-#       048 → FIND-001(deterministic fs-fault) 먼저, 002 timing-test 후. 049 → FIND-001(targetParsed.ok gate).
-#       050 single(이미 단건). 053 → idle-queued-stall 분기로 scope.
-#     주의: 048 secrets-apply, 045 auth-storage = CODEOWNERS *auth*(secops) 게이트 → PR 전 owner 동의.
+#   approve 6건 cross-review proceed → pre-sol collected → **SOL 작성 완료(6건, scope-down 반영)**:
+#     SOL-0014(CAND-045, XS, data-integrity, auth.json→replaceFileAtomicSync) [CODEOWNERS *auth*]
+#     SOL-0015(CAND-047, S, cross-store, persist-before-in-memory, #83238 fix-shape)
+#     SOL-0016(CAND-048, S, cross-store, stage-all-temp-then-rename) [CODEOWNERS secrets+auth]
+#     SOL-0017(CAND-049, XS, cross-store, save-gate targetParsed.ok guard)
+#     SOL-0018(CAND-050, S, ordering, session 큐 recoveryState 마커+reconcile, outbound 대칭)
+#     SOL-0019(CAND-053, XS, ordering, in-flight dedup 키 정렬)
+#     전부 chosen_fix=0 제안 + repro_test_draft + pre_sol_proof:collected. status=drafted.
+#     다음 액션 = chosen_fix 확정(사람) → **R-13 post-sol proof**(with/without 비교, 사용자 허락) →
+#       pre-pr cross-review → PR. 045 crash-truncate / 050 crash-before-ack 는 post-sol 에서 real process boundary 권장.
+#     주의: SOL-0014(auth), SOL-0016(secrets+auth) = CODEOWNERS secops 게이트 → PR 전 owner 동의.
 #
 #   미진행 5건: uncertain 046/052/054 (scope-down 후보), reject 051/055 (abandon 우세). 사용자 판단 대기.
 #
