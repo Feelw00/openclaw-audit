@@ -28,9 +28,7 @@ Files touched:
 
 ## Linked Issue
 
-Closes #TBD
-
-(Issue to be filed at publish time; this line is updated with the real number before opening the PR.)
+Closes #88007
 
 ## Root Cause
 
