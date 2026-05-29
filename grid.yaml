@@ -178,6 +178,126 @@ domains:
       - src/agents/mcp-stdio-transport.ts
       - src/agents/mcp-config-shared.ts
 
+  # ── 2026-05-29 x축 확장: 5-agent 도메인 정찰 STRONG 10건 ──
+  # 후보 전체(deferred/SKIP 포함) + axis_surface evidence: domain-notes/domain-expansion-2026-05.md
+  - id: agent-session-store
+    name: 에이전트 세션 영속 (transcript/auth/settings 쓰기 규율)
+    allowed_paths:
+      - 'src/agents/sessions/session-manager.ts'
+      - 'src/agents/sessions/auth-storage.ts'
+      - 'src/agents/sessions/settings-manager.ts'
+      - 'src/agents/session-write-lock*.ts'
+      - 'src/agents/session-file-repair.ts'
+      - 'src/agents/session-transcript-repair.ts'
+      - 'src/agents/queued-file-writer.ts'
+    priority_files:
+      - src/agents/sessions/auth-storage.ts
+      - src/agents/sessions/session-manager.ts
+      - src/agents/session-write-lock.ts
+    # first cell: × data-integrity (auth.json/settings raw writeFileSync, rewriteFile sync 전체쓰기)
+
+  - id: session-events
+    name: 세션 이벤트 fire-and-forget 영속 + 전역 listener fan-out
+    allowed_paths:
+      - 'src/sessions/**'
+    priority_files:
+      - src/sessions/transcript-events.ts
+      - src/sessions/session-lifecycle-events.ts
+      - src/sessions/user-turn-transcript.ts
+    # first cell: × ordering-causality (영속-후-emit 인과 + 전역 listener throw 격리/누적)
+
+  - id: config-io
+    name: config 파일 쓰기/복구/마이그레이션 원자성
+    allowed_paths:
+      - 'src/config/io.ts'
+      - 'src/config/io.write-prepare.ts'
+      - 'src/config/io.clobber-snapshot.ts'
+      - 'src/config/mutate.ts'
+    priority_files:
+      - src/config/io.ts
+      - src/config/mutate.ts
+    # first cell: × data-integrity (io.ts:1093 복구 raw write, io.ts:1429 롤백 raw write)
+
+  - id: task-registry-store
+    name: task registry 인메모리 ↔ sqlite 교차 정합
+    allowed_paths:
+      - 'src/tasks/**'
+    priority_files:
+      - src/tasks/task-registry.ts
+      - src/tasks/task-registry.store.sqlite.ts
+      - src/tasks/task-registry.store.ts
+    # first cell: × cross-store-consistency (persist try/catch 부재 → 인메모리/sqlite 발산, 비트랜잭션 변형)
+
+  - id: secrets-apply
+    name: secrets apply 다중 스토어 비원자 커밋
+    allowed_paths:
+      - 'src/secrets/apply.ts'
+      - 'src/secrets/shared.ts'
+      - 'src/secrets/auth-store-paths.ts'
+      - 'src/secrets/configure.ts'
+    priority_files:
+      - src/secrets/apply.ts
+      - src/secrets/shared.ts
+    # first cell: × cross-store-consistency (config + N auth-store + .env 순차쓰기 + best-effort 롤백). PR 시 secrets 민감경로 확인.
+
+  - id: infra-state-migrations
+    name: 상태 디렉터리 다중 스토어 마이그레이션
+    allowed_paths:
+      - 'src/infra/state-migrations.ts'
+      - 'src/infra/state-migrations.fs.ts'
+    priority_files:
+      - src/infra/state-migrations.ts
+    # first cell: × cross-store-consistency (session+agent+plugin-state+channel-plans 순차 rename, 수동 롤백 = 트랜잭션 부재 방증)
+
+  - id: infra-delivery-queue
+    name: 영속 전송 큐 (outbound + session) 복구/재시도/ack
+    allowed_paths:
+      - 'src/infra/outbound/delivery-queue*.ts'
+      - 'src/infra/outbound/delivery-commit-hooks.ts'
+      - 'src/infra/session-delivery-queue*.ts'
+    priority_files:
+      - src/infra/outbound/delivery-queue-recovery.ts
+      - src/infra/session-delivery-queue-recovery.ts
+    # first cell: × ordering-causality (unknown-after-send 재조정 + 평행 큐 정책 불일치). infra-retry 와 별개 BACKOFF.
+
+  - id: diagnostic-recovery
+    name: 진단 stuck-session 복구 코디네이터
+    allowed_paths:
+      - 'src/logging/diagnostic-session-recovery-coordinator.ts'
+      - 'src/logging/diagnostic-stuck-session-recovery.runtime.ts'
+      - 'src/logging/diagnostic-session-state.ts'
+      - 'src/logging/diagnostic-session-attention.ts'
+      - 'src/logging/diagnostic-run-activity.ts'
+    priority_files:
+      - src/logging/diagnostic-session-recovery-coordinator.ts
+      - src/logging/diagnostic-stuck-session-recovery.runtime.ts
+    # first cell: × ordering-causality (generation 갱신 인과 + 중복 in-flight Set 2개 키 비대칭)
+
+  - id: acp-control-plane
+    name: ACP 세션 매니저 (런타임 캐시·turn 큐·idle eviction)
+    allowed_paths:
+      - 'src/acp/control-plane/**'
+      - 'src/acp/persistent-bindings.lifecycle.ts'
+      - 'src/acp/persistent-bindings.resolve.ts'
+    priority_files:
+      - src/acp/control-plane/manager.core.ts
+      - src/acp/control-plane/runtime-cache.ts
+      - src/acp/control-plane/session-actor-queue.ts
+    # first cell: × concurrency (turn timeout 후 detach + cancel/close grace race). 데몬 hot-path 싱글톤.
+
+  - id: bash-process-execution
+    name: Bash 도구 프로세스 실행 + 프로세스 레지스트리
+    allowed_paths:
+      - 'src/agents/bash-tools*.ts'
+      - 'src/agents/bash-process-registry.ts'
+      - 'src/agents/bash-process-references.ts'
+      - 'src/agents/run-cleanup-timeout.ts'
+      - 'src/agents/run-termination.ts'
+    priority_files:
+      - src/agents/bash-process-registry.ts
+      - src/agents/bash-tools.exec.ts
+    # first cell: × memory (runningSessions/finishedSessions 무경계 Map + sweeper 의존)
+
 # ────────────────────────────────────────────────────────────
 # 셀 (domain × type 교차)
 # ────────────────────────────────────────────────────────────
