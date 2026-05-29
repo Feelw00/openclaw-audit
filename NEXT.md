@@ -132,9 +132,22 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     | 0017 | fix/state-migrations-guard-corrupt-target @6747eb16e0 | collected | proceed | PR-BODY-SOL-0017.md | - |
 #     | 0018 | fix/session-delivery-reconcile-unacked @1dd073a5b4 | collected | proceed | PR-BODY-SOL-0018.md | - |
 #     | 0019 | fix/diagnostic-recovery-dedup-key-align @9fd04067d6 | collected | proceed | PR-BODY-SOL-0019.md | - |
-#     | 0014 | fix/auth-storage-atomic-write @294819ced4 | blocked-env(probe tsx 한계, vitest RED→GREEN 권위증거) | proceed | PR-BODY-SOL-0014.md | *auth* secops |
+#     | 0014 | fix/auth-storage-atomic-write @294819ced4 | blocked-env(real-process 미재현, 아래 2c) | proceed | PR-BODY-SOL-0014.md | *auth* secops |
 #     | 0016 | fix/secrets-apply-stage-then-commit @85fc0add0b | collected | proceed | PR-BODY-SOL-0016.md | secrets+auth secops |
 #     전부 base upstream/main 9de6abd8d7, RED→GREEN repro + tsgo:core green. PR body = solutions/PR-BODY-SOL-00NN.md (13섹션 + Real behavior proof).
+#
+#   ## 2c. SOL-0014 post-sol 미해결 (선택 — 발행은 이대로도 가능)
+#   - 5건(0015/0016/0017/0018/0019) post-sol collected 완료. 0014만 real behavior proof 자동 "collected" 미달.
+#   - 원인: auth.json crash-truncate 결함은 (a) proof-CAND-045.py 의 "authPath 직접 truncate" 모델은 fix(temp+rename)와
+#     무관해 with/without 동일 → blocked, (b) proof-CAND-045-realproc.py(real-process SIGKILL, trial당 25 retry)도
+#     이 macOS/APFS+Node 에선 raw freeze=0/100, atomic 0/100 → SIGKILL 이 buffered writeFileSync 를 파괴적으로 못 끊음
+#     (O_TRUNC 부분창 sub-ms). 즉 도구 문제 아니라 플랫폼 사실.
+#   - fix 는 commit 된 vitest RED→GREEN 회귀테스트(auth-storage.test.ts)로 입증됨. PR body Real behavior proof 는
+#     pre-sol(without-fix lockout 재현) + 그 회귀테스트로 구성 (로컬 evaluateRealBehaviorProof "passed" 확인) → 발행 가능.
+#   - 미시도(다음 선택지): ulimit -f 2048KB(=2MB) 단일 run 으로 6MB write 를 EFBIG/SIGXFSZ 로 중간에 끊어 결정론적
+#     raw 손상 재현 (real-process, 타이밍 무관). **주의: proof-CAND-045-realproc.py 의 writer 는 for(;;) 무한루프라
+#     orchestrator 중단 시 자식 node 가 무한 증식(이번에 210개 발생, 정리 완료). 재시도 시 단일-set writer + 포그라운드
+#     단일 run + 확실한 회수 필수.**
 #   ### PR 발행 절차 (사용자, SOL 하나씩):
 #     1. cd /Users/lucas/Project/openclaw-worktrees/pr-SOL-00NN
 #     2. (rebase 필요 시) git fetch upstream && git rebase upstream/main
