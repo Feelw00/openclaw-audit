@@ -126,6 +126,15 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   11 CAND(045~055) gatekeeper shadow 완료(shadow 47→58, 졸업 58/23/10).
 #   gatekeeper verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
 #
+#   [2026-05-29] 6 SOL 구현 완료(status: implemented) — fix 브랜치 준비됨(unpushed, PR 미발행):
+#     SOL-0014 fix/auth-storage-atomic-write @294819ced4 / 0015 fix/task-registry-persist-before-memory @900b4937b3
+#     0016 fix/secrets-apply-stage-then-commit @85fc0add0b / 0017 fix/state-migrations-guard-corrupt-target @6747eb16e0
+#     0018 fix/session-delivery-reconcile-unacked @1dd073a5b4 / 0019 fix/diagnostic-recovery-dedup-key-align @9fd04067d6
+#     전부 base upstream/main 9de6abd8d7, RED→GREEN repro + tsgo:core/test-types green. worktree: openclaw-worktrees/pr-SOL-00NN.
+#     남은 prep (PR 발행 전): (1) full pnpm build/check/test, (2) R-13 post-sol proof(with/without→PR body 6필드),
+#       (3) pre-pr cross-review, (4) PR body 12섹션 초안. 그 후 사용자가 push→PR 하나씩.
+#     CODEOWNERS secops 게이트: SOL-0014(auth), SOL-0016(secrets+auth).
+#   ---- (이력) ----
 #   approve 6건 cross-review proceed → pre-sol collected → **SOL 작성 완료(6건, scope-down 반영)**:
 #     SOL-0014(CAND-045, XS, data-integrity, auth.json→replaceFileAtomicSync) [CODEOWNERS *auth*]
 #     SOL-0015(CAND-047, S, cross-store, persist-before-in-memory, #83238 fix-shape)
