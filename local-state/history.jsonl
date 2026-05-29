@@ -306,3 +306,5 @@
 {"item_id": "SOL-0019", "from": null, "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-053 mode=post-sol", "at": "2026-05-29T08:46:48+00:00", "extras": {}}
 {"item_id": "SOL-0015", "from": "proof-unreproducible-post", "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-047 mode=post-sol", "at": "2026-05-29T08:50:11+00:00", "extras": {}}
 {"item_id": "SOL-0018", "from": "proof-unreproducible-post", "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-050 mode=post-sol", "at": "2026-05-29T08:55:12+00:00", "extras": {}}
+{"item_id": "SOL-0014", "from": null, "to": "proof-unreproducible-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-045 mode=post-sol", "at": "2026-05-29T09:03:24+00:00", "extras": {}}
+{"item_id": "SOL-0016", "from": null, "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-048 mode=post-sol", "at": "2026-05-29T09:03:59+00:00", "extras": {}}

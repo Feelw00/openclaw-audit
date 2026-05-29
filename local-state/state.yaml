@@ -2821,3 +2821,25 @@ items:
       at: '2026-05-29T08:46:48+00:00'
     created_at: '2026-05-29T08:46:48+00:00'
     updated_at: '2026-05-29T08:46:48+00:00'
+  SOL-0014:
+    kind: sol
+    state: proof-unreproducible-post
+    transitions:
+    - from: null
+      to: proof-unreproducible-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-045 mode=post-sol
+      at: '2026-05-29T09:03:24+00:00'
+    created_at: '2026-05-29T09:03:24+00:00'
+    updated_at: '2026-05-29T09:03:24+00:00'
+  SOL-0016:
+    kind: sol
+    state: proof-collected-post
+    transitions:
+    - from: null
+      to: proof-collected-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-048 mode=post-sol
+      at: '2026-05-29T09:03:59+00:00'
+    created_at: '2026-05-29T09:03:59+00:00'
+    updated_at: '2026-05-29T09:03:59+00:00'

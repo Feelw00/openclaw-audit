@@ -126,14 +126,24 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   11 CAND(045~055) gatekeeper shadow 완료(shadow 47→58, 졸업 58/23/10).
 #   gatekeeper verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
 #
-#   [2026-05-29] 6 SOL 구현 완료(status: implemented) — fix 브랜치 준비됨(unpushed, PR 미발행):
-#     SOL-0014 fix/auth-storage-atomic-write @294819ced4 / 0015 fix/task-registry-persist-before-memory @900b4937b3
-#     0016 fix/secrets-apply-stage-then-commit @85fc0add0b / 0017 fix/state-migrations-guard-corrupt-target @6747eb16e0
-#     0018 fix/session-delivery-reconcile-unacked @1dd073a5b4 / 0019 fix/diagnostic-recovery-dedup-key-align @9fd04067d6
-#     전부 base upstream/main 9de6abd8d7, RED→GREEN repro + tsgo:core/test-types green. worktree: openclaw-worktrees/pr-SOL-00NN.
-#     남은 prep (PR 발행 전): (1) full pnpm build/check/test, (2) R-13 post-sol proof(with/without→PR body 6필드),
-#       (3) pre-pr cross-review, (4) PR body 12섹션 초안. 그 후 사용자가 push→PR 하나씩.
-#     CODEOWNERS secops 게이트: SOL-0014(auth), SOL-0016(secrets+auth).
+#   [2026-05-29] 6 SOL **PR 발행 준비 완료** (push/PR 미실행 — 사용자가 하나씩 발행). 우선순위 0015/0017/0018/0019 → 0014/0016.
+#     | SOL | branch (worktree pr-SOL-00NN) @commit | post-sol | pre-pr | PR body | CODEOWNERS |
+#     | 0015 | fix/task-registry-persist-before-memory @900b4937b3 | collected | proceed | PR-BODY-SOL-0015.md | - |
+#     | 0017 | fix/state-migrations-guard-corrupt-target @6747eb16e0 | collected | proceed | PR-BODY-SOL-0017.md | - |
+#     | 0018 | fix/session-delivery-reconcile-unacked @1dd073a5b4 | collected | proceed | PR-BODY-SOL-0018.md | - |
+#     | 0019 | fix/diagnostic-recovery-dedup-key-align @9fd04067d6 | collected | proceed | PR-BODY-SOL-0019.md | - |
+#     | 0014 | fix/auth-storage-atomic-write @294819ced4 | blocked-env(probe tsx 한계, vitest RED→GREEN 권위증거) | proceed | PR-BODY-SOL-0014.md | *auth* secops |
+#     | 0016 | fix/secrets-apply-stage-then-commit @85fc0add0b | collected | proceed | PR-BODY-SOL-0016.md | secrets+auth secops |
+#     전부 base upstream/main 9de6abd8d7, RED→GREEN repro + tsgo:core green. PR body = solutions/PR-BODY-SOL-00NN.md (13섹션 + Real behavior proof).
+#   ### PR 발행 절차 (사용자, SOL 하나씩):
+#     1. cd /Users/lucas/Project/openclaw-worktrees/pr-SOL-00NN
+#     2. (rebase 필요 시) git fetch upstream && git rebase upstream/main
+#     3. **full green gate 필수**: pnpm build && pnpm check && pnpm test  (sandbox 밖/CI 동등 환경)
+#     4. git push origin <branch>  (fork Feelw00/openclaw)
+#     5. gh pr create --repo openclaw/openclaw --base main --head Feelw00:<branch> --title "<SOL title>" --body-file <PR body>
+#        (PR body 의 Closes #N 은 발행 시 채우거나 제거. AI-assisted 표시 포함됨.)
+#     6. 발행 후 clawsweeper/greptile 트리거 + 모니터링 (NEXT.md §0). SOL frontmatter status→pr-opened, openclaw_pr_number 기록.
+#     CODEOWNERS(0014/0016): secops 팀 리뷰 없이 머지 불가 — PR 에 secops notify.
 #   ---- (이력) ----
 #   approve 6건 cross-review proceed → pre-sol collected → **SOL 작성 완료(6건, scope-down 반영)**:
 #     SOL-0014(CAND-045, XS, data-integrity, auth.json→replaceFileAtomicSync) [CODEOWNERS *auth*]
