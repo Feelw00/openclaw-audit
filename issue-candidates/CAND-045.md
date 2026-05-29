@@ -2,54 +2,66 @@
 candidate_id: CAND-045
 type: epic
 finding_ids:
-  - FIND-agent-session-store-data-integrity-001
-  - FIND-agent-session-store-data-integrity-002
-  - FIND-agent-session-store-data-integrity-003
-cluster_rationale: |
-  공통 근본 원인 (cross-file, clusterer.md Step 3): agent-session-store 도메인의 세 영속
-  critical 파일 (auth.json / 세션 .jsonl transcript / settings.json) writer 가 모두
-  기존 파일을 raw writeFileSync 로 in-place O_TRUNC 후 재기록한다. truncate 와 마지막
-  바이트 flush 사이가 비원자라, 그 창에서 SIGKILL/전원차단 시 파일이 빈/부분 상태로
-  잔존한다. 동일 코드베이스에 atomic 헬퍼(replaceFileAtomic, temp 작성 후 atomic rename)
-  가 존재하고 session-file-repair.ts:409 가 동일한 .jsonl 전량 재기록에 실제로 이를
-  사용하는데, 더 critical 한 자격증명/대화기록/설정 writer 만 raw write 라 atomic 규율이
-  파일별로 불균일하다. 세 FIND 의 root_cause_chain 이 "왜 atomic rename 을 안 쓰는가
-  (불균일)" 단계에서 동일하게 evidence_ref=src/agents/session-file-repair.ts:409 를
-  가리키므로 같은 인프라 축(atomic 파일 교체 규율)의 단일 원인이다.
-
-  각 FIND root_cause_chain 인용:
-  - FIND-001 root_cause_chain[0]: "writeFileSync 가 대상 경로를 직접 O_TRUNC 로 열어
-    in-place 재기록 → truncate 와 flush 사이에 비원자 창 존재"
-    (evidence_ref: src/agents/sessions/auth-storage.ts:119)
-  - FIND-001 root_cause_chain[2]: "동일 코드베이스의 세션 transcript repair 경로는 동일한
-    in-place 재기록을 replaceFileAtomic(...) 으로 처리하는데 ... 자격증명 writer 는 raw
-    writeFileSync 를 쓴다 — atomic 규율이 파일별로 불균일"
-    (evidence_ref: src/agents/session-file-repair.ts:409)
-  - FIND-002 root_cause_chain[0]: "rewriteFile → writeJsonlEntriesSync → writeFileSync 가
-    대상 .jsonl 을 O_TRUNC 로 열어 전량 in-place 재기록하므로 truncate 와 마지막 엔트리
-    flush 사이가 비원자"
-    (evidence_ref: src/config/sessions/transcript-jsonl.ts:27)
-  - FIND-002 root_cause_chain[2]: "동일 세션 .jsonl 을 in-place 전량 재기록하는 또 다른
-    경로인 repairSessionFile() 은 replaceFileAtomic(...) 으로 처리한다. 같은 파일종류의
-    재기록인데 rewriteFile 만 raw writeFileSync"
-    (evidence_ref: src/agents/session-file-repair.ts:409)
-  - FIND-003 root_cause_chain[0]: "writeFileSync 가 대상 파일을 O_TRUNC 로 열어 in-place
-    재기록 → truncate 와 flush 사이 비원자 창"
-    (evidence_ref: src/agents/sessions/settings-manager.ts:216)
-  - FIND-003 root_cause_chain[3]: "동일 코드베이스의 transcript repair 가 in-place 재기록을
-    replaceFileAtomic(temp+rename) 으로 처리하는데(session-file-repair.ts:409), 사용자
-    설정 writer 는 raw writeFileSync — atomic 규율 불균일"
-    (evidence_ref: src/agents/session-file-repair.ts:409)
-
-  epic 으로 묶는 이유: 세 writer 는 서로 다른 파일/모듈이지만 결함의 본질
-  (raw writeFileSync in-place truncate → crash 비원자 창)과 이미 트리에 존재하는 동일
-  atomic 기준선(session-file-repair.ts:409 의 replaceFileAtomic)이 단일하다. 공통 인프라
-  축(atomic 파일 교체 규율의 일관 적용)을 다루므로 GH Issue 1건 + 자식 task 로 묶는 것이
-  N개 분산 발행보다 적합. (해결책 자체는 본 CAND 범위 밖.)
-proposed_title: "agent-session-store: 영속 critical 파일(auth.json / 세션 transcript / settings.json) writer 가 atomic 헬퍼 없이 raw writeFileSync 로 in-place truncate → crash 시 데이터 소실"
+- FIND-agent-session-store-data-integrity-001
+- FIND-agent-session-store-data-integrity-002
+- FIND-agent-session-store-data-integrity-003
+cluster_rationale: "공통 근본 원인 (cross-file, clusterer.md Step 3): agent-session-store\
+  \ 도메인의 세 영속\ncritical 파일 (auth.json / 세션 .jsonl transcript / settings.json) writer\
+  \ 가 모두\n기존 파일을 raw writeFileSync 로 in-place O_TRUNC 후 재기록한다. truncate 와 마지막\n바이트\
+  \ flush 사이가 비원자라, 그 창에서 SIGKILL/전원차단 시 파일이 빈/부분 상태로\n잔존한다. 동일 코드베이스에 atomic 헬퍼(replaceFileAtomic,\
+  \ temp 작성 후 atomic rename)\n가 존재하고 session-file-repair.ts:409 가 동일한 .jsonl 전량 재기록에\
+  \ 실제로 이를\n사용하는데, 더 critical 한 자격증명/대화기록/설정 writer 만 raw write 라 atomic 규율이\n파일별로\
+  \ 불균일하다. 세 FIND 의 root_cause_chain 이 \"왜 atomic rename 을 안 쓰는가\n(불균일)\" 단계에서 동일하게\
+  \ evidence_ref=src/agents/session-file-repair.ts:409 를\n가리키므로 같은 인프라 축(atomic 파일\
+  \ 교체 규율)의 단일 원인이다.\n\n각 FIND root_cause_chain 인용:\n- FIND-001 root_cause_chain[0]:\
+  \ \"writeFileSync 가 대상 경로를 직접 O_TRUNC 로 열어\n  in-place 재기록 → truncate 와 flush 사이에\
+  \ 비원자 창 존재\"\n  (evidence_ref: src/agents/sessions/auth-storage.ts:119)\n- FIND-001\
+  \ root_cause_chain[2]: \"동일 코드베이스의 세션 transcript repair 경로는 동일한\n  in-place 재기록을\
+  \ replaceFileAtomic(...) 으로 처리하는데 ... 자격증명 writer 는 raw\n  writeFileSync 를 쓴다 —\
+  \ atomic 규율이 파일별로 불균일\"\n  (evidence_ref: src/agents/session-file-repair.ts:409)\n\
+  - FIND-002 root_cause_chain[0]: \"rewriteFile → writeJsonlEntriesSync → writeFileSync\
+  \ 가\n  대상 .jsonl 을 O_TRUNC 로 열어 전량 in-place 재기록하므로 truncate 와 마지막 엔트리\n  flush 사이가\
+  \ 비원자\"\n  (evidence_ref: src/config/sessions/transcript-jsonl.ts:27)\n- FIND-002\
+  \ root_cause_chain[2]: \"동일 세션 .jsonl 을 in-place 전량 재기록하는 또 다른\n  경로인 repairSessionFile()\
+  \ 은 replaceFileAtomic(...) 으로 처리한다. 같은 파일종류의\n  재기록인데 rewriteFile 만 raw writeFileSync\"\
+  \n  (evidence_ref: src/agents/session-file-repair.ts:409)\n- FIND-003 root_cause_chain[0]:\
+  \ \"writeFileSync 가 대상 파일을 O_TRUNC 로 열어 in-place\n  재기록 → truncate 와 flush 사이 비원자\
+  \ 창\"\n  (evidence_ref: src/agents/sessions/settings-manager.ts:216)\n- FIND-003\
+  \ root_cause_chain[3]: \"동일 코드베이스의 transcript repair 가 in-place 재기록을\n  replaceFileAtomic(temp+rename)\
+  \ 으로 처리하는데(session-file-repair.ts:409), 사용자\n  설정 writer 는 raw writeFileSync — atomic\
+  \ 규율 불균일\"\n  (evidence_ref: src/agents/session-file-repair.ts:409)\n\nepic 으로 묶는\
+  \ 이유: 세 writer 는 서로 다른 파일/모듈이지만 결함의 본질\n(raw writeFileSync in-place truncate → crash\
+  \ 비원자 창)과 이미 트리에 존재하는 동일\natomic 기준선(session-file-repair.ts:409 의 replaceFileAtomic)이\
+  \ 단일하다. 공통 인프라\n축(atomic 파일 교체 규율의 일관 적용)을 다루므로 GH Issue 1건 + 자식 task 로 묶는 것이\n\
+  N개 분산 발행보다 적합. (해결책 자체는 본 CAND 범위 밖.)\n"
+proposed_title: 'agent-session-store: 영속 critical 파일(auth.json / 세션 transcript / settings.json)
+  writer 가 atomic 헬퍼 없이 raw writeFileSync 로 in-place truncate → crash 시 데이터 소실'
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-05-29
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-045-pre-20260529-070725.md
+  measurements:
+    scenario: proof-CAND-045
+    trials: 2
+    trialResults:
+    - branch: control
+      loadFailed: false
+      keyAfter: <present>
+      lockout: false
+    - branch: crash-truncate
+      keyBeforeCrash: <present>
+      fullBytes: 80
+      truncatedBytes: 40
+      loadFailed: true
+      keyAfterCrash: <empty>
+      keyAfterRecoverAttempt: <empty>
+      recoveryNoOp: true
+      lockout: true
+    controlOk: true
+    crashLockout: true
+  scenario: proof-CAND-045
 ---
 
 # agent-session-store: 영속 critical 파일 writer 가 atomic 헬퍼 없이 raw writeFileSync 로 in-place truncate → crash 시 데이터 소실

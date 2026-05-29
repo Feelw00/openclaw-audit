@@ -2701,3 +2701,69 @@ items:
       at: '2026-05-29T05:36:05+00:00'
     created_at: '2026-05-29T05:36:05+00:00'
     updated_at: '2026-05-29T05:36:05+00:00'
+  CAND-049:
+    kind: cand
+    state: proof-collected-pre
+    transitions:
+    - from: null
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-049 mode=pre-sol
+      at: '2026-05-29T07:06:37+00:00'
+    created_at: '2026-05-29T07:06:37+00:00'
+    updated_at: '2026-05-29T07:06:37+00:00'
+  CAND-045:
+    kind: cand
+    state: proof-collected-pre
+    transitions:
+    - from: null
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-045 mode=pre-sol
+      at: '2026-05-29T07:07:25+00:00'
+    created_at: '2026-05-29T07:07:25+00:00'
+    updated_at: '2026-05-29T07:07:25+00:00'
+  CAND-047:
+    kind: cand
+    state: proof-collected-pre
+    transitions:
+    - from: null
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-047 mode=pre-sol
+      at: '2026-05-29T07:07:40+00:00'
+    created_at: '2026-05-29T07:07:40+00:00'
+    updated_at: '2026-05-29T07:07:40+00:00'
+  CAND-048:
+    kind: cand
+    state: proof-collected-pre
+    transitions:
+    - from: null
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-048 mode=pre-sol
+      at: '2026-05-29T07:07:56+00:00'
+    created_at: '2026-05-29T07:07:56+00:00'
+    updated_at: '2026-05-29T07:07:56+00:00'
+  CAND-050:
+    kind: cand
+    state: proof-collected-pre
+    transitions:
+    - from: null
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-050 mode=pre-sol
+      at: '2026-05-29T07:08:11+00:00'
+    created_at: '2026-05-29T07:08:11+00:00'
+    updated_at: '2026-05-29T07:08:11+00:00'
+  CAND-053:
+    kind: cand
+    state: proof-collected-pre
+    transitions:
+    - from: null
+      to: proof-collected-pre
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-053 mode=pre-sol
+      at: '2026-05-29T07:08:28+00:00'
+    created_at: '2026-05-29T07:08:28+00:00'
+    updated_at: '2026-05-29T07:08:28+00:00'

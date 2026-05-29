@@ -2,43 +2,60 @@
 candidate_id: CAND-053
 type: single
 finding_ids:
-  - FIND-diagnostic-recovery-ordering-causality-001
-cluster_rationale: |
-  단독 결함 (clusterer.md Step 4): diagnostic-recovery 도메인의 나머지 두 FIND
-  (FIND-002/003)는 복구 apply 경로의 staleness 가드 정합성이라는 축으로 서로를 명시
-  cross_ref 하여 CAND-052(epic)로 묶이나, 본 FIND-001 은 그것들과 무관한 별도 축이다.
-  FIND-001 의 cross_refs 는 비어 있고(frontmatter cross_refs: []), 결함의 본질은 *복구
-  요청 dedup* 계층의 키 입도 불일치이지 *복구 결과 적용* 가드가 아니다.
-
-  root_cause_chain 인용:
-  - root_cause_chain[0] ("왜 같은 복구가 한쪽은 통과하고 한쪽은 skip 되는가?"):
-    "coordinator 키는 generation 을 포함(`${ref}:${stateGeneration ?? "unknown"}`)하고
-    runtime 키는 ref 만 쓴다. generation 이 바뀌면 coordinator 키는 달라지지만 runtime
-    키는 동일하다"
-    (evidence_ref: src/logging/diagnostic-session-recovery-coordinator.ts:68)
-  - root_cause_chain[1] ("왜 runtime 키는 generation 을 안 쓰는가?"): "runtime 의
-    recoveryKey 는 `params.sessionKey?.trim() || params.sessionId?.trim()` 만 반환하고
-    stateGeneration 필드를 참조하지 않는다"
-    (evidence_ref: src/logging/diagnostic-stuck-session-recovery.runtime.ts:55-57)
-  - root_cause_chain[3] ("왜 coordinator dedup 통과가 무의미한 요청을 발생시키는가?"):
-    "coordinator 가 새 키로 dedup 을 통과하면 emitSessionRecoveryRequested 를 발행하고
-    recover() 를 다시 부르지만, runtime 이 단일 ref 로 skip 하므로 실제 복구는 없고 중복
-    requested 이벤트만 남아 관측 신뢰성이 깨진다"
-    (evidence_ref: src/logging/diagnostic-session-recovery-coordinator.ts:151-171)
-
-  single 인 이유: 결함 surface 가 두 in-flight 추적 Set 의 키 정의 불일치
-  (coordinator recoveryRequestsInFlight = `ref:generation` vs runtime recoveriesInFlight =
-  `ref`)로, FIND-002/003 의 apply 가드 정합성과는 다른 코드 경로(요청 dispatch vs 결과
-  apply)이자 다른 결함 클래스(dedup 입도 vs staleness 검증)다. FIND-001 본문도 self-check
-  에서 "두 번째 recover() 가 runtime skip 대신 실제 실행되면 이중 abort 가능 — 단 그 경로는
-  이 셀 범위 밖" 이라 하여 FIND-002/003 과 다른 표면을 명시한다. 같은 도메인이나 root cause
-  가 무관하므로 별도 single CAND 로 분리(FIND 1 ↔ CAND 1). 영향은 관측/중복 이벤트 +
-  dedup 계층 불일치로 한정(state mutate 없음, skipped non-mutating) → P2.
-  (해결책 자체는 본 CAND 범위 밖.)
-proposed_title: "diagnostic 복구 in-flight 추적 2-Set 키 비대칭(coordinator ref:generation vs runtime ref) → 중복 session.recovery.requested 이벤트 + dedup 계층 불일치"
+- FIND-diagnostic-recovery-ordering-causality-001
+cluster_rationale: "단독 결함 (clusterer.md Step 4): diagnostic-recovery 도메인의 나머지 두 FIND\n\
+  (FIND-002/003)는 복구 apply 경로의 staleness 가드 정합성이라는 축으로 서로를 명시\ncross_ref 하여 CAND-052(epic)로\
+  \ 묶이나, 본 FIND-001 은 그것들과 무관한 별도 축이다.\nFIND-001 의 cross_refs 는 비어 있고(frontmatter\
+  \ cross_refs: []), 결함의 본질은 *복구\n요청 dedup* 계층의 키 입도 불일치이지 *복구 결과 적용* 가드가 아니다.\n\n\
+  root_cause_chain 인용:\n- root_cause_chain[0] (\"왜 같은 복구가 한쪽은 통과하고 한쪽은 skip 되는가?\"\
+  ):\n  \"coordinator 키는 generation 을 포함(`${ref}:${stateGeneration ?? \"unknown\"\
+  }`)하고\n  runtime 키는 ref 만 쓴다. generation 이 바뀌면 coordinator 키는 달라지지만 runtime\n  키는\
+  \ 동일하다\"\n  (evidence_ref: src/logging/diagnostic-session-recovery-coordinator.ts:68)\n\
+  - root_cause_chain[1] (\"왜 runtime 키는 generation 을 안 쓰는가?\"): \"runtime 의\n  recoveryKey\
+  \ 는 `params.sessionKey?.trim() || params.sessionId?.trim()` 만 반환하고\n  stateGeneration\
+  \ 필드를 참조하지 않는다\"\n  (evidence_ref: src/logging/diagnostic-stuck-session-recovery.runtime.ts:55-57)\n\
+  - root_cause_chain[3] (\"왜 coordinator dedup 통과가 무의미한 요청을 발생시키는가?\"):\n  \"coordinator\
+  \ 가 새 키로 dedup 을 통과하면 emitSessionRecoveryRequested 를 발행하고\n  recover() 를 다시 부르지만,\
+  \ runtime 이 단일 ref 로 skip 하므로 실제 복구는 없고 중복\n  requested 이벤트만 남아 관측 신뢰성이 깨진다\"\n\
+  \  (evidence_ref: src/logging/diagnostic-session-recovery-coordinator.ts:151-171)\n\
+  \nsingle 인 이유: 결함 surface 가 두 in-flight 추적 Set 의 키 정의 불일치\n(coordinator recoveryRequestsInFlight\
+  \ = `ref:generation` vs runtime recoveriesInFlight =\n`ref`)로, FIND-002/003 의 apply\
+  \ 가드 정합성과는 다른 코드 경로(요청 dispatch vs 결과\napply)이자 다른 결함 클래스(dedup 입도 vs staleness\
+  \ 검증)다. FIND-001 본문도 self-check\n에서 \"두 번째 recover() 가 runtime skip 대신 실제 실행되면 이중\
+  \ abort 가능 — 단 그 경로는\n이 셀 범위 밖\" 이라 하여 FIND-002/003 과 다른 표면을 명시한다. 같은 도메인이나 root\
+  \ cause\n가 무관하므로 별도 single CAND 로 분리(FIND 1 ↔ CAND 1). 영향은 관측/중복 이벤트 +\ndedup 계층\
+  \ 불일치로 한정(state mutate 없음, skipped non-mutating) → P2.\n(해결책 자체는 본 CAND 범위 밖.)\n"
+proposed_title: diagnostic 복구 in-flight 추적 2-Set 키 비대칭(coordinator ref:generation
+  vs runtime ref) → 중복 session.recovery.requested 이벤트 + dedup 계층 불일치
 proposed_severity: P2
 existing_issue: null
 created_at: 2026-05-29
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-053-pre-20260529-070828.md
+  measurements:
+    scenario: proof-CAND-053
+    trials: 2
+    withBump:
+      bumpGeneration: true
+      requestedCount: 2
+      requestedGenerations:
+      - 0
+      - 1
+    noBump:
+      bumpGeneration: false
+      requestedCount: 1
+      requestedGenerations:
+      - 0
+    runtime:
+      t1RuntimeStatus: aborted
+      t2RuntimeStatus: skipped
+      t2RuntimeReason: already_in_flight
+    coordinatorDuplicateOnBump: 2
+    coordinatorDedupNoBump: 1
+    runtimeRefDedup: true
+    asymmetryReproduced: true
+  scenario: proof-CAND-053
 ---
 
 # diagnostic-recovery: in-flight 키 비대칭으로 dedup 입도 불일치 → 중복 requested 이벤트

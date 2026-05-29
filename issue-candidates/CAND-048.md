@@ -2,51 +2,77 @@
 candidate_id: CAND-048
 type: epic
 finding_ids:
-  - FIND-secrets-apply-cross-store-consistency-001
-  - FIND-secrets-apply-cross-store-consistency-002
-cluster_rationale: |
-  공통 근본 원인 (cross-cut within file, clusterer.md Step 2/3): secrets apply 의 write
-  모드 커밋(apply.ts, 한 논리 트랜잭션 = plaintext 자격증명 → SecretRef 마이그레이션)이
-  config.json + N개 auth-profiles.json + legacy auth-json + .env 를 다루면서 파일 간
-  스토어 경계 보호를 결여한다. 두 FIND 는 같은 커밋 경로(apply.ts:818-855)의 같은 store
-  집합(config↔auth-store)에 대한 두 갈래의 경계 부재이고, frontmatter 에서 서로 cross_refs
-  되어 있어 동일 축으로 보는 저자 의도가 명시돼 있다(persona: "이미 cross_refs 된 경우 그
-  의도 존중"). 두 FIND 의 반증(counter_evidence) 모두 동일한 비대칭을 근거로 든다 —
-  config 경로(replaceConfigFile)는 withFileLock+baseHash CAS(mutate.ts:475/499)로 보호되는데
-  satellite auth-store write 만 그 보호 밖이라는 "lock/CAS 가 한쪽에만"(E 카테고리) 비대칭.
-
-  각 FIND root_cause_chain 인용:
-  - FIND-...-001 root_cause_chain[0] ("config 와 satellite 스토어가 왜 한 트랜잭션으로
-    묶이지 않는가"): "커밋 블록이 replaceConfigFile 1회 + for 루프 writeTextFileAtomic N회를
-    단순 나열할 뿐 파일 간 2PC/저널/단일 lock 경계가 없다" (evidence_ref: src/secrets/apply.ts:843)
-  - FIND-...-001 root_cause_chain[2] ("부분 커밋이 자동 복구되지 않는가"): "롤백이
-    best-effort 다. restoreFileSnapshot 호출이 각각 try{}catch{} 로 복원 실패를 무시한다"
-    (evidence_ref: src/secrets/apply.ts:850)
-  - FIND-...-002 root_cause_chain[0] ("apply 의 auth-store write 가 동시 writer 와
-    충돌하는가"): "apply 가 auth-profiles.json 을 writeTextFileAtomic 로 커밋할 때
-    AUTH_STORE_LOCK_OPTIONS 파일락을 잡지 않아 정규 writer 와 mutual-exclusion 되지 않는다"
-    (evidence_ref: src/secrets/apply.ts:818)
-  - FIND-...-002 root_cause_chain[1] ("auth-profiles.json 에 정규 락 규약이 존재하는가"):
-    "정규 writer updateAuthProfileStoreWithLock 은 withFileLock(authPath,
-    AUTH_STORE_LOCK_OPTIONS) 안에서 reload→update→save 하며, 주석이 이 락의 목적이
-    lost-update 방지임을 명시" (evidence_ref: src/agents/auth-profiles/store.ts:705)
-
-  두 FIND 의 root cause 가 동일 stem 에서 갈라진다: apply 의 커밋 블록이 config↔auth-store
-  를 다루면서 (1) 파일 간 트랜잭션/저널 경계(FIND-001)와 (2) 동시 writer 직렬화 락
-  (FIND-002)을 둘 다 결여한다. 둘 다 같은 store 집합(자격증명 SoT)에 대한 발산을 영속시키며,
-  src/secrets/ 전체에 트랜잭션/락 키워드 match 0(R-3 grep, 두 FIND counter_evidence 공통)
-  이라는 동일 증거를 공유한다.
-
-  epic 으로 묶는 이유: 같은 파일(secrets/apply.ts)의 같은 커밋 경로가 같은 store 집합
-  (config↔auth-store)에 대해 경계 보호를 결여한다는 단일 인프라 축이다. config/auth-store
-  교차-스토어 커밋의 경계 도입이라는 공통 surface 를 다루므로 GH Issue 1건 + 자식 task 가
-  적합. 단, 두 FIND 의 fix 표면(파일 간 트랜잭션 경계 vs AUTH_STORE_LOCK 획득)이 구별되므로
-  gatekeeper/SOL 단계에서 자식 task 로 분리 가능성이 높다. severity 는 두 FIND 모두 P1.
-  (해결책 자체는 본 CAND 범위 밖.)
-proposed_title: "secrets apply: config↔auth-store 다중스토어 커밋이 파일 간 트랜잭션 경계와 AUTH_STORE_LOCK 을 모두 결여 → 부분 마이그레이션 / 동시 OAuth refresh lost-update"
+- FIND-secrets-apply-cross-store-consistency-001
+- FIND-secrets-apply-cross-store-consistency-002
+cluster_rationale: "공통 근본 원인 (cross-cut within file, clusterer.md Step 2/3): secrets\
+  \ apply 의 write\n모드 커밋(apply.ts, 한 논리 트랜잭션 = plaintext 자격증명 → SecretRef 마이그레이션)이\n\
+  config.json + N개 auth-profiles.json + legacy auth-json + .env 를 다루면서 파일 간\n스토어 경계\
+  \ 보호를 결여한다. 두 FIND 는 같은 커밋 경로(apply.ts:818-855)의 같은 store\n집합(config↔auth-store)에\
+  \ 대한 두 갈래의 경계 부재이고, frontmatter 에서 서로 cross_refs\n되어 있어 동일 축으로 보는 저자 의도가 명시돼 있다(persona:\
+  \ \"이미 cross_refs 된 경우 그\n의도 존중\"). 두 FIND 의 반증(counter_evidence) 모두 동일한 비대칭을 근거로\
+  \ 든다 —\nconfig 경로(replaceConfigFile)는 withFileLock+baseHash CAS(mutate.ts:475/499)로\
+  \ 보호되는데\nsatellite auth-store write 만 그 보호 밖이라는 \"lock/CAS 가 한쪽에만\"(E 카테고리) 비대칭.\n\
+  \n각 FIND root_cause_chain 인용:\n- FIND-...-001 root_cause_chain[0] (\"config 와 satellite\
+  \ 스토어가 왜 한 트랜잭션으로\n  묶이지 않는가\"): \"커밋 블록이 replaceConfigFile 1회 + for 루프 writeTextFileAtomic\
+  \ N회를\n  단순 나열할 뿐 파일 간 2PC/저널/단일 lock 경계가 없다\" (evidence_ref: src/secrets/apply.ts:843)\n\
+  - FIND-...-001 root_cause_chain[2] (\"부분 커밋이 자동 복구되지 않는가\"): \"롤백이\n  best-effort\
+  \ 다. restoreFileSnapshot 호출이 각각 try{}catch{} 로 복원 실패를 무시한다\"\n  (evidence_ref: src/secrets/apply.ts:850)\n\
+  - FIND-...-002 root_cause_chain[0] (\"apply 의 auth-store write 가 동시 writer 와\n \
+  \ 충돌하는가\"): \"apply 가 auth-profiles.json 을 writeTextFileAtomic 로 커밋할 때\n  AUTH_STORE_LOCK_OPTIONS\
+  \ 파일락을 잡지 않아 정규 writer 와 mutual-exclusion 되지 않는다\"\n  (evidence_ref: src/secrets/apply.ts:818)\n\
+  - FIND-...-002 root_cause_chain[1] (\"auth-profiles.json 에 정규 락 규약이 존재하는가\"):\n\
+  \  \"정규 writer updateAuthProfileStoreWithLock 은 withFileLock(authPath,\n  AUTH_STORE_LOCK_OPTIONS)\
+  \ 안에서 reload→update→save 하며, 주석이 이 락의 목적이\n  lost-update 방지임을 명시\" (evidence_ref:\
+  \ src/agents/auth-profiles/store.ts:705)\n\n두 FIND 의 root cause 가 동일 stem 에서 갈라진다:\
+  \ apply 의 커밋 블록이 config↔auth-store\n를 다루면서 (1) 파일 간 트랜잭션/저널 경계(FIND-001)와 (2) 동시\
+  \ writer 직렬화 락\n(FIND-002)을 둘 다 결여한다. 둘 다 같은 store 집합(자격증명 SoT)에 대한 발산을 영속시키며,\n\
+  src/secrets/ 전체에 트랜잭션/락 키워드 match 0(R-3 grep, 두 FIND counter_evidence 공통)\n이라는 동일\
+  \ 증거를 공유한다.\n\nepic 으로 묶는 이유: 같은 파일(secrets/apply.ts)의 같은 커밋 경로가 같은 store 집합\n(config↔auth-store)에\
+  \ 대해 경계 보호를 결여한다는 단일 인프라 축이다. config/auth-store\n교차-스토어 커밋의 경계 도입이라는 공통 surface\
+  \ 를 다루므로 GH Issue 1건 + 자식 task 가\n적합. 단, 두 FIND 의 fix 표면(파일 간 트랜잭션 경계 vs AUTH_STORE_LOCK\
+  \ 획득)이 구별되므로\ngatekeeper/SOL 단계에서 자식 task 로 분리 가능성이 높다. severity 는 두 FIND 모두 P1.\n\
+  (해결책 자체는 본 CAND 범위 밖.)\n"
+proposed_title: 'secrets apply: config↔auth-store 다중스토어 커밋이 파일 간 트랜잭션 경계와 AUTH_STORE_LOCK
+  을 모두 결여 → 부분 마이그레이션 / 동시 OAuth refresh lost-update'
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-05-29
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-048-pre-20260529-070756.md
+  measurements:
+    scenario: proof-CAND-048
+    trials: 2
+    control:
+      injectFault: false
+      threw: false
+      errMsg: ''
+      config: ref
+      stores:
+        store#1-alpha: ref
+        store#2-beta: ref
+      migratedStores: 2
+      totalStores: 2
+      diverged: false
+    defect:
+      injectFault: true
+      threw: true
+      errMsg: 'Error: Secrets apply failed: Error: INJECTED-FAULT: ENOSPC at store#2
+        commit'
+      config: plaintext
+      stores:
+        store#1-alpha: ref
+        store#2-beta: plaintext
+      migratedStores: 1
+      totalStores: 2
+      diverged: true
+    defectThrew: true
+    defectDiverged: true
+    defectMigratedStores: 1
+    defectTotalStores: 2
+    controlDiverged: false
+    controlMigratedStores: 2
+  scenario: proof-CAND-048
 ---
 
 # secrets apply: config↔auth-store 다중스토어 커밋의 경계 부재 (트랜잭션 + 락)

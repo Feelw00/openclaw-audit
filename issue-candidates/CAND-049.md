@@ -2,50 +2,61 @@
 candidate_id: CAND-049
 type: epic
 finding_ids:
-  - FIND-infra-state-migrations-cross-store-consistency-001
-  - FIND-infra-state-migrations-cross-store-consistency-002
-cluster_rationale: |
-  공통 근본 원인 (cross-cut within file, clusterer.md Step 2/3): src/infra/state-migrations.ts
-  의 legacy→target 마이그레이션이 다수의 영속 스토어를 다루면서 묶는 트랜잭션/체크포인트/
-  백업 경계 없이 비가역 fs 연산을 즉시 커밋한다. 두 FIND 의 root_cause_chain 이 동일하게
-  "트랜잭션/락/CAS 가 전혀 없다(rg withWriteTransaction|BEGIN IMMEDIATE|withFileLock|baseHash|CAS|checkpoint
-  → match 0)" 라는 같은 grep 증거로 수렴한다. 즉 한쪽은 손상-감지 분기의 비대칭 보호 부재
-  (FIND-001), 다른 한쪽은 멀티스토어 시퀀스의 트랜잭션 부재(FIND-002)지만, 둘 다 "이
-  마이그레이션 모듈에 교차-스토어 경계 프리미티브가 부재" 라는 단일 인프라 축의 발현이다.
-
-  각 FIND root_cause_chain 인용:
-  - FIND-...-001 root_cause_chain[2] ("왜 legacy 와 달리 target 손상에는 보호 분기가
-    없는가"): "legacy unreadable 은 :1191 warn + :1239 legacyParsed.ok 가드로 삭제를 막지만,
-    target unreadable 에 대응하는 targetParsed.ok 검사가 save 경로에 전혀 없어 비대칭 방어"
-    (evidence_ref: src/infra/state-migrations.ts:1239)
-  - FIND-...-001 root_cause_chain[3] ("왜 손상 시 백업/abort 같은 안전판이 없는가"):
-    "마이그레이션이 다단계 fs 연산을 묶는 트랜잭션/체크포인트 없이 진행되며(grep:
-    withWriteTransaction|withFileLock|BEGIN|baseHash|CAS 전부 match 없음) 손상 데이터 보존
-    정책이 부재" (evidence_ref: src/infra/state-migrations.ts:1209)
-  - FIND-...-002 root_cause_chain[0] ("왜 부분 마이그레이션(split state)이 영속되는가"):
-    "4개 스토어 이동이 묶는 트랜잭션/2PC/체크포인트 없이 순차 await 되고, 각 단계가 비가역
-    renameSync/rmSync 를 즉시 커밋하므로 중간 throw 시 앞 단계만 적용된 채 종료"
-    (evidence_ref: src/infra/state-migrations.ts:1316)
-  - FIND-...-002 root_cause_chain[3] ("왜 트랜잭션/락 보호가 아예 없는가"): "rg
-    withWriteTransaction|BEGIN IMMEDIATE|withFileLock|baseHash|CAS|checkpoint 가 두 파일에서
-    match 0 — 이 모듈은 트랜잭션 프리미티브를 전혀 쓰지 않음. autoMigrateLegacyStateDir 의
-    수동 롤백(:996)은 단일 rename 한정이라 멀티스토어 시퀀스엔 적용 안 됨"
-    (evidence_ref: src/infra/state-migrations.ts:996)
-
-  두 FIND 의 counter_evidence 도 같은 사실을 공유한다: saveSessionStore(store.ts:604)는
-  락+단일파일 atomic write 라 단일파일 원자성은 안전하므로, 결함은 단일파일 비원자가 아니라
-  교차-스토어/멀티스토어 경계 부재다. 유일한 롤백(:996)은 단일 state-dir rename 한정.
-
-  epic 으로 묶는 이유: 같은 파일(infra/state-migrations.ts)의 같은 마이그레이션 경로
-  (runLegacyStateMigrations → migrateLegacySessions 등)가 같은 결함 클래스(트랜잭션/백업
-  경계 부재로 인한 비가역 1회성 손상)를 공유하고, 위반된 기준선(트랜잭션 프리미티브 부재,
-  grep match 0)도 동일하다. 마이그레이션 트랜잭션/체크포인트/손상-보존 경계라는 공통
-  surface 를 다루므로 GH Issue 1건 + 자식 task 가 적합. severity 는 최고값 P1 상속.
-  (해결책 자체는 본 CAND 범위 밖.)
-proposed_title: "infra/state-migrations.ts: legacy→target 마이그레이션이 트랜잭션/백업 경계 없이 비가역 fs 연산 커밋 → 손상 target 덮어쓰기 영구 유실 + 멀티스토어 split state"
+- FIND-infra-state-migrations-cross-store-consistency-001
+- FIND-infra-state-migrations-cross-store-consistency-002
+cluster_rationale: "공통 근본 원인 (cross-cut within file, clusterer.md Step 2/3): src/infra/state-migrations.ts\n\
+  의 legacy→target 마이그레이션이 다수의 영속 스토어를 다루면서 묶는 트랜잭션/체크포인트/\n백업 경계 없이 비가역 fs 연산을 즉시\
+  \ 커밋한다. 두 FIND 의 root_cause_chain 이 동일하게\n\"트랜잭션/락/CAS 가 전혀 없다(rg withWriteTransaction|BEGIN\
+  \ IMMEDIATE|withFileLock|baseHash|CAS|checkpoint\n→ match 0)\" 라는 같은 grep 증거로 수렴한다.\
+  \ 즉 한쪽은 손상-감지 분기의 비대칭 보호 부재\n(FIND-001), 다른 한쪽은 멀티스토어 시퀀스의 트랜잭션 부재(FIND-002)지만,\
+  \ 둘 다 \"이\n마이그레이션 모듈에 교차-스토어 경계 프리미티브가 부재\" 라는 단일 인프라 축의 발현이다.\n\n각 FIND root_cause_chain\
+  \ 인용:\n- FIND-...-001 root_cause_chain[2] (\"왜 legacy 와 달리 target 손상에는 보호 분기가\n\
+  \  없는가\"): \"legacy unreadable 은 :1191 warn + :1239 legacyParsed.ok 가드로 삭제를 막지만,\n\
+  \  target unreadable 에 대응하는 targetParsed.ok 검사가 save 경로에 전혀 없어 비대칭 방어\"\n  (evidence_ref:\
+  \ src/infra/state-migrations.ts:1239)\n- FIND-...-001 root_cause_chain[3] (\"왜 손상\
+  \ 시 백업/abort 같은 안전판이 없는가\"):\n  \"마이그레이션이 다단계 fs 연산을 묶는 트랜잭션/체크포인트 없이 진행되며(grep:\n\
+  \  withWriteTransaction|withFileLock|BEGIN|baseHash|CAS 전부 match 없음) 손상 데이터 보존\n\
+  \  정책이 부재\" (evidence_ref: src/infra/state-migrations.ts:1209)\n- FIND-...-002 root_cause_chain[0]\
+  \ (\"왜 부분 마이그레이션(split state)이 영속되는가\"):\n  \"4개 스토어 이동이 묶는 트랜잭션/2PC/체크포인트 없이 순차\
+  \ await 되고, 각 단계가 비가역\n  renameSync/rmSync 를 즉시 커밋하므로 중간 throw 시 앞 단계만 적용된 채 종료\"\
+  \n  (evidence_ref: src/infra/state-migrations.ts:1316)\n- FIND-...-002 root_cause_chain[3]\
+  \ (\"왜 트랜잭션/락 보호가 아예 없는가\"): \"rg\n  withWriteTransaction|BEGIN IMMEDIATE|withFileLock|baseHash|CAS|checkpoint\
+  \ 가 두 파일에서\n  match 0 — 이 모듈은 트랜잭션 프리미티브를 전혀 쓰지 않음. autoMigrateLegacyStateDir 의\n\
+  \  수동 롤백(:996)은 단일 rename 한정이라 멀티스토어 시퀀스엔 적용 안 됨\"\n  (evidence_ref: src/infra/state-migrations.ts:996)\n\
+  \n두 FIND 의 counter_evidence 도 같은 사실을 공유한다: saveSessionStore(store.ts:604)는\n락+단일파일\
+  \ atomic write 라 단일파일 원자성은 안전하므로, 결함은 단일파일 비원자가 아니라\n교차-스토어/멀티스토어 경계 부재다. 유일한 롤백(:996)은\
+  \ 단일 state-dir rename 한정.\n\nepic 으로 묶는 이유: 같은 파일(infra/state-migrations.ts)의 같은\
+  \ 마이그레이션 경로\n(runLegacyStateMigrations → migrateLegacySessions 등)가 같은 결함 클래스(트랜잭션/백업\n\
+  경계 부재로 인한 비가역 1회성 손상)를 공유하고, 위반된 기준선(트랜잭션 프리미티브 부재,\ngrep match 0)도 동일하다. 마이그레이션\
+  \ 트랜잭션/체크포인트/손상-보존 경계라는 공통\nsurface 를 다루므로 GH Issue 1건 + 자식 task 가 적합. severity\
+  \ 는 최고값 P1 상속.\n(해결책 자체는 본 CAND 범위 밖.)\n"
+proposed_title: 'infra/state-migrations.ts: legacy→target 마이그레이션이 트랜잭션/백업 경계 없이 비가역
+  fs 연산 커밋 → 손상 target 덮어쓰기 영구 유실 + 멀티스토어 split state'
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-05-29
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-049-pre-20260529-070637.md
+  measurements:
+    scenario: proof-CAND-049
+    trials: 2
+    beforeHasSentinel: true
+    targetFileExists: true
+    overwritten: true
+    targetCorruptBytesSurvived: false
+    afterParsesAsObject: true
+    targetOnlyKeyPresent: false
+    legacyKeysPresent: true
+    warnedAboutTargetCorruption: false
+    afterKeys:
+    - agent:main:hooks:legacy-key-1
+    - agent:main:hooks:legacy-key-2
+    warnings: []
+    changes:
+    - Merged sessions store → /tmp/claude-501/cand049-state-nWFj8W/agents/main/sessions/sessions.json
+    threw: null
+  scenario: proof-CAND-049
 ---
 
 # infra/state-migrations.ts: 마이그레이션 경계 부재 → 손상 덮어쓰기 + 멀티스토어 split state

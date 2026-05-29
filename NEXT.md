@@ -126,10 +126,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   11 CAND(045~055) gatekeeper shadow 완료(shadow 47→58, 졸업 58/23/10).
 #   gatekeeper verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
 #
-#   approve 6건(045 047 048 049 050 053) R-11 post-harness cross-review 완료(5-agent 각):
-#     → 6건 전부 primary_decision = **proceed** (real 우세, fp/dup 0).
-#     verdict 원문 metrics/cross-review-verdicts/, 집계 metrics/cross-review-CAND-0NN-*.jsonl.
-#     다음 액션 = **R-12 pre-sol real behavior proof** (모든 severity, 사용자 허락 필수) → SOL → PR.
+#   approve 6건(045 047 048 049 050 053) R-11 cross-review proceed(6/6) → R-12 pre-sol proof 완료:
+#     → 6건 전부 status = **collected** (without-fix 빌드 c559776c51 에서 결함 결정론적 재현).
+#     proofs/PROOF-CAND-0NN-pre-20260529-*.md + scenarios/proof-CAND-0NN.py + CAND frontmatter pre_sol_proof.
+#     050 crash-before-ack / 045 crash-truncate 는 결정론적 주입으로 모델(post-sol 은 real process boundary 권장).
+#     다음 액션 = **SOL 작성** (사람 최종 검토 후) → R-13 post-sol proof → pre-pr cross-review → PR.
 #     SOL 작성 시 cross-review scope-down 권고 반영(epic→대표 FIND):
 #       045 → FIND-001(auth.json) 우선, 003 최약(후순위). 047 → FIND-002(즉시관측) 대표.
 #       048 → FIND-001(deterministic fs-fault) 먼저, 002 timing-test 후. 049 → FIND-001(targetParsed.ok gate).

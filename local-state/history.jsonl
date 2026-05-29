@@ -294,3 +294,9 @@
 {"item_id": "FIND-diagnostic-recovery-ordering-causality-003", "from": null, "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-05-29T05:36:04+00:00", "extras": {}}
 {"item_id": "FIND-session-events-ordering-causality-001", "from": null, "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-05-29T05:36:05+00:00", "extras": {}}
 {"item_id": "FIND-session-events-ordering-causality-002", "from": null, "to": "discovered", "actor": "validate", "reason": "validate passed", "at": "2026-05-29T05:36:05+00:00", "extras": {}}
+{"item_id": "CAND-049", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-049 mode=pre-sol", "at": "2026-05-29T07:06:37+00:00", "extras": {}}
+{"item_id": "CAND-045", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-045 mode=pre-sol", "at": "2026-05-29T07:07:25+00:00", "extras": {}}
+{"item_id": "CAND-047", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-047 mode=pre-sol", "at": "2026-05-29T07:07:40+00:00", "extras": {}}
+{"item_id": "CAND-048", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-048 mode=pre-sol", "at": "2026-05-29T07:07:56+00:00", "extras": {}}
+{"item_id": "CAND-050", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-050 mode=pre-sol", "at": "2026-05-29T07:08:11+00:00", "extras": {}}
+{"item_id": "CAND-053", "from": null, "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-053 mode=pre-sol", "at": "2026-05-29T07:08:28+00:00", "extras": {}}

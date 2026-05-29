@@ -2,36 +2,49 @@
 candidate_id: CAND-050
 type: single
 finding_ids:
-  - FIND-infra-delivery-queue-ordering-causality-001
-cluster_rationale: |
-  단독 결함 (clusterer.md Step 4): infra-delivery-queue 도메인의 유일한 신규 FIND.
-  session-delivery 큐의 복구 경로 drainQueuedEntry 가 deliver 성공(agentTurn 재실행 +
-  플랫폼 전송 완료) 직후 ack 직전 crash 시, 큐 파일이 pending 으로 남아 다음 복구가
-  동일 agentTurn 을 reconciliation 없이 blind replay 한다.
-
-  root_cause_chain 인용:
-  - root_cause_chain[0] ("왜 unack 된 성공 전달이 그대로 재전달되는가"): "drainQueuedEntry
-    가 deliver 호출 결과를 recovered/failed 두 갈래로만 분류하고, 재진입 시 '이미
-    전송되었는지' 를 묻는 reconciliation 분기가 없다. deliver 직전·직후에
-    send-attempt/outcome 마커도 기록하지 않는다"
-    (evidence_ref: src/infra/session-delivery-queue-recovery.ts:107)
-  - root_cause_chain[2] ("왜 평행 outbound 큐와 정책이 갈리는가"): "outbound 큐는 deliver 가
-    send_attempt_started/unknown_after_send 마커를 기록하고(deliver.ts:600,618), 복구 시 그
-    상태면 adapter reconcileUnknownSend 로 실제 전송 여부를 확인한 뒤에만 replay 하며 확인
-    불가 시 blind replay 를 거부한다. session 큐는 이 메커니즘 전체를 복제하지 않았다"
-    (evidence_ref: src/infra/outbound/delivery-queue-recovery.ts:370)
-
-  single 인 이유: 이 도메인에 묶을 다른 신규 FIND 가 없다(FIND 1 ↔ CAND 1). 결함의 본질은
-  session 큐 storage 에 recoveryState/send-attempt 마커 자리 자체가 없고(QueuedSessionDelivery
-  타입에 필드 부재, storage.ts:62) idempotencyKey(enqueue-only) / expectedSessionId(세션 변경만
-  차단) 가드가 unack 재-deliver 를 막지 못한다는 점이다. 비대칭 warrant 의 기준선이 평행
-  outbound 큐(reconcileUnknownSend + blind replay 거부)라는 점은 cross-store 가 아니라 동일
-  도메인 내 두 큐의 정책 divergence 다 — 별도 도메인이 아니므로 단일 CAND. (해결책 자체는 본
-  CAND 범위 밖.)
-proposed_title: "session-delivery 큐: unacked agentTurn 을 reconciliation 없이 blind replay → crash 후 턴 중복 실행 + 응답 중복 전송 (outbound 큐 대비 비대칭)"
+- FIND-infra-delivery-queue-ordering-causality-001
+cluster_rationale: "단독 결함 (clusterer.md Step 4): infra-delivery-queue 도메인의 유일한 신규\
+  \ FIND.\nsession-delivery 큐의 복구 경로 drainQueuedEntry 가 deliver 성공(agentTurn 재실행 +\n\
+  플랫폼 전송 완료) 직후 ack 직전 crash 시, 큐 파일이 pending 으로 남아 다음 복구가\n동일 agentTurn 을 reconciliation\
+  \ 없이 blind replay 한다.\n\nroot_cause_chain 인용:\n- root_cause_chain[0] (\"왜 unack\
+  \ 된 성공 전달이 그대로 재전달되는가\"): \"drainQueuedEntry\n  가 deliver 호출 결과를 recovered/failed\
+  \ 두 갈래로만 분류하고, 재진입 시 '이미\n  전송되었는지' 를 묻는 reconciliation 분기가 없다. deliver 직전·직후에\n\
+  \  send-attempt/outcome 마커도 기록하지 않는다\"\n  (evidence_ref: src/infra/session-delivery-queue-recovery.ts:107)\n\
+  - root_cause_chain[2] (\"왜 평행 outbound 큐와 정책이 갈리는가\"): \"outbound 큐는 deliver 가\n\
+  \  send_attempt_started/unknown_after_send 마커를 기록하고(deliver.ts:600,618), 복구 시 그\n\
+  \  상태면 adapter reconcileUnknownSend 로 실제 전송 여부를 확인한 뒤에만 replay 하며 확인\n  불가 시 blind\
+  \ replay 를 거부한다. session 큐는 이 메커니즘 전체를 복제하지 않았다\"\n  (evidence_ref: src/infra/outbound/delivery-queue-recovery.ts:370)\n\
+  \nsingle 인 이유: 이 도메인에 묶을 다른 신규 FIND 가 없다(FIND 1 ↔ CAND 1). 결함의 본질은\nsession 큐 storage\
+  \ 에 recoveryState/send-attempt 마커 자리 자체가 없고(QueuedSessionDelivery\n타입에 필드 부재, storage.ts:62)\
+  \ idempotencyKey(enqueue-only) / expectedSessionId(세션 변경만\n차단) 가드가 unack 재-deliver\
+  \ 를 막지 못한다는 점이다. 비대칭 warrant 의 기준선이 평행\noutbound 큐(reconcileUnknownSend + blind\
+  \ replay 거부)라는 점은 cross-store 가 아니라 동일\n도메인 내 두 큐의 정책 divergence 다 — 별도 도메인이 아니므로\
+  \ 단일 CAND. (해결책 자체는 본\nCAND 범위 밖.)\n"
+proposed_title: 'session-delivery 큐: unacked agentTurn 을 reconciliation 없이 blind replay
+  → crash 후 턴 중복 실행 + 응답 중복 전송 (outbound 큐 대비 비대칭)'
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-05-29
+pre_sol_proof:
+  status: collected
+  proof_record: proofs/PROOF-CAND-050-pre-20260529-070811.md
+  measurements:
+    scenario: proof-CAND-050
+    trials: 1
+    deliverCount: 2
+    deliveredIds:
+    - 54d693d4-74e6-4592-85a3-9ff16103f595
+    - 54d693d4-74e6-4592-85a3-9ff16103f595
+    pendingAfterEnqueue: 1
+    pendingAfterCrash: 1
+    recoveryStateAfterCrash: field-absent
+    pendingAfterRecover: 0
+    recovered: 1
+    failed: 0
+    skippedMaxRetries: 0
+    deferredBackoff: 0
+    queueDir: /tmp/proof-584a05a5e6f1/.openclaw/.openclaw/session-delivery-queue
+  scenario: proof-CAND-050
 ---
 
 # session-delivery 큐: unacked agentTurn blind replay → 턴 중복 실행 + 응답 중복 전송
