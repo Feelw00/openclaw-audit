@@ -23,7 +23,7 @@ fix(logging): align diagnostic recovery in-flight dedup keys
 
 ## Linked Issue
 
-(Issue to be filed before publish; will link `Closes #N`.)
+Closes #88010
 
 ## Root Cause
 
@@ -90,7 +90,6 @@ A live two-build (base sha vs head sha) real-behavior probe corroborates this en
 - **Risk**: Staleness handling regresses. **Mitigation**: `stateGeneration` is still validated independently in `applyRecoveryOutcomeToDiagnosticState` and the runtime stale check; only the in-flight dedup granularity changed.
 - **Risk regression scope**: Existing tests that assert same-generation dedup (`diagnostic.test.ts` `does not start duplicate recovery for the same processing generation`) and single-tick recovery tests remain green, because same-ref/same-generation requests still dedup under a ref-only key and single-tick scenarios are unaffected.
 
-<!-- PASTE-VERBATIM-FROM-SOL-0019-post_sol_proof.pr_body_section -->
 ## Real behavior proof
 
 - **Behavior or issue addressed**: Without this patch, the diagnostic stuck-session recovery dedup uses two Set keys at different granularities: the coordinator's recoveryRequestKey (diagnostic-session-recovery-coordinator.ts:63-69) is `${ref}:${stateGeneration}` while the runtime's recoveryKey (diagnostic-stuck-session-recovery.runtime.ts:55-57) is `ref` alone. When the same session's generation is bumped during the in-flight abort/drain window (logMessageQueued etc. increment generation synchronously), the coordinator dedup treats `S:G+1` as a brand-new key and fires a SECOND session.recovery.requested event, but the runtime collapses both to ref `S` and returns already_in_flight. The result is a duplicate requested event with no matching recovery work (skipped is non-mutating, so no state corruption; the impact is observability: inflated recovery-attempt metrics and a requested/completed mismatch). With this patch, the coordinator key is aligned to the same ref granularity as the runtime, so the bumped re-request dedups instead of emitting a phantom requested event.
