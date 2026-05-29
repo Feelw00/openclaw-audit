@@ -1,0 +1,1 @@
+2026-05-29: #68669 rebase onto upstream/main(61c538e2fc) → stale-base CI(voice-call TS6133) 적색 해소, 전 CI green, head e3e70aad8e. clawsweeper status:ready 재적용. #71648 MERGEABLE/CLEAN 확인(무조치). 둘 다 메인테이너 머지 대기.

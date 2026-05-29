@@ -96,9 +96,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ mcp-memory  (cap/FIFO 후속 v2 셀 보류 — PR #71648 머지 후 착수)
 #
 # OPEN openclaw PR (다음 세션에서 상태 확인 우선):
-#   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`, MERGEABLE/CLEAN.
-#     clawsweeper [P2] 해소 (d4276de7b5 — guard 를 cleanup wrapper 로 축소 + held-first-cleanup
-#     regression). `status: ready for maintainer look`, rating platinum hermit. 메인테이너 머지 대기.
+#   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`, MERGEABLE
+#     (CodeQL NEUTRAL 로 mergeState=UNSTABLE, 차단 아님). 2026-05-29 upstream/main(61c538e2fc) 위로
+#     rebase 하여 stale-base CI(voice-call TS6133) 적색 해소 → 전 CI green. head e3e70aad8e.
+#     clawsweeper [P2] 해소 (cleanup wrapper 로 축소 + held-first-cleanup regression).
+#     `status: ready for maintainer look`. 메인테이너 머지 대기.
 #   • #71648 (CAND-025→SOL-0008) — `proof: supplied+sufficient`, MERGEABLE/CLEAN. R-13 post-sol proof
 #     (PROOF-SOL-0008-post-20260520): without-fix 100 잔존 / with-fix 0 drain, real wall-clock 70min.
 #     PR body Real behavior proof 섹션을 real setInterval 측정으로 교체 → clawsweeper `proof: sufficient`
