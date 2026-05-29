@@ -1,0 +1,28 @@
+{
+  "verdict": "approve",
+  "confidence": "medium",
+  "rationale": "src/logging/diagnostic-session-recovery-coordinator.ts:63-69 의 recoveryRequestKey 는 `${ref}:${stateGeneration ?? \"unknown\"}` (generation 포함), runtime recoveryKey(runtime.ts:55-57)는 ref only 로 키 입도 비대칭이 실존하고 두 모듈이 별개 Set(recoveryRequestsInFlight vs recoveriesInFlight)으로 in-flight 추적함을 확인. 코드-FIND 본문 일치. 배선도 일치: heartbeat(diagnostic.ts:1268)가 coordinator requestStuckSessionRecovery 호출, recover=recoverStuckSession 이 dynamic import 로 runtime 호출. Primary-path inversion: 정상 억제 경로는 lastStuckWarnAgeMs throttle(diagnostic.ts:1003-1011)인데 generation 을 +1 하는 동일 mutator(logMessageQueued:658, logSessionStateChange:870, markDiagnosticSessionProgress:916)가 모두 lastStuckWarnAgeMs=undefined 로 리셋 → throttle 가 재발사를 막지 못함. idle-queued 경로는 lastProgressAgeMs(diagnostic.ts:561) 기준이라 logMessageQueued 가 lastProgressAt 을 안 건드려 stuck 판정 유지. runtime 의 settleMs(15s) abort/drain await 윈도우(runtime.ts:173,318) 가 T2 와 겹쳐 키 `S` 점유 → coordinator 신키 통과+중복 requested, runtime already_in_flight 흡수가 성립. 잔여 불확실: production 에서 generation bump 가 정확히 await 윈도우에 겹칠 빈도(영향/severity 영역).",
+  "counter_evidence": {
+    "path": "src/logging/diagnostic.ts",
+    "line": "1003-1011",
+    "reason": "lastStuckWarnAgeMs throttle 가 재발사 억제 후보 primary path 이나, generation 을 bump 하는 동일 mutator(logMessageQueued:658/logSessionStateChange:870/markDiagnosticSessionProgress:916)가 lastStuckWarnAgeMs 를 undefined 로 동시 리셋하므로 throttle 가 비대칭 시나리오를 차단하지 못함 — 반증 실패. runtime 자체 isDiagnosticSessionStateCurrent 선검사(runtime.ts:100-107)는 await 이전 T1 generation 이 이미 bump 된 경우만 조기 stale 반환하나, FIND 시나리오는 abort/drain await 윈도우 *중* bump 라 T1 이 키를 15s 점유 — 반증 실패. upstream-dup: upstream/main HEAD(2e042fbca8)에서 coordinator 키 `ref:generation`, runtime 키 `ref` 둘 다 비대칭 그대로 존재; 8주 log 의 코디네이터/런타임 변경(761e668acf 등)은 noop state clearing/lane cleanup/idle embedded-run 복구이지 키 입도 정합이 아님. gh pr list(recoveryRequestKey/recoveriesInFlight/coordinator/dedup) 검색의 관련 PR(#77865/#81123/#82733 CLOSED, #81302 MERGED)은 모두 lane/noop 축이라 동일 fix 아님 — 중복 없음."
+  },
+  "evidence_paths": [
+    "src/logging/diagnostic-session-recovery-coordinator.ts:63-69"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "two_set_inflight_dedup_key_granularity_mismatch",
+        "scope": "diagnostic stuck-session recovery coordinator(ref:generation) vs runtime(ref) in-flight Sets"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (lastStuckWarnAgeMs throttle + runtime isDiagnosticSessionStateCurrent 선검사 vs await 윈도우 점유)",
+    "upstream-dup check (git log upstream/main 8wk + HEAD 키 잔존 확인 + gh pr list 4 관련 PR 검토)",
+    "테스트 커버 (diagnostic.test.ts backs-off 테스트가 vi.fn() mock 으로 runtime recoveriesInFlight 미실행 → 교차 비대칭 미검증)",
+    "숨은 방어 (generation mutator 가 throttle 리셋, idle-queued 는 lastProgressAt 기준이라 stuck 유지)"
+  ]
+}

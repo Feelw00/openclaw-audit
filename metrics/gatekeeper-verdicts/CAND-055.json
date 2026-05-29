@@ -1,0 +1,37 @@
+{
+  "verdict": "reject_suspected",
+  "confidence": "high",
+  "rationale": "두 evidence 블록 실존 일치 확인: bash-tools.exec.ts:1656-1660 의 { once: true } 등록 + removeEventListener 부재, bash-process-registry.ts:322-337 의 TTL prune+sweeper 만 있고 size cap 부재 모두 코드와 정확히 일치. 그러나 upstream-dup check 에서 FIND-001 이 OPEN PR #83022 'fix(agents): clean up exec abort listener after completion' (2026-05-17, src/agents/bash-tools.exec.ts 수정) 와 파일/메커니즘/근본원인/fix 경계가 완전히 동일함을 발견 (onAbortSignal once 미제거 → gcPersistentSignals 통한 run/session retain). CAL-008 규칙상 동일 fix open PR 존재 = reject_suspected. FIND-002 는 primary-path inversion 결과 unconditional eviction 경로(addSession line 113 에서 매 세션마다 무조건 startSweeper → TTL prune)가 실재하여 정상 흐름은 bound 됨. '무제한 성장'은 sweeper 부재라는 FIND 스스로 '방어적 가정'이라 표기한 speculative edge 에만 성립. 결과적으로 epic 의 한 축(FIND-001)은 open PR 중복, 다른 축(FIND-002)은 primary path 가 bound 제공 → CAND 전체 reject_suspected.",
+  "counter_evidence": {
+    "path": "src/agents/bash-tools.exec.ts",
+    "line": "1659",
+    "reason": "upstream-dup: OPEN PR #83022 (openclaw/openclaw, 2026-05-17, headRef fix/exec-abort-listener-cleanup) 가 동일 파일 src/agents/bash-tools.exec.ts 의 onAbortSignal { once: true } 리스너를 정상 완료/yield/실패 경로에서 removeEventListener 로 제거하도록 수정 — FIND-001 과 파일/심볼/메커니즘/root cause 완전 동일. primary-path inversion: FIND-002 의 finishedSessions 는 addSession(bash-process-registry.ts:113)이 매 세션마다 unconditional startSweeper 호출 → pruneFinishedSessions TTL eviction(322-329)이 정상 경로에서 무조건 실행되어 bound 제공. deleteSession(bash-tools.process.ts:664/687/696/716)은 clear/remove 액션 conditional 이나 unconditional 경로(sweeper TTL)가 별도로 존재. '무제한'은 sweeper 미생존 speculative edge 의존 (FIND 본문도 방어적 가정으로 명시)."
+  },
+  "evidence_paths": [
+    "src/agents/bash-tools.exec.ts:1656-1660",
+    "src/agents/bash-process-registry.ts:322-337"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "evidence_pattern",
+      "slot_values": {
+        "anti_pattern": "open_upstream_pr_duplicate_same_file_symbol",
+        "scope": "src/agents/bash-tools.exec.ts onAbortSignal listener cleanup (PR #83022)"
+      }
+    },
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "map_growth_with_unconditional_ttl_sweeper_eviction_present",
+        "scope": "bash-process-registry finishedSessions (addSession always starts sweeper)"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (FIND-002: addSession line 113 unconditional startSweeper -> TTL prune bound; FIND-001: 정상종료 hot-path 에서 abort 미발생으로 once 미트리거 확인)",
+    "upstream-dup check (OPEN PR #83022 = FIND-001 직접 중복; finishedSessions cap 은 PR 없음, upstream commit 변경 없음)",
+    "숨은 방어 (exec 정상종료 경로 1710-1734 에 removeEventListener 없음 / moveToFinished 189-203 child cleanup 은 finishedSessions set 과 무관)",
+    "호출 빈도 (deleteSession 은 clear/remove conditional, sweeper TTL prune 은 unconditional)",
+    "hot-path-vs-test-path consistency (정상종료가 abort 보다 우세한 hot-path 확인, attempt.ts outermost finally 4825 에 runAbortController.abort 부재)"
+  ]
+}

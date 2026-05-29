@@ -1,0 +1,36 @@
+{
+  "verdict": "approve",
+  "confidence": "medium",
+  "rationale": "두 FIND 의 evidence 가 upstream 61c538e2fc 와 정확히 일치. FIND-001(state-migrations.ts:1197-1212): save 게이트가 OR 조건 (legacyParsed.ok || targetParsed.ok) 이고 targetParsed.ok 는 :1198 한 곳에서만 읽혀 abort/백업 가드로 전혀 쓰이지 않음(rg 결과 :1151,:1155,:1198 만). legacy 손상엔 :1191 warn + :1239 삭제 가드가 있어 방어 비대칭 확인. readSessionStoreJson5 가 손상을 {store:{},ok:false} 로 swallow(fs.ts:47-58). FIND-002(:1316-1323): runLegacyStateMigrations(:1310-1338) 가 4단계 순차 await 에 함수 레벨 try/catch 없음, 유일 롤백 :996 은 단일 state-dir rename 한정, 트랜잭션 프리미티브 grep match 0. production caller(doctor-health-contributions.ts, doctor-state-migrations.ts) 와 autoMigrateChecked once-flag(:1524) 실존. primary-path inversion: 정상 보호경로(targetParsed.ok abort / 트랜잭션 롤백)가 우회가 아니라 부재 — unconditional primary path 미발견.",
+  "counter_evidence": {
+    "path": "src/config/sessions/store.ts",
+    "line": "604-723",
+    "reason": "탐색 카테고리: (1) upstream-dup check — git log upstream/main(8주) state-migrations.ts 변경 다수이나 손상-덮어쓰기/트랜잭션 경계 관련 없음. gh pr list 결과 PR #79910/#79319 'recover store from backup and tmp artifacts' 가 가장 근접하나 OPEN(미머지)이고 scope 가 runtime loadSessionStore(store-load.ts)에 한정 — 마이그레이션 readSessionStoreJson5 덮어쓰기 경로는 미커버. 현 HEAD store-load.ts 에 .bak/recover 로직 부재 확인. → 중복/이미해결 아님. (2) 숨은 방어 — saveSessionStore(:604) 는 runExclusiveSessionStoreWrite 락 + writeTextAtomic/replaceFileAtomic 단일파일 원자 write 라 단일파일 원자성은 안전하나, 손상 target 의 .bak 영속 백업을 만들지 않아 덮어쓰기 후 복구 불가 — FIND-001 의 cross-store 병합 결정 오류를 막지 못함. (3) primary-path inversion — targetParsed.ok abort 가드 및 multistore 트랜잭션/보상 롤백 모두 부재(우회 아닌 미존재). (4) 호출 빈도 — cold doctor/startup 전용, autoMigrateChecked process 당 1회 → hot-path 아님(severity 하향 근거와 정합, 결함 무효화 아님). 반증 실패."
+  },
+  "evidence_paths": [
+    "src/infra/state-migrations.ts:1197-1212",
+    "src/infra/state-migrations.ts:1316-1323"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "corruptible_target_overwrite_without_ok_guard",
+        "scope": "state-migrations session/store merge save gate"
+      }
+    },
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "multistore_irreversible_fs_sequence_without_transaction_or_rollback",
+        "scope": "runLegacyStateMigrations multi-store await sequence"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion",
+    "upstream-dup check",
+    "숨은 방어 (saveSessionStore 락+atomic write / .bak 부재)",
+    "호출 빈도 (cold doctor/startup, autoMigrateChecked once-flag)"
+  ]
+}

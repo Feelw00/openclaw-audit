@@ -1,0 +1,36 @@
+{
+  "verdict": "reject_suspected",
+  "confidence": "medium",
+  "rationale": "두 FIND 의 코드 인용은 실존/일치 확인 (user-turn-transcript.ts:407-417 seq-less emit, session-lifecycle-events.ts:20-28 unconditional fan-out 직접 Read). 그러나 두 결함 모두 정상경로가 이미 처리한다. FIND-001 의 mixed-policy fragility 결과(잘못된 seq 부여/misorder)는 소비자 appendInlineMessage(session-history-state.ts:245-253)의 'carriedSeq <= rawTranscriptSeq → shouldRefresh:true' 가 무조건 가로채 전체 재조회로 self-heal 한다. 이 self-heal 로직은 FIND 가 counter_evidence 로 스스로 든 fallback 이자, upstream merged PR #81474(commit c20224688c, 2026-05-13)가 'carry transcript update sequence' 로 의도적으로 도입한 primary path 다. 즉 일부 producer 를 seq-less 로 두고 소비자가 self-correct 하게 한 것이 maintainer 의 설계. FIND-002 는 핸들러가 loadGatewaySessionRow(server-session-events.ts:195)로 매번 fresh 재조회해 권위 상태가 항상 current 이며 FIND 가 영향을 'transient reason 라벨' 로 self-downgrade(P3)하고 production wall-clock 역전 타임라인은 trace 안 했다고 인정. primary-path inversion: 두 경우 모두 unconditional primary path(shouldRefresh / fresh re-query)가 시나리오를 처리하므로 CAL-001 기준 reject_suspected.",
+  "counter_evidence": {
+    "path": "src/gateway/session-history-state.ts",
+    "line": "247-248",
+    "reason": "appendInlineMessage 는 carriedSeq <= rawTranscriptSeq 인 모든 seq-regress(seq-bearing producer 점프 후 seq-less +1 추정 어긋남 포함)를 무조건 가로채 shouldRefresh:true 반환 → 전체 history 재조회로 self-heal. 이 분기는 upstream merged PR #81474(c20224688c)가 'carry transcript update sequence' 로 의도 도입한 primary path. FIND-001 이 주장한 'wrong seq/misorder' 출력은 이 가드를 우회해야 성립하나 무조건 taken 이라 우회 불가. FIND-002 는 server-session-events.ts:195 loadGatewaySessionRow fresh 재조회가 권위 상태를 항상 current 로 유지(FIND 자인) → 영향이 transient reason 라벨로 한정, production 역전 타임라인 미검증. upstream PR #82435(OPEN, tool-result transcript broadcast)도 동일 emit 영역을 maintainer 가 이미 작업 중."
+  },
+  "evidence_paths": [
+    "src/sessions/user-turn-transcript.ts:407-417",
+    "src/sessions/session-lifecycle-events.ts:20-28"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "claimed_ordering_defect_already_handled_by_unconditional_consumer_refresh_or_fresh_requery",
+        "scope": "session event emit/consume paths (transcript update + lifecycle)"
+      }
+    },
+    {
+      "template": "evidence_pattern",
+      "slot_values": {
+        "anti_pattern": "find_lists_self_heal_fallback_as_own_counter_evidence_while_claiming_wrong_output",
+        "scope": "gateway session-history-state shouldRefresh / loadGatewaySessionRow"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (FIND-001: appendInlineMessage shouldRefresh self-heal unconditional / FIND-002: loadGatewaySessionRow fresh re-query unconditional)",
+    "upstream-dup check (merged PR #81474 c20224688c/3fa9658b39 'carry transcript update sequence'; OPEN PR #82435 tool-result transcript broadcast; session-lifecycle-events.ts 8주 변경 0건)",
+    "숨은 방어 (server-session-events.ts:124-130 readSessionMessageCountAsync 서버측 seq 재계산)",
+    "테스트 커버 (transcript-events.test.ts / session-lifecycle-events.test.ts 순서·인과 미검증, session-history-state.test.ts 는 seq 동작 커버)"
+  ]
+}

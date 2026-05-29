@@ -1,0 +1,37 @@
+{
+  "verdict": "uncertain",
+  "confidence": "medium",
+  "rationale": "두 evidence 위치는 pin 61c538e2fc 에서 실존/일치 확인. (1) FIND-002 (eventGate single-check, manager.turn-stream.ts:32-48): upstream-dup check 결과 동일 결함을 기술한 OPEN 이슈 #79973 (P2) 존재하고 라벨에 clawsweeper:no-new-fix-pr + needs-product-decision + needs-maintainer-review 가 붙어 있음. 동일 fix 를 시도한 PR #80051 (manager.turn-stream.ts 수정) 은 CLOSED unmerged 이며, clawsweeper 리뷰가 forward-all 시 timeout 후 visible output 노출 위험을 지적해 fix-shape 가 maintainer contract 결정 대기 상태. CAL-008 기준상 단독이면 reject_suspected (중복+no-new-fix-PR). (2) FIND-001 (cancelSession queue bypass, manager.core.ts:1274-1289): primary-path inversion 으로 SessionActorQueue(KeyedAsyncQueue per actorKey) 직렬화를 active-turn 분기가 1289 early-return 으로 우회함을 확인(2123 run, 1291 else 분기만 queue 사용). cancelPromise dedupe(types.ts:132)는 cancel-vs-cancel 만 막고 oneshot close(1054)는 미보호 — 구조적 사실 일치. 그러나 race 실제 발현은 (a) extensions/acpx 의 cancel/close ordering(allowed_paths 밖, types.ts:182-192 에 ordering 미보장) 과 (b) cancel.await 가 turn stream 종료를 gate 하지 않는다는 타이밍 가정에 의존 — 둘 다 미검증. 즉 epic 의 한 축(FIND-002)은 reject-급 upstream dup, 다른 축(FIND-001)은 backend 의존 미확정 → 클러스터를 일괄 approve 불가, 일괄 reject 도 부적절. epic split + FIND-002 drop 여부는 사람 결정 필요.",
+  "counter_evidence": {
+    "path": "src/acp/control-plane/manager.turn-stream.ts",
+    "line": "32-48",
+    "reason": "FIND-002 는 upstream OPEN 이슈 #79973 (clawsweeper:no-new-fix-pr / needs-product-decision 라벨) + CLOSED PR #80051 (동일 manager.turn-stream.ts fix, fix-shape 가 maintainer contract 미결로 닫힘) 와 중복 — 신규 fix PR 은 명시적으로 비권장 상태(CAL-008). FIND-001 의 cancel↔close race 는 manager 레벨 직렬화 부재가 unconditional 한 사실이나, 발현은 extensions/acpx(allowed_paths 밖) 의 handle 별 cancel/close ordering 과 cancel.await 가 turn 종료를 gate 하지 않는다는 타이밍 가정에 의존하며 둘 다 미검증 — 부분 반증."
+  },
+  "evidence_paths": [
+    "src/acp/control-plane/manager.core.ts:1274-1289",
+    "src/acp/control-plane/manager.turn-stream.ts:32-48"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "evidence_pattern",
+      "slot_values": {
+        "anti_pattern": "candidate_overlaps_open_issue_with_no-new-fix-pr_label",
+        "scope": "upstream-dup gate: gh issue search + clawsweeper:no-new-fix-pr / needs-product-decision label check before approve"
+      }
+    },
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "queue_bypass_branch_touches_handle_also_mutated_inside_actor_queue",
+        "scope": "acp control-plane cancelSession active-turn branch vs withSessionActor-guarded close"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (SessionActorQueue 직렬화 우회 + cancelPromise dedupe 범위 + cancel.await vs turn-stream 종료 타이밍)",
+    "upstream-dup check (issue #79973 OPEN P2 no-new-fix-pr + PR #80051 CLOSED unmerged; git log 61c538e2fc..upstream/main 해당 파일 0 commit)",
+    "hot-path-vs-test-path consistency (manager.test.ts:2515 cancel-during-turn 은 mode=prompt + close 미검증; oneshot+cancel↔close 미커버)",
+    "숨은 방어 (cancelPromise dedupe / skipPostTurnCleanup 는 timeout 전용 / awaitCleanupWithGrace)",
+    "주변 맥락 (runtime/types.ts:182-192 cancel/close ordering 미보장; extensions/acpx allowed_paths 밖 미검증)"
+  ]
+}

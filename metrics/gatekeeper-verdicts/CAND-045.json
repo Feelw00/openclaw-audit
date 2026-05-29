@@ -1,0 +1,37 @@
+{
+  "verdict": "approve",
+  "confidence": "medium",
+  "rationale": "세 evidence 모두 HEAD(61c538e2fc)에서 실존·일치. auth-storage.ts:119/164 와 settings-manager.ts:216 은 raw writeFileSync(O_TRUNC in-place) 이고, session-manager.ts:804 의 rewriteFile→writeJsonlEntriesSync 도 transcript-jsonl.ts:27 의 raw writeFileSync 로 귀결(Read 확인). 동일 트리에 replaceFileAtomic/replaceFileAtomicSync(src/infra/replace-file.ts) 가 존재하며 session-file-repair.ts:409 가 같은 .jsonl 재기록에 실제 사용 → 파일별 atomic 규율 불균일 입증. primary-path inversion: 세 writer 경로 어디에도 rename/temp/fsync/atomic guard 부재(grep 0건), advisory lock(lockfile.lockSync)은 mutual-exclusion 만 제공해 단일 write crash-atomicity 무관. migrate 분기(session-manager.ts:740-742)는 version<3 조건이나 legacy 세션 resume 마다 taken 되는 실제 hot-path. root_cause_chain 이 표면 truncate 단계에 머물지 않고 자가복구 차단(auth 287 early-return / settings 333 {} fallback)까지 추적.",
+  "counter_evidence": {
+    "path": "src/infra/json-file.ts",
+    "line": "PR#29021",
+    "reason": "upstream-dup: git log upstream/main --since='8 weeks ago' 결과 세 파일을 건드린 commit 은 bb46b79d3c(refactor: internalize agent runtime #85341, atomicity fix 아님) 뿐이고 raw writeFileSync 라인은 HEAD 에 여전히 존재. gh pr list 검색에서 PR#29021(fix: atomic JSON file writes to prevent crash corruption)이 유사 개념이나 src/infra/json-file.ts 의 saveJsonFile() 만 수정했고 본 CAND 의 auth/settings/session writer 3종은 미포함, 게다가 maintainer wontfix 가 아니라 inactivity(stale) 자동 close 라 의도적 거부도 아님. PR#39059(auth store sealing, OPEN)·#82637(matrix IDB) 은 다른 도메인. 동일 writer 의 atomic fix open PR 미발견. primary-path inversion 에서 세 경로의 unconditional atomic guard 부재 확인 → primary path 가 이미 처리한다는 반증 실패."
+  },
+  "evidence_paths": [
+    "src/agents/sessions/auth-storage.ts:114-122",
+    "src/agents/sessions/session-manager.ts:800-805",
+    "src/agents/sessions/settings-manager.ts:206-217"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "raw_writeFileSync_in_place_truncate_on_persistent_critical_file_without_atomic_rename",
+        "scope": "agent-session-store persistent writers (auth.json / session .jsonl / settings.json)"
+      }
+    },
+    {
+      "template": "evidence_pattern",
+      "slot_values": {
+        "anti_pattern": "advisory_lock_present_but_no_temp_plus_rename_while_sibling_path_uses_replaceFileAtomic",
+        "scope": "writers under src/agents/sessions vs src/agents/session-file-repair.ts:409"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (세 writer 경로 rename/temp/fsync/atomic guard 부재 grep 확인; advisory lock 은 mutual-exclusion 전용; migrate 분기 version<3 조건이나 legacy resume hot-path)",
+    "upstream-dup check (git log upstream/main 8주 + gh pr list: PR#29021 다른 파일·stale close, 동일 writer atomic fix open PR 미발견, HEAD 에 raw write 잔존)",
+    "숨은 방어 (replaceFileAtomic/Sync 가 in-tree 존재하나 이 3 writer 는 미소비; auth ensureFileExists 는 0o600 초기화만)",
+    "테스트 커버 (session-file-repair.test 는 repair atomic 경로만, 3 writer 의 crash-during-write 재현 테스트 미확인)"
+  ]
+}

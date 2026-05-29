@@ -1,0 +1,37 @@
+{
+  "verdict": "approve",
+  "confidence": "medium",
+  "rationale": "두 FIND evidence 모두 upstream HEAD(2e042fbca8)와 동일하게 실존 검증됨. apply.ts:835-855 커밋 블록은 replaceConfigFile 1회 후 satellite write 를 for 루프(844)로 단순 나열하며 파일 간 트랜잭션/락 경계가 없다. apply.ts:818-821 의 auth-store write 는 락 없이 writeTextFileAtomic(844) 로 커밋된다. primary-path inversion: replaceConfigFile 의 lock 은 withConfigMutationLock(mutate.ts:149-178)이 configPath 만 withFileLock(CONFIG_MUTATION_LOCK_OPTIONS)로 잠그고 fn 반환 시 해제하여 satellite write 루프나 auth-store 를 덮지 않는다. 정규 writer/OAuth refresh(store.ts:705, oauth-manager.ts:437)는 withFileLock(authPath, AUTH_STORE_LOCK_OPTIONS)로 동일 파일을 직렬화하나 apply 는 다른 lockPath/options 라 mutual-exclusion 불가 (unconditional primary path 부재 확인). CLI 진입(secrets-cli.ts:288)도 무래핑. 다만 FIND-001 의 best-effort 롤백 동시 실패, FIND-002 의 read↔write 창 동시 refresh 는 IO-fault/타이밍 의존 가정이 일부 포함되어 confidence medium.",
+  "counter_evidence": {
+    "path": "src/config/mutate.ts",
+    "line": "149-178",
+    "reason": "primary-path inversion: withConfigMutationLock 은 withFileLock(configPath, CONFIG_MUTATION_LOCK_OPTIONS) 로 config 파일만 잠그고 fn(replaceConfigFileUnlocked) 반환과 함께 lock 해제. apply.ts:843 의 satellite write 루프와 auth-store 경로는 잠금 범위 밖이며, AUTH_STORE_LOCK_OPTIONS(authPath)와 lock path/options 가 달라 OAuth refresh(oauth-manager.ts:437)/정규 writer(store.ts:705)와 직렬화되지 않음 (결함을 이미 처리하는 unconditional guard 부재). upstream-dup: git log upstream/main(8주) 및 gh pr list(secrets apply/AUTH_STORE_LOCK/transaction) 결과 cross-store 원자성/락 획득을 다루는 merged commit/open PR 없음(#77489 merged/#78555 open 은 SecretRef 보존/sibling-ref 로 무관). src/secrets/ 전체 락/CAS/트랜잭션 키워드 grep rc=1(no match). apply.test.ts 에 부분커밋 롤백/동시 lost-update 테스트 없음(throw 는 exec-log stat 1건뿐). 반증 실패 (제안을 강하게 뒤집는 증거 없음)."
+  },
+  "evidence_paths": [
+    "src/secrets/apply.ts:835-855",
+    "src/secrets/apply.ts:818-821"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "multi_store_commit_without_cross_file_transaction_boundary",
+        "scope": "secrets apply write commit (config + satellite auth-store writes)"
+      }
+    },
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "auth_store_write_without_AUTH_STORE_LOCK_acquisition",
+        "scope": "secrets apply auth-profiles.json writeTextFileAtomic commit"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (config lock scope + AUTH_STORE_LOCK 비참여 확인, unconditional guard 부재)",
+    "upstream-dup check (git log 8주 + gh pr list secrets apply/AUTH_STORE_LOCK/transaction, merged/open 무관 확인)",
+    "숨은 방어 (withConfigMutationLock/withFileLock 이 satellite write·auth-store 를 덮지 않음)",
+    "concurrency-race inversion (OAuth refresh oauth-manager.ts:437 가 AUTH_STORE_LOCK 보유 writer 로 실재)",
+    "테스트 커버 (apply.test.ts 부분커밋 롤백·lost-update 미커버)"
+  ]
+}

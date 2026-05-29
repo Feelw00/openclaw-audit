@@ -122,16 +122,18 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     early-return 분기가 그 caller 의 후속 tail 경로 전체를 소멸시키는 함의를 끝까지 추적 못 함.
 #     사용자 "더 깊게 봐라" 편향 경고로 포착. CAL-009 §내부판단편향 강화 사례.
 #
-#   ## 2. 신규 축/도메인 CAND 백로그 (2026-05-29 일괄 감사 완료 → gatekeeper 대기)
-#   x+y축 확장 후 10 도메인 첫 셀 일괄 실행: 21 FIND → 11 CAND (045~055), 전부 pending_gatekeeper.
-#   상세: issue-candidates/CAND-04[5-9]/05[0-5].md + 각 domain-notes/{domain}.md.
-#   다음 액션 = gatekeep 3-step (sanitize → agent → apply --shadow). P2+ 우선:
-#     P1: CAND-045(agent-session-store) / 047(task-registry) / 048(secrets-apply) /
-#         049(state-migrations) / 050(delivery-queue) / 052(diagnostic-recovery)
-#     P2: 046(config-io) / 051(session-events) / 053(diagnostic-recovery) / 054(acp-control-plane) /
-#         055(bash-process-execution)
-#   주의: 048 secrets-apply·(향후)auth 계열은 CODEOWNERS *auth* 게이트 → PR 비용 높음.
-#   gatekeeper approve 후 P2+ 는 cross-review(사용자 허락) → pre-sol proof → SOL → PR.
+#   ## 2. 신규 축/도메인 CAND (2026-05-29 gatekeeper shadow 완료 → cross-review 대기)
+#   11 CAND(045~055) 전부 gatekeeper shadow 평가 완료(schema/grounding 11/11 OK).
+#   shadow 47→58 → 졸업 3지표 전부 충족(58/23/10). verdict 원문 + 라우팅:
+#   metrics/gatekeeper-verdicts/SUMMARY-20260529.md + CAND-NNN.json.
+#   ※ shadow 라 index state 는 pending_gatekeeper 유지(전이 없음). 사람이 cross-review 로 실판정.
+#   다음 액션 = R-11 cross-review (사용자 허락 필수). verdict 별 권고:
+#     approve@med (cross-review 후보 6): 045 047 048 049 050 053
+#     uncertain (3): 046(FIND-002 의도적 upstream drop) / 052(queueDepth 전제붕괴, abandon 우세) /
+#                    054(FIND-002 dup #79973 drop, FIND-001 split)
+#     reject_suspected (abandon 2): 051(primary-path self-heal) /
+#                    055(FIND-001 OPEN PR #83022 경합 + FIND-002 sweeper bound)
+#   주의: 048 secrets-apply = CODEOWNERS *auth* 게이트(PR 비용↑). cross-review approve 후 pre-sol proof → SOL → PR.
 #
 #   ## 2b. wave-2 도메인 (미실행, STRONG 백로그)
 #   acp-gateway-agent / embedded-agent-run-lifecycle / process-command-lanes /

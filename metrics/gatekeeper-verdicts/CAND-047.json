@@ -1,0 +1,30 @@
+{
+  "verdict": "approve",
+  "confidence": "medium",
+  "rationale": "두 코드 패턴 모두 upstream HEAD 에 정확히 실존. deleteTaskRecordById (task-registry.ts:2153-2173) 는 tasks.delete/taskDeliveryStates.delete (2162-2163) 를 persistTaskDelete (2165) 앞에서 commit 하고, persist 를 try/catch 로 감싸지 않는다. updateTask (997-1011) 도 tasks.set(taskId,next)(997) 가 persistTaskUpsert(1011) 앞이며, 직후 try(1012) 는 syncFlowFromTask 만 감싼다. persistTaskUpsert/persistTaskDelete 는 default store 의 *WithDeliveryState 변형 -> withWriteTransaction(BEGIN IMMEDIATE) 진입, throw 시 ROLLBACK 후 re-throw (store.sqlite.ts:496-507, 551, 567). 따라서 persist throw 시 in-memory 는 mutate 완료/sqlite 는 보존 -> 교차-스토어 발산. delete 발현 경로: restoreTaskRegistryOnce(946) 가 loadSnapshot 으로 sqlite SoT 재적재, reloadTaskRegistryFromStore 는 run-loop.ts:802 의 in-process restart 에서 호출됨 (주석이 sqlite=durable SoT 명시). update 발현 경로: listFreshTasksForOwnerKey(2092) 가 store.listTasksForOwnerKey 로 sqlite 직접 read, production caller 는 media-generation-task-status-shared.ts:119,314. delete production caller 는 task-registry.maintenance.ts:1158 의 prune. primary-path inversion: 발산을 막을 유일한 primary path 는 두 함수 내 in-memory rollback 인데 catch 블록이 전무 -> unconditional primary path 부재. medium 인 이유: 트리거(sqlite write throw: disk-full/BUSY5s/IOERR)가 환경의존적이고, delete 측 부활은 reload/재기동 시점에만 관측.",
+  "counter_evidence": {
+    "path": "src/tasks/task-registry.store.sqlite.ts",
+    "line": "496-507",
+    "reason": "upstream-dup check: PR #58521 'fix(tasks): make task-store writes atomic' (MERGED 2026-03-31) 가 withWriteTransaction + *WithDeliveryState 변형을 도입했으나, diff 상 이는 sqlite-내부 두 write(row+delivery) 의 원자성만 보장하고 in-memory mutate 순서/rollback 은 손대지 않음 (deleteTaskRecordById/updateTask 의 in-memory-선커밋 + 무보호 persist 패턴 그대로). 즉 #58521 은 sqlite-internal atomicity 로 scope 가 다르며 본 CAND(in-memory<->sqlite 경계)와 중복 아님. 그 외 OPEN/CLOSED PR(86088,71885,86744 등)도 cross-store rollback 미해결. primary-path inversion: 두 mutator 내 in-memory rollback catch 블록 부재 확인(2153-2173, 980-1036) -> 발산을 무효화할 unconditional primary path 없음 -> 반증 실패."
+  },
+  "evidence_paths": [
+    "src/tasks/task-registry.ts:2153-2173",
+    "src/tasks/task-registry.ts:997-1011"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "in_memory_mutate_before_unguarded_persist_no_rollback",
+        "scope": "task-registry cross-store mutators (delete/update)"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (두 mutator 내 in-memory rollback catch 부재 확인: 2153-2173, 980-1036)",
+    "upstream-dup check (git log 8wk + PR #58521 MERGED diff 분석 + gh pr list 다건 -> sqlite-internal atomicity 와 scope 분리, 중복 아님)",
+    "숨은 방어 (withWriteTransaction ROLLBACK 은 sqlite-내부만 보호, cross-store 경계 미보호)",
+    "호출 빈도 (delete=maintenance prune 1158, update=상태전이 hot-path 다수 caller, listFresh reader=media-generation 119/314 production)",
+    "hot-path-vs-test-path consistency (override store 는 test-utils 전용, production 은 항상 sqlite *WithDeliveryState 변형 도달 -> 무보호 persist 패턴이 production branch)"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "verdict": "approve",
+  "confidence": "medium",
+  "rationale": "session-delivery-queue-recovery.ts:105-124 의 drainQueuedEntry 가 deliver→ack 순서로만 호출하고 recovered/failed 두 갈래만 두며 reconciliation 분기가 없음을 Read 로 일치 확인. QueuedSessionDelivery 타입(storage.ts:62-69)에 recoveryState/send-attempt 마커 필드 부재 확인. 대비 outbound 큐(outbound/delivery-queue-recovery.ts:370+)는 recoveryState===send_attempt_started/unknown_after_send 시 reconcileUnknownQueuedDelivery 로 확인 후에만 replay 하고 확인불가 시 'refusing blind replay without adapter reconciliation' 로 거부 — 비대칭 실재. primary-path inversion: blind replay 가 성립하려면 어떤 already-sent guard 도 없어야 하는데, send.ts:155-335 withDurableMessageSendContext/sendDurableMessageBatch 에 messageId 기반 cross-restart dedup 부재 확인(grep idempotency/dedup match 0). expectedSessionId(restart-sentinel.ts:265)는 세션 변경만 차단해 동일세션 unack 재진입을 통과. unconditional primary path 없음.",
+  "counter_evidence": {
+    "path": "src/channels/message/send.ts",
+    "line": "336",
+    "reason": "primary-path inversion: 중복 재전송을 흡수할 수 있는 message-level dedup 가설을 sendDurableMessageBatch/withDurableMessageSendContext(send.ts:155-335) 에서 검증 — idempotencyKey/dedup/alreadySent grep match 0, messageId 는 send 에 dedup 으로 쓰이지 않고 deliverOutboundPayloadsInternal 로 무조건 재전송. upstream-dup check: git log upstream/main(8주) 의 session-delivery fix 들(03addfe9ba=backoff+tmp-sweep, a903df02f5/0b8857d653=retry budget, merged PR #87378 d8641a661b=expectedSessionId 세션회전 가드)은 reconciliation/send-attempt 마커를 추가하지 않음. 오픈 PR #87323(src/infra/restart.ts)·#83176(stale running session cleanup)은 다른 파일/관심사. 동일 fix 미존재. session 큐 storage/recovery 전체에 recoveryState|reconcile|send_attempt grep match 0(upstream/main). 기존 recovery 테스트는 happy-path replay+ack/transient-retry 만 lock, unack-success blind replay 를 의도로 못박은 테스트 없음. 반증 실패 — 결함 성립."
+  },
+  "evidence_paths": [
+    "src/infra/session-delivery-queue-recovery.ts:105-124"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "at_least_once_queue_replay_without_send_attempt_reconciliation_marker",
+        "scope": "session-delivery queue recovery (deliver-then-ack with no recoveryState/reconcile, asymmetric to outbound delivery-queue-recovery reconcileUnknownQueuedDelivery)"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (already-sent guard 부재: send.ts:155-335 / restart-sentinel.ts:265 expectedSessionId 는 세션변경만)",
+    "upstream-dup check (git log upstream/main 8주 + gh pr list #87323/#83176/#87378 — 동일 reconciliation fix 미존재)",
+    "숨은 방어 (storage recoveryState/send-attempt 마커 grep match 0)",
+    "테스트 커버 (session-delivery-queue.recovery.test.ts 가 unack-success blind replay 를 의도로 lock 하지 않음)",
+    "호출 빈도 (production enqueue caller = restart continuation 단일 entry, crash/restart 직후 경로라 window 활성 자연스러움)"
+  ]
+}

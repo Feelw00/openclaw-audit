@@ -1,0 +1,38 @@
+{
+  "verdict": "uncertain",
+  "confidence": "medium",
+  "rationale": "두 코드 패턴은 실존·일치한다. coordinator.ts:98-117 의 idle 분기 `currentGeneration === requestGeneration + 1` 완화, state.ts:181-187 의 peek(merge 없음) vs get(merge 있음) 비대칭 모두 인용대로 존재. 그러나 primary-path inversion 에서 핵심 가정이 무너진다: 주장된 data-loss/wrong-output 은 diagnostic `state.queueDepth` 가 메시지 디스패치 트리거임을 전제하나, queueDepth 소비처를 전수 추적한 결과(diagnostic.ts:559, session-attention.ts:40/65, state.ts:53, register.ts:214) 모두 telemetry/stall-classification/prune 용이며 실제 큐 작업은 command-lane(command-queue.ts)에 별도 존재한다. recover runtime(runtime.ts:240-279)이 `queuedCount`/`resetCommandLane` 로 실 lane 작업을 보존하고, coordinator.ts:125-130 의 preserveQueuedIdleWork 가 그 보호 목적이다. 또 queueDepth=0 clear 조건(diagnostic-session-recovery.ts:98-100)은 `released>0` 을 요구하는데, abort+drain hot-path 에서 released 는 보통 0(runtime.ts:248). 따라서 최악 영향은 telemetry 미스카운트/재복구 누락이지 메시지 소실 아님. FIND-002 self-check 도 이 하류 미검증을 인정. FIND-003 은 split-state generation 발산 빈도 미측정 + 구체 harm 을 FIND-002 큐 clear 에 위임하는데 그 전제가 성립 안 함. 코드 비대칭은 실재하나 운영 결함 발현 여부 애매 → uncertain.",
+  "counter_evidence": {
+    "path": "src/logging/diagnostic-stuck-session-recovery.runtime.ts",
+    "line": "247-279",
+    "reason": "실제 큐 작업은 diagnostic queueDepth 가 아니라 command-lane(getCommandLaneSnapshot/resetCommandLane)에 있고, recover 가 queuedCount>0 lane 작업을 outcome 에 실어 preserveQueuedIdleWork(coordinator.ts:125-130)로 보존한다. queueDepth=0 clear 는 released>0 인 경우만(diagnostic-session-recovery.ts:98-100)인데 abort+drain hot-path 의 released 는 보통 0(runtime.ts:248). 즉 diagnostic queueDepth 클리어가 follow-up 메시지 디스패치를 누락시킨다는 인과는 입증 안 됨 — data-loss 주장 부분 반박. 추가: +1 완화는 commit 54f87184f0/cloded PR #82733 에서 의도적으로 도입되어 upstream HEAD 2e042fbca8 에 존재하며 동일 함수에 preserveQueuedIdleWork 보호장치를 함께 넣은 설계라, 단순 가드 누락이 아님.",
+    "explored_note": "upstream-dup: git log upstream/main 8주 + gh pr list 결과 동일 fix 가 commit 54f87184f0(2026-05-18, upstream HEAD 에 잔존)로 의도적 도입, 관련 closed PR #82733; primary-path inversion: queueDepth 소비처 전수 추적으로 디스패치 비트리거 확인"
+  },
+  "evidence_paths": [
+    "src/logging/diagnostic-session-recovery-coordinator.ts:98-117",
+    "src/logging/diagnostic-session-state.ts:181-187"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "evidence_pattern",
+      "slot_values": {
+        "anti_pattern": "impact_claim_assumes_telemetry_counter_drives_dispatch",
+        "scope": "diagnostic queueDepth vs command-lane queued work distinction"
+      }
+    },
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "staleness_guard_peek_read_vs_get_mutate_entry_asymmetry",
+        "scope": "diagnostic session recovery apply path"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (queueDepth 가 디스패치 트리거 아님 — command-lane 이 실 작업 보유, recover 가 lane 작업 보존)",
+    "upstream-dup check (commit 54f87184f0 의도적 도입 + upstream HEAD 잔존 + closed PR #82733, gh pr list 실행)",
+    "hot-path-vs-test-path consistency (queueDepth=0 clear 는 released>0 요구하나 abort+drain hot-path released 통상 0; 기존 test diagnostic.test.ts:998 은 first-followup queueDepth=0 을 정상으로 못박음)",
+    "숨은 방어 (preserveQueuedIdleWork coordinator.ts:125-130 + alias canonicalize commit 1e8de7661e 가 split-state 빈도 축소)",
+    "테스트 커버 (integration.test.ts 가 getQueueSize(lane) 으로 실 lane 보존 검증 — diagnostic queueDepth 와 분리)"
+  ]
+}

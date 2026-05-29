@@ -1,0 +1,37 @@
+{
+  "verdict": "uncertain",
+  "confidence": "medium",
+  "rationale": "두 evidence 모두 실존·일치. FIND-001(src/config/io.ts:1093-1097): prefix-recovery 가 raw fs.promises.writeFile 로 in-place 덮어씀이 확인되고, 같은 모듈 정상/롤백 경로(io.ts:359,1445,2414)는 모두 replaceFileAtomic(Sync) 사용 → 불균일 성립. 단 raw write 직전 io.ts:1087 의 clobber-snapshot 이 원본을 wx 신규파일로 백업하므로 영구손실이 아닌 '수동복원 필요'로 영향이 약화되고, 호출은 doctor cold path 한정. FIND-002(src/config/io.ts:1625-1631): 롤백이 raw deps.fs.writeFileSync 사용은 사실이고 store 정상 sync write 는 saveJsonFile→writeJsonSync(@openclaw/fs-safe, atomic)로 비대칭 확인. 그러나 이 rollback 함수는 upstream commit 0f343ad568 'fix: make plugin install config migration atomic'(audited HEAD 의 조상)가 도입한 것으로, 메인테이너가 '원자성' PR 안에서 이 raw write 를 의도적으로 작성+rollback 테스트까지 추가함 → 의도성 의심으로 반증이 부분 성립. cross-store 발산 주장도 post-commit 경로(io.ts:2759)가 config 를 먼저 atomic 복원 후에만 store 롤백을 호출하므로 약화됨.",
+  "counter_evidence": {
+    "path": "src/config/io.ts",
+    "line": "1626",
+    "reason": "FIND-002 가 지적한 raw writeFileSync(io.ts:1626) 는 upstream commit 0f343ad568 'fix: make plugin install config migration atomic'(2026-04-26, audited HEAD 61c538e2fc 의 조상)가 신규 도입한 코드다. 메인테이너가 '원자성' 목적 PR 안에서 forward migration 의 config/store 일관성 보장을 의도하면서 rollback restore 만 raw write 로 작성하고 io.write-config.test.ts 에 rollback 정확성 테스트를 추가했다. 즉 raw rollback write 가 단순 누락이 아니라 의도된 트레이드오프(또는 적어도 메인테이너가 인지한 경계)일 가능성이 있어 '복구 경로 비원자' 결함 주장을 부분 반박한다. FIND-001 측은 별개 함수 persistPrefixedConfigRecovery 로, 최근 변경(3c51692543 clobber bounding)은 원자성을 다루지 않았고 동일 fix 의 open/closed PR 도 미발견 → 반박 실패."
+  },
+  "evidence_paths": [
+    "src/config/io.ts:1093-1097",
+    "src/config/io.ts:1625-1631"
+  ],
+  "suggested_verifier_rules": [
+    {
+      "template": "code_shape",
+      "slot_values": {
+        "anti_pattern": "recovery_or_rollback_path_uses_raw_writeFile_while_module_has_atomic_replaceFile_sibling",
+        "scope": "src/config/io.ts compensation/recovery write paths"
+      }
+    },
+    {
+      "template": "evidence_pattern",
+      "slot_values": {
+        "anti_pattern": "raw_writeFileSync_introduced_by_commit_titled_atomic",
+        "scope": "intentionality check: git log -S on rollback symbol vs PR title"
+      }
+    }
+  ],
+  "explored_categories": [
+    "primary-path inversion (io.ts:1087 clobber-snapshot 백업이 raw write 전 실행 → FIND-001 영구손실 차단; FIND-002 post-commit 경로 io.ts:2759 가 config atomic 복원 후에만 store 롤백 호출 → cross-store 발산 약화)",
+    "upstream-dup check (git log upstream/main src/config/io.ts: FIND-002 rollback 은 commit 0f343ad568 'make migration atomic' 가 도입, HEAD 조상; FIND-001 persistPrefixedConfigRecovery 는 3c51692543 이후 atomicity 미수정; gh pr list config io atomic recovery rollback → 동일 fix PR 미발견)",
+    "숨은 방어 (FIND-001: io.ts:1087 clobber-snapshot wx 백업; FIND-002: io.ts:1622 writtenHash 일치 가드)",
+    "호출 빈도 (FIND-001 doctor-config-preflight cold path; FIND-002 config write 실패+shipped installs 이중 조건 cold path)",
+    "테스트 커버 (io.write-config.test.ts 에 rollback 정확성 테스트 존재하나 crash-during-write 원자성 테스트는 양 FIND 모두 부재)"
+  ]
+}
