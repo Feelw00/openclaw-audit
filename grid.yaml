@@ -32,6 +32,28 @@ types:
     agent: error-boundary-auditor
     focus: 'unhandledRejection, floating promise, process.exit pre-cleanup, JSON.parse'
 
+  # ── 2026-05-29 신규 축 (5-agent 정찰, 자원/구조 4축 직교) ──
+  # seed 증거 + REJECT 기록: domain-notes/axis-expansion-2026-05.md
+  - id: data-integrity
+    name: 영속 데이터 정합성 (crash-consistency)
+    agent: data-integrity-auditor    # persona 작성 대기 (R-1~R-7 상속)
+    focus: 'atomic write(temp+rename+fsync) 규율 불균일, raw writeFileSync crash truncate -> 복구불가, 부분 multi-write 논리 불일치. 반증 기준선 @openclaw/fs-safe replaceFileAtomic / exec-approvals.ts:710. seed: auth-storage.ts:119,164'
+
+  - id: cross-store-consistency
+    name: 교차 스토어 트랜잭션 경계 부재
+    agent: data-integrity-auditor    # data-integrity 겸업
+    focus: '트랜잭션 경계 없이 갈라진 복수 영속 스토어 갱신 시 lock/CAS 가 한쪽에만 있어 lost-update. 단일파일 원자성/in-memory race 와 직교(각 파일 원자적인데 파일 사이 정합 붕괴). seed: plugins-install-record-commit.ts:90-125'
+
+  - id: ordering-causality
+    name: 비동기 영속 이벤트 인과 순서 위반
+    agent: ordering-causality-auditor    # persona 작성 대기
+    focus: 'fire-and-forget 영속 + 무조건 상태 갱신으로 인과 역전(종료 세션 running 박제). concurrency race 와 구분: 단일스레드 async 인터리빙, seq/happens-before lens. seed: gateway/session-lifecycle-state.ts:102-113'
+
+  - id: idempotency
+    name: 멱등성·exactly-once  [DEFERRED — 저수율]
+    agent: idempotency-auditor
+    focus: '재실행/재시도/재전달 시 중복 부작용. 5/5 슬라이스 이미 방어 완비(runningAtMs/delivery-queue/inbound-dedupe/state-migrations) + CAND-007 abandoned. 셀 보류, 문서 lens 등록. 상세: domain-notes/axis-expansion-2026-05.md'
+
 # 지연 도입 — 셀 생산성 나오면 추가
 #  - id: shutdown
 #    name: 종료 시퀀스 누락

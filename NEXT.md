@@ -92,8 +92,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # Phase 4 (4/4):
 #   ✓ plugins-concurrency / context-engine-memory / cron-error-boundary / cron-lifecycle
 #
-# Phase 5 (1/N — "plugin loading" 영역):
-#   ✓ mcp-memory  (cap/FIFO 후속 v2 셀 보류 — PR #71648 머지 후 착수)
+# Phase 5+ (mcp 도메인 4축 전부 종결):
+#   ✓ mcp-memory(integrated→PR#71648) / mcp-lifecycle(done, PR#82426 indirect-merge 종결)
+#   ✓ mcp-concurrency(0 FIND) / mcp-error-boundary(zero_find). mcp v2(cap/FIFO)만 #71648 머지 후 보류.
 #
 # OPEN openclaw PR (다음 세션에서 상태 확인 우선):
 #   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`, MERGEABLE
@@ -121,11 +122,18 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     early-return 분기가 그 caller 의 후속 tail 경로 전체를 소멸시키는 함의를 끝까지 추적 못 함.
 #     사용자 "더 깊게 봐라" 편향 경고로 포착. CAL-009 §내부판단편향 강화 사례.
 #
-#   ## 2. 새 셀 또는 새 audit 단계
-#   - Phase 5 후속 셀 후보: mcp-lifecycle / mcp-concurrency / mcp-memory v2 /
-#     agents-registry-lifecycle / 신규 도메인 (event-bus / channel-bridge-concurrency).
+#   ## 2. 새 셀 (구조 4축 40 셀 전부 소진 — 신규 y축 expand 단계)
+#   2026-05-29 5-agent 정찰로 grid.yaml §types 에 신규 축 3 + deferred 1 등록.
+#   상세 seed 증거/REJECT 기록: domain-notes/axis-expansion-2026-05.md.
+#   첫 셀 우선순위 (재현/수정 최소 + maintainer-fit 순):
+#     1) data-integrity — auth-storage.ts:119,164 raw writeFileSync(자격증명 lockout). 도메인 sessions 신설 또는 infra-process 확장.
+#     2) cross-store-consistency — plugins-install-record-commit.ts unlocked index write. plugins 도메인 allowed_paths 확장(+config/mutate.ts).
+#     3) ordering-causality — gateway lifecycle persist fire-and-forget + 무조건 reactivate. gateway 도메인.
+#     (idempotency = DEFERRED, 5/5 슬라이스 방어완비 + CAND-007 dup. 셀 보류.)
+#   착수 전 필수: 신규 persona 작성 (data-integrity-auditor / ordering-causality-auditor, R-1~R-7 상속).
+#   기존 mcp 4축·agents-registry 전 축은 done — 후보 아님(혼동 주의).
 #
-# 신규 셀 정의 시 grid.yaml §types 에 id 추가 후 §cells 확장.
+# 신규 셀 정의 시 grid.yaml §types 는 등록 완료 → §domains allowed_paths 확장/신설 후 §cells 추가.
 ```
 
 셀 실행 프롬프트 템플릿 (Agent 도구, `subagent_type=general-purpose`):
@@ -147,14 +155,16 @@ R-3 Grep 결과를 counter_evidence.reason 에 명시.
 
 ## 4. 다음 셀 선택 시 우선순위
 
-Phase 1-5 의 21 셀 모두 1차 audit 완료. 새 셀 착수 시:
+구조 4축(memory/lifecycle/concurrency/error-boundary) × 모든 도메인 40 셀 1차 완료.
+2026-05-29 신규 y축 3(data-integrity / cross-store-consistency / ordering-causality) 등록.
+새 셀 착수 시:
 
 1. **메인테이너 공개 우선순위 부합 도메인** 우선 (memory / plugin loading / cron / reliability)
 2. PR queue 여유 확인 (`gh pr list --author "@me" --repo openclaw/openclaw --state open` ≤ 7)
 3. 기존 abandoned CAND 와 axis 중복 회피 (CAL-004/CAL-008 패턴)
 4. 신규 도메인 진입 시 `domain-notes/<name>.md` 신규 작성 의무
 
-현재 후보 (위 §3 마지막 코멘트 참조): mcp-lifecycle / mcp-concurrency / mcp-memory v2 / agents-registry-lifecycle / event-bus.
+현재 후보: §3 ## 2 의 신규 축 첫 셀 3종 (data-integrity 우선). seed 증거 = domain-notes/axis-expansion-2026-05.md.
 
 ## 5. 졸업 조건 (shadow → 자동화)
 
