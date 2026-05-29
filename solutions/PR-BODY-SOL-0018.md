@@ -25,12 +25,13 @@ fix(infra): reconcile unacked session deliveries to prevent duplicate replay on 
 - [ ] Plugins
 - [ ] Security-sensitive paths
 
-Touched files (4 source + 1 test):
+Touched files (4 source + 2 tests):
 - `src/infra/session-delivery-queue-storage.ts` (marker fields + `mark*` / `clear*` helpers)
 - `src/infra/session-delivery-queue-recovery.ts` (refuse-blind-replay; clear marker only for pre-send failures)
 - `src/infra/session-delivery-queue.ts` (re-export `markSessionDeliveryPlatformOutcomeUnknown`)
 - `src/gateway/server-restart-sentinel.ts` (mark `unknown_after_send` on `partial_failed` before throwing)
 - `src/infra/session-delivery-queue.recovery.test.ts` (regression tests)
+- `src/gateway/server-restart-sentinel.test.ts` (add the new marker helper to the `vi.mock` of the session-delivery barrel)
 
 ## Linked Issue
 
