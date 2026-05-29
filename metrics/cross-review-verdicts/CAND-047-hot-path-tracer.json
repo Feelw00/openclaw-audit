@@ -1,0 +1,23 @@
+{
+  "role": "hot-path-tracer",
+  "verdict": "real-problem-real-fix",
+  "strong_recommendation": "scope-down",
+  "candidate_id": "CAND-047",
+  "summary": "지목된 두 mutator(deleteTaskRecordById/updateTask)는 정상 사용에서 매우 빈번히 호출되는 hot-path가 맞으나, 주장된 cross-store 발산 branch는 sqlite write가 throw(BUSY/FULL/IOERR)할 때만 활성되는 failure-only 경로다. 함수 호출 빈도(hot)와 결함 branch 발현 빈도(failure-only)를 분리해야 한다. local synchronous embedded sqlite I/O이며 network/IPC 아님. 결함과 보상-경계 fix 모두 production-reachable이므로 false-positive/synthetic 아님(real-problem-real-fix). 다만 epic 전체를 high-impact로 진행하기보다, sqlite-direct reader가 공존해 reload 없이 같은 프로세스에서 즉시 관측되는 update 경로(FIND-002) 중심으로 scope-down 권고.",
+  "role_specific": {
+    "callers_of_target": [
+      "deleteTaskRecordById: task-registry.maintenance.ts:1158 (maintenance sweep, shouldPruneTerminalTask 통과 시 terminal task prune) - 유일한 production caller",
+      "deleteTaskRecordById: runtime-internal.ts:4 (re-export), task-registry.maintenance.ts:45/105/145 (runtime wiring)",
+      "updateTask(module-private): public mutator 경유 - markTaskRunningByRunId(1744), recordTaskProgressByRunId(1765), markTaskTerminalByRunId(1783), finalizeTaskRunByRunId(1799), setTaskRunDeliveryStatusByRunId(1827), cancelTaskById(1871), setTaskProgressById(1315), setTaskTimingById(1331), setTaskCleanupAfterById(1351), markTaskTerminalById(1361), markTaskLostById(1390), linkTaskToFlowById(1848), mergeExistingTaskForCreate(816)",
+      "위 mutator의 외부 caller: task-executor.ts(148/159/172/216/686/695), gateway/server-methods/agent.ts:94, embedded-agent-runner/context-engine-maintenance.ts(217/522/601 via cancelTaskByIdForOwner), plugin-sdk/agent-harness-task-runtime.ts(116), detached-task-runtime.ts(94)",
+      "listFreshTasksForOwnerKey(FIND-002 노출 reader): agents/media-generation-task-status-shared.ts:119, :314"
+    ],
+    "branch_activation_condition": "함수 자체는 매 run/state-transition마다 호출(hot)되지만, cross-store 발산 branch는 persistTaskUpsert(1011)/persistTaskDelete(2165) 내부 withWriteTransaction(BEGIN IMMEDIATE) 의 sqlite write가 throw할 때만 진입한다. 트리거: SQLITE_BUSY(동일 state dir runs.sqlite를 공유하는 다중 프로세스에서 busy_timeout 5s 초과; 단일 프로세스 배포에선 비발생), SQLITE_FULL(disk-full), SQLITE_IOERR. store.sqlite.ts:504에서 ROLLBACK 후 re-throw, mutator에 try/catch/보상 부재로 in-memory만 선반영된 채 발산.",
+    "branch_taken_in_normal_usage": "실패 시만",
+    "actual_io_nature": "Local synchronous embedded sqlite - node:sqlite DatabaseSync(store.sqlite.ts:480-481), WAL journal_mode(sqlite-wal.ts:45) + PRAGMA synchronous=NORMAL + busy_timeout=5000(store.sqlite.ts:483-484), 트랜잭션은 db.exec(BEGIN IMMEDIATE/COMMIT/ROLLBACK)(496-507). prepared statement(.run/.all) 직접 실행. network call 아님, driver IPC 아님 - same-process disk-backed file I/O. db 경로 runs.sqlite는 resolveStateDir 기반 단일 파일(task-registry.paths.ts:30-31)이라 다중 프로세스 공유 시에만 BUSY 가능.",
+    "production_hot_path_score": 2,
+    "classification": "edge_case",
+    "recommendation": "medium-impact-scope-down"
+  },
+  "rationale": "함수 진입은 hot(매 run)이지만 결함 branch는 sqlite write throw에 한한 failure-only edge_case다. 따라서 '매 run 발현'이 아니라 'sqlite 압박(disk-full/IOERR) 또는 다중-writer BUSY 시'에만 발현. 그러나 두 경로 모두 production caller가 실재(delete: maintenance sweep, update: lifecycle 전이 다수 + media-generation sqlite-direct reader)하고, in-memory<->sqlite 보상-경계를 추가하는 fix는 정확히 이 발산을 막으므로 problem도 fix 방향도 real -> verdict=real-problem-real-fix. update 경로(FIND-002)는 sqlite-direct reader(media-generation, listFreshTasksForOwnerKey)가 production에 공존해 reload 없이 같은 프로세스에서 즉시 관측 가능 + 호출 빈도 최고 -> 우선 대상. delete 경로(FIND-001)는 reload/restart 의존 + caller가 maintenance sweep 단일이라 발현 창이 더 좁음. epic 전체를 high-impact로 진행하기보다 FIND-002(즉시 관측 + hot mutator) 중심으로 좁히는 게 production impact 대비 효율적 -> strong_recommendation=scope-down. 둘 다 production-reachable이므로 abandon/false-positive/synthetic-only는 부적절."
+}

@@ -1,0 +1,63 @@
+{
+  "role": "upstream-dup-checker",
+  "candidate_id": "CAND-049",
+  "verdict": "real-problem-real-fix",
+  "summary": "CAND-049 의 두 target 결함(FIND-001 손상 target sessions.json 의 legacy-only 덮어쓰기, FIND-002 멀티스토어 마이그레이션 split state)은 현재 upstream/main(c559776c51)에 byte-for-byte 그대로 존재한다. 최근 6주 state-migrations 커밋(perf parse skip, telegram sidecar, matrix room-id case 등)은 모두 무관한 영역만 건드렸고 OR save gate(:1198)·multi-store 순차 await(:1316-1322)·트랜잭션/백업 경계 부재(grep match 0)는 미변경. 동일 mechanism 을 다루는 merged PR/open PR/issue 없음 → upstream 중복 아님, proceed.",
+  "upstream_current_state": {
+    "target_still_present": true,
+    "upstream_commit_sha_checked": "c559776c51af6912949c78fcdf7cd4fc8423364d",
+    "detail": "FIND-001: '(legacyParsed.ok || targetParsed.ok)' OR save gate at state-migrations.ts:1198 + saveSessionStore at :1209, targetParsed.ok 검사 여전히 부재(비대칭). FIND-002: runLegacyStateMigrations(:1310)이 plugin-state-import / migrateLegacySessions / migrateLegacyAgentDir / channelPlans 4단계를 :1316-1322 에서 트랜잭션/try-catch/롤백 없이 순차 await. grep 'withWriteTransaction|BEGIN IMMEDIATE|withFileLock|baseHash|CAS|checkpoint|transaction' on current upstream state-migrations.ts → match 0."
+  },
+  "recent_related_commits": [
+    {
+      "sha": "c5530c798c",
+      "subject": "perf: skip canonical session migration parses",
+      "overlaps_target": false,
+      "overlap_reason": "migrateOrphanedSessionKeys(:1371~) 경로의 perf 최적화로 sessionStoreTextMayNeedCanonicalization 사전 검사 + parseSessionStoreJson5 분리만 추가. migrateLegacySessions 의 OR save gate 나 runLegacyStateMigrations 의 멀티스토어 시퀀스/트랜잭션 부재는 전혀 손대지 않음. readSessionStoreJson5 의 try/catch-swallow {store:{},ok:false} 설계도 그대로 유지(FIND-001 가정 불변)."
+    },
+    {
+      "sha": "b5bd6e8828",
+      "subject": "fix(sessions): preserve Matrix room-id case in session keys (#75670) (#87366)",
+      "overlaps_target": false,
+      "overlap_reason": "canonicalizeSessionKeyForAgent(:301~382) 키 케이스 정규화만 수정. save gate/멀티스토어 시퀀스 영역(:1198, :1316) 미접촉."
+    },
+    {
+      "sha": "eb9b882dae",
+      "subject": "fix(telegram): migrate legacy cache sidecars",
+      "overlaps_target": false,
+      "overlap_reason": "channel legacy migration preview/runLegacyMigrationPlans(:122,:172,:195) 부분만 변경. 핵심은 telegram extension. migrateLegacySessions OR gate, runLegacyStateMigrations 트랜잭션 부재 미해결."
+    },
+    {
+      "sha": "e339586750",
+      "subject": "fix(plugin-state): evict current namespace on plugin row cap",
+      "overlaps_target": false,
+      "overlap_reason": "plugin-state row cap eviction 로직. state-migrations.ts 변경 미미하며 target 마이그레이션 경계와 무관."
+    },
+    {
+      "sha": "f91de52f0d / 694ca50e97",
+      "subject": "refactor: move runtime state to SQLite (and same-day Revert)",
+      "overlaps_target": false,
+      "overlap_reason": "SQLite 이전이 트랜잭션 경계를 도입했을 수 있으나 2026-05-13 당일 Revert(694ca50e97)되어 runtime state 는 여전히 file-based. 현 upstream 에 효과 없음."
+    }
+  ],
+  "open_prs_issues": [
+    "PR #76800 (MERGED): fix(doctor): commit legacy migrations even when unrelated validation fails — migrateLegacyConfig(config flow, legacy-config-migrate.ts) 대상. sessions cross-store merge OR gate/멀티스토어 트랜잭션과 다른 파일·다른 mechanism. 중복 아님.",
+    "PR #79910 / #79319 (OPEN/CLOSED): fix(sessions): recover store from backup and tmp artifacts — loadSessionStore(store-load.ts) 런타임 로드 경로의 .bak/.tmp 복구. migrateLegacySessions(마이그레이션 경로)·runLegacyStateMigrations 미접촉. 인접 주제이나 중복 아님.",
+    "PR #87164 (OPEN): Fix Session File Corruption During Embedded Retry — embedded retry write 경로. 마이그레이션 경로 무관.",
+    "Issue #65358 (OPEN): Upgrade regression, manual session-store surgery — 일반 '마이그레이션 안전판 강화' wishlist. FIND-001/002 의 구체 mechanism(OR gate, split state) 미지목.",
+    "Issue #57567 (OPEN): Configuration Migration Failure During Upgrade — openclaw.json config 마이그레이션이 invalid JSON 생성. sessions store cross-store 와 다른 스토어.",
+    "Issue #56609 / #45003 / #73471 (OPEN): session 파일 삭제/archive/orphan 관련 — 모두 doctor archive/delete 정책 또는 reset 아카이브 복구 요구. 손상 target 덮어쓰기/멀티스토어 split 의 동일 근본원인 아님.",
+    "신규 corruption-during-migration overwrite 나 multi-store transaction 결함을 정확히 지목한 open/merged 항목 없음."
+  ],
+  "cal004_risk_assessment": "low — git fetch upstream main 으로 최신 c559776c51 확보 후 target 라인 직접 git show 검증, 두 결함 모두 현존. 최근 6주 state-migrations 커밋 5건 전부 무관 영역. merged PR(legacy migration/session recovery)·open PR·issue 어느 것도 동일 mechanism 미해결. CAL-004 의 dedup 키워드/base 노후화/시간축 미확인 3가지 실패점 모두 본 리뷰에서 커버됨(base=오늘 fetch, --state merged 검색, recent-commit 분석 수행).",
+  "strong_recommendation": "proceed",
+  "recommendation": "proceed",
+  "explored_categories": [
+    "upstream-merge-lag",
+    "merged-PR-overlap",
+    "open-PR-overlap",
+    "issue-duplicate",
+    "recent-commit-scope-overlap",
+    "transaction-primitive-introduction"
+  ]
+}

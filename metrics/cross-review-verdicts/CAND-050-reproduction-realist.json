@@ -1,0 +1,30 @@
+{
+  "role": "reproduction-realist",
+  "candidate_id": "CAND-050",
+  "verdict": "real-problem-real-fix",
+  "summary": "session-delivery 큐의 crash-before-ack 중복 deliver 결함은 production 의 단일 branch (drainQueuedEntry try{deliver;ack}, recovery.ts:105-124) 에서 그대로 성립하며, 재현 테스트가 production 과 동일 branch 를 exercise 할 수 있다. CAL-003 (process.kill vs process.emit branch mismatch) 와 달리 production 이 항상 타는 유일 branch 를 그대로 친다 -> synthetic 아님.",
+  "findings": [
+    {
+      "finding_id": "FIND-infra-delivery-queue-ordering-causality-001",
+      "production_trigger": "enqueueSessionDelivery (server-restart-sentinel.ts:606) 가 게이트웨이 restart 시 agentTurn restart-continuation 을 단일 entry 로 enqueue. 복구 경로 recoverPendingSessionDeliveries (sentinel:475) / drainPendingSessionDeliveries (sentinel:445) 가 deliver=deliverQueuedSessionDelivery (sentinel:253) 를 주입하며, agentTurn 일 때 항상 dispatchAssembledChannelTurn (sentinel:324) 로 턴 재실행 + sendDurableMessageBatch 전송을 수행. crash/restart 직후 전용 경로라 deliver<->ack window 활성화가 자연스러움. caller 1곳이나 production 실재.",
+      "branch_taken_in_prod": "session drainQueuedEntry (recovery.ts:105-124) 는 pre-deliver 분기가 전무하고 무조건 try { await deliver(entry); await ackSessionDelivery(entry.id); } 블록에 진입한다. outbound 큐가 가진 recoveryState==send_attempt_started|unknown_after_send 게이트(delivery-queue-recovery.ts:371) 가 session 에는 존재하지 않으므로 production 은 항상 이 단일 success-try branch 만 탄다. crash 후 재진입도 동일 branch (currentEntry!=null -> deliver 재호출).",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "deliver 스텁 (= production 의 실제 주입 seam: recover/drain 함수가 deliver 를 파라미터로 받음; 기존 recovery.test.ts 가 이미 동일 방식으로 vi.fn 주입 -> 왜곡 아님)",
+        "crash 시뮬레이션: pass1 에서 ackSessionDelivery 1회 차단(throw/no-op) 또는 동일 pending entry 재제시 -> on-disk 상태가 fresh pending 과 byte-identical 이므로 충실",
+        "logger 스텁 (info/warn/error vi.fn)",
+        "(선택) 대비용 outbound recoverPendingDeliveries 동일 시나리오 -> reconcileUnknownSend 가드로 2회차 차단됨을 대조"
+      ],
+      "synthetic_risk": "low",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "proceed-with-real-test"
+    }
+  ],
+  "role_specific_notes": {
+    "asymmetry_confirmed": "outbound 은 recoveryState 필드(delivery-queue-storage.ts:73) + deliver 전후 마커(deliver.ts:600,618) + 복구 게이트(recovery.ts:371) 보유. session QueuedSessionDelivery (storage.ts:62) 는 recoveryState/마커/reconcile 전무 (grep recoveryState|markSession|attemptStarted|platformSend|reconcil|send_attempt -> match 0). 비대칭은 실재 구조적 divergence 이지 synthetic 가공 아님.",
+    "cal003_contrast": "CAL-003 은 test 가 process.kill throw 로 production 이 안 타는 catch branch 를 강제(production 은 process.emit). 본 건은 production 이 항상 타는 유일 success-try branch 를 그대로 exercise. branch mismatch 없음. 강제 mock 으로 도달하는 unreachable 경로 없음.",
+    "no_synthetic_timing": "fake timer / promise ordering 강제 불필요. 중복 deliver 호출은 두 번째 recovery pass 에서 deliver call count 로 직접 관측 가능. crash window 는 gateway restart 직후 실제 구간.",
+    "residual_uncertainty": "dispatchAssembledChannelTurn/platform send 의 messageId 기반 downstream dedup 여부 미확인(turn/kernel allowed_paths 밖, FIND self-check 가 정직히 flag). 단 (1) agentTurn 재실행(비-idempotent LLM/tool side-effect)은 send 이전이라 어떤 message-level dedup 으로도 흡수 안 됨; (2) crash 경로는 failSessionDelivery 미실행 -> retryCount=0 유지 -> resolveQueuedRestartContinuationMessageId(sentinel:227-232) 가 :retry:N suffix 없이 동일 messageId 재사용. 즉 dedup 이 있어도 '전송 중복' 만 일부 완화될 수 있고 '턴 재실행 중복' 은 막지 못함. real-fix 방향성(outbound 식 marker+reconcile 이식) 은 유효.",
+    "scope_note": "단일 FIND <-> 단일 CAND (도메인 내 유일 신규 FIND). epic 확장 불요, scope-down 불요."
+  }
+}

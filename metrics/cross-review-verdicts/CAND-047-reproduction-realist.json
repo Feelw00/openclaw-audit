@@ -1,0 +1,50 @@
+{
+  "role": "reproduction-realist",
+  "verdict": "real-problem-real-fix",
+  "candidate_id": "CAND-047",
+  "summary": "두 FIND 모두 production persist 경로가 무조건 withWriteTransaction 분기를 타며(default store store.ts:59,61), 재현 테스트가 sqlite throw 를 강제해도 production hot-path 와 동일 분기다. CAL-003 의 process.emit/process.kill 식 branch inversion 없음. fake-timer/promise-ordering 의존 아님. 결함은 코드로 확정(in-memory mutate 가 persist 보다 선행, persist 가 try/catch 밖). real problem 이며 production 분기와 일치하는 real test 로 재현 가능 -> real-problem-real-fix. (verdict enum 정정: 직전 proceed-with-real-test 는 enum 아님. 분석은 유지하되 결함 실재+재현가능을 real-problem-real-fix 로 매핑, 추천은 strong_recommendation 으로 분리.)",
+  "findings": [
+    {
+      "finding_id": "FIND-task-registry-store-cross-store-consistency-001",
+      "production_trigger": "task-registry.maintenance.ts:1156-1158 terminal-task prune sweep -> taskRegistryMaintenanceRuntime.deleteTaskRecordById(current.taskId). 호출이 try/catch 밖이라 persist throw 가 sweep 밖으로 전파. deleteTaskRecordById 가 in-memory 삭제(2162-2163) 후 persistTaskDelete(2165) 호출. sqlite write 가 SQLITE_BUSY(다중-writer busy_timeout 5s 초과)/SQLITE_FULL(disk-full)/IOERR 로 throw 하는 조건에서 발현.",
+      "branch_taken_in_prod": "persistTaskDelete(288-302) -> store.deleteTaskWithDeliveryState 분기(290-291) -> deleteTaskAndDeliveryStateFromSqlite(567) -> withWriteTransaction(BEGIN IMMEDIATE, 496-507). default store(store.ts:61)가 deleteTaskWithDeliveryState 를 항상 제공하므로 production 은 무조건 트랜잭션 분기. fallback deleteTask(비트랜잭션 deleteTaskRegistryRecordFromSqlite 561-565)는 첫 if 가 truthy 라 미도달.",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "sqlite write 를 throw 시키는 store: configureTaskRegistryRuntime 로 store.deleteTaskWithDeliveryState 가 throw 하게 하거나 readonly/disk-full db 로 withWriteTransaction COMMIT 실패 유도 (withWriteTransaction 이 ROLLBACK + re-throw, store.sqlite.ts:503-506 이 실제 production 실패 모드)",
+        "reloadTaskRegistryFromStore 또는 restoreTaskRegistryOnce 호출로 sqlite SoT 재적재 -> 부활 관측"
+      ],
+      "synthetic_risk": "low",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "proceed-with-real-test"
+    },
+    {
+      "finding_id": "FIND-task-registry-store-cross-store-consistency-002",
+      "production_trigger": "updateTask(task-registry.ts:980)는 status-transition 래퍼들이 호출하는 lifecycle hot-path. in-memory tasks.set(997) 후 persistTaskUpsert(1011) 호출(try 1012 는 syncFlowFromTask 만 감쌈, persist 는 밖). sqlite write throw(BUSY/FULL/IOERR) 시 in-memory=next / sqlite=current 발산. sqlite-direct reader 는 media-generation-task-status-shared.ts:119,314 -> listFreshTasksForOwnerKey(2092) -> store.listTasksForOwnerKey(sqlite) 로 stale 노출. reader/delete caller 모두 production 코드(.test 아님)로 확인.",
+      "branch_taken_in_prod": "persistTaskUpsert(268-286) -> store.upsertTaskWithDeliveryState 분기(271-275) -> upsertTaskWithDeliveryStateToSqlite(547) -> withWriteTransaction. default store(store.ts:59)가 항상 제공. reader 측 listFreshTasksForOwnerKey(2099-2108)는 store.listTasksForOwnerKey 존재 시(default store.ts:58) sqlite-direct 분기를 타며, 그 안의 catch(2109)는 read 자체 throw 시에만 in-memory fallback -> stale-but-readable 데이터는 그대로 반환됨. 즉 mutate/persist/read 세 경로 모두 production 분기와 일치.",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "sqlite upsert 를 throw 시키는 store: configureTaskRegistryRuntime 로 store.upsertTaskWithDeliveryState 가 throw 하게 하거나 disk-full/readonly db 로 COMMIT 실패",
+        "store.listTasksForOwnerKey 는 throw 한 그 store 와 동일 인스턴스라야 stale 노출(같은 sqlite SoT). reload 불필요 - 같은 프로세스 즉시 관측"
+      ],
+      "synthetic_risk": "low",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "proceed-with-real-test"
+    }
+  ],
+  "role_specific": {
+    "verdict_enum_correction_note": "직전 파일의 verdict='proceed-with-real-test' 는 5 enum(real-problem-real-fix / real-problem-fix-insufficient / synthetic-only / false-positive / upstream-duplicate) 에 없어 무효였다. 분석 결론(결함 실재 + production hot-path 와 동일 분기의 real test 로 재현 가능 + branch inversion 없음)을 enum 으로 매핑하면 real-problem-real-fix. CAND-047 은 해결책을 범위 밖(문제만)으로 두므로 fix-insufficient 판정 대상 없음 -> real-problem-fix-insufficient 아님. 재현이 production 분기를 그대로 탐 -> synthetic-only / false-positive 아님. 권고는 strong_recommendation 으로 분리.",
+    "cal003_parallel_overall": "differs from CAL-003",
+    "key_distinction": "CAL-003 은 production 이 process.emit(listener 상시 등록) 분기를 타는데 test 가 dead branch(process.kill)를 mock 으로 강제한 branch inversion 이었다. CAND-047 은 default store(store.ts:58-62)가 트랜잭션 변형(upsertTaskWithDeliveryState/deleteTaskWithDeliveryState + listTasksForOwnerKey)을 무조건 제공해 production 이 항상 withWriteTransaction 및 sqlite-direct read 분기를 탄다. 테스트가 sqlite throw 를 강제해도 그 throw 가 production 에서 실재하는 실패 모드(BUSY/FULL/IOERR, withWriteTransaction ROLLBACK+re-throw store.sqlite.ts:503-506)이고 동일 분기를 exercise 한다. branch inversion 없음.",
+    "synthetic_timer_dependency": "none - fake timer / promise ordering 불필요. FIND-002 는 동일 프로세스 동기 관측(persist throw -> 같은 store 인스턴스 sqlite-direct read 즉시 stale), FIND-001 은 reload/restart 한 번이면 충분(타이밍 race 아님).",
+    "non_production_fallback_branches_confirmed_unreached": "비트랜잭션 deleteTaskRegistryRecordFromSqlite(561-565) / upsertTaskRegistryRecordToSqlite(542-545) 는 persistTaskDelete/persistTaskUpsert 의 두 번째 if 분기(294-295 / 278-279)로만 도달 가능하나, default store 가 트랜잭션 변형을 첫 if 에서 항상 제공 -> production 미도달(FIND counter_evidence 정확).",
+    "production_callers_verified": "FIND-001 delete: task-registry.maintenance.ts:1158 (terminal prune sweep, 비-test). FIND-002 reader: agents/media-generation-task-status-shared.ts:119,314 (비-test). 둘 다 production 코드 경로로 grep 확인.",
+    "code_confirmed_facts": [
+      "deleteTaskRecordById(2153-2173): in-memory delete(2162-2163) before persist(2165), 함수 전체에 try/catch 없음",
+      "updateTask(980-): tasks.set(997) before persistTaskUpsert(1011), try(1012)는 syncFlowFromTask 전용으로 persist 미보호",
+      "withWriteTransaction(496-507): catch 에서 ROLLBACK 후 throw error (re-throw 확정)",
+      "listFreshTasksForOwnerKey(2092-2117): catch 는 read 자체 실패 시에만 in-memory fallback -> divergence 시 stale 반환",
+      "defaultTaskRegistryStore(store.ts:55-66): 트랜잭션 변형 + listTasksForOwnerKey 무조건 제공"
+    ],
+    "strong_recommendation": "proceed-with-real-test (두 FIND 모두 real). 단 FIND-001 은 reload/restart 관측이 필요해 한 단계 더 길고, FIND-002 는 동일 프로세스 즉시 관측(sqlite-direct reader 공존)으로 재현이 더 강하고 짧다. 만약 다른 role 합의로 scope-down 이 필요하면 FIND-002 를 대표 재현으로 우선 채택 권고."
+  }
+}

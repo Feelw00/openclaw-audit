@@ -1,0 +1,52 @@
+{
+  "role": "upstream-dup-checker",
+  "verdict": "real-problem-fix-insufficient",
+  "confidence": "high",
+  "summary": "CAND-048 의 두 FIND 가 지목한 코드는 최신 upstream/main(b474f429ee) 에서도 그대로 존재한다. apply.ts:836-854 커밋 블록(replaceConfigFile 1회 + writeTextFileAtomic for-루프 + best-effort restoreFileSnapshot)이 감사 baseline(61c538e2fc) 대비 한 글자도 바뀌지 않았고, store.ts(AUTH_STORE_LOCK)·mutate.ts(withFileLock+CAS) 도 무변경이라 두 FIND 의 비대칭 근거가 그대로 성립한다. src/secrets/ 전체에 트랜잭션/락/저널 키워드 match 0 도 최신 upstream 에서 재확인했다. PR/issue 검색에서 동일 영역 근접 항목(#54856 OAuth refresh 직렬화 closed-unmerged, #44997 config 락 open, #86756/#77300 closed scrub-logic 결함)은 모두 본 결함의 root cause(파일 간 트랜잭션 경계 + apply 의 AUTH_STORE_LOCK 미획득)와 다르므로 중복 아님. verdict 는 upstream-duplicate 가 아니라, 문제는 실재하나 현재까지 어떤 upstream fix 도 이 표면을 닫지 못함을 반영해 real-problem-fix-insufficient(=upstream 미해결, proceed 가능) 로 둔다.",
+  "role_specific": {
+    "upstream_current_state": {
+      "target_still_present": true,
+      "upstream_commit_sha_checked": "b474f429ee4bb584ba259ee148db1c2a6b578d16"
+    },
+    "audit_baseline_sha": "61c538e2fc22d01b8e08549b07a9e530e6eee35c",
+    "baseline_to_upstream_target_files_diff": "empty (src/secrets/apply.ts, src/agents/auth-profiles/store.ts, src/config/mutate.ts 모두 baseline->upstream/main 무변경)",
+    "secrets_dir_lock_transaction_keyword_match": "0 on upstream/main (git grep 'withFileLock|AUTH_STORE_LOCK|baseHash|CAS|withWriteTransaction|journal|2PC' upstream/main -- src/secrets/ -> NO MATCH). store.ts:705 의 withFileLock(authPath, AUTH_STORE_LOCK_OPTIONS) 정규 writer 는 그대로 존재해 비대칭 baseline 유지.",
+    "recent_related_commits": [
+      {
+        "sha": "31145e0dd9",
+        "subject": "[Fix] Preflight runtime SecretRefs before config writes (#84454)",
+        "overlaps_target": false,
+        "overlap_reason": "src/secrets/runtime.ts 의 read-side preflight 만 변경. apply.ts 커밋 블록의 파일 간 트랜잭션/락 부재와 무관."
+      },
+      {
+        "sha": "2bb448908d",
+        "subject": "fix: keep config writes independent of auth profile refs",
+        "overlaps_target": false,
+        "overlap_reason": "runtime-state.ts/runtime.ts 의 ref 독립성(read-side). apply 의 config<->auth-store 커밋 원자성/락 미도입."
+      },
+      {
+        "sha": "cc704caa08",
+        "subject": "fix: load Claude CLI OAuth for PI auth profiles (#87167)",
+        "overlaps_target": false,
+        "overlap_reason": "apply.test.ts 등 테스트 파일만 추가, src/secrets/apply.ts 프로덕션 코드 무변경(git show 확인)."
+      },
+      {
+        "sha": "6790b0f792",
+        "subject": "perf(secrets): propagate snapshots, eliminate esm side-effects in auth env vars (#86439)",
+        "overlaps_target": false,
+        "overlap_reason": "provider-env-vars.ts 의 env-var snapshot 전파 perf. 커밋 트랜잭션/락과 무관."
+      }
+    ],
+    "open_prs_issues": [
+      "PR #54856 'fix: serialize shared OAuth profile refreshes' (CLOSED, not merged) — refresh-vs-refresh 인프로세스 mutex in oauth.ts. apply 가 AUTH_STORE_LOCK 에 참여하게 만들지 않음 → FIND-002 와 다른 표면.",
+      "PR #44997 'fix(config): serialize concurrent writeConfigFile calls with a file lock' (OPEN) — config<->config lost-update(agents add). secrets apply 의 config<->auth-store cross-store 커밋 아님.",
+      "PR #23980 'fix: make JSON file writes atomic ...' (CLOSED, not merged) — json-file.ts 단일파일 원자성. 두 FIND 가 이미 scope-out 한 single-file atomicity.",
+      "PR #78555 'fix(cli): apply sibling_ref SecretRef assignments' (OPEN) — command-config.ts CLI resolve crash. apply 커밋 블록 무관.",
+      "Issue #86756 'SecretRef migration silently drops OAuth profiles from auth-profiles.json' (CLOSED-COMPLETED, P1, clawsweeper:no-new-fix-pr) — 동시성/throw 없이 결정론적으로 profile 이 사라지는 scrub/projection-logic 결함. FIND-001(mid-loop throw + 롤백 실패) / FIND-002(동시 refresh writer) 의 root cause 와 다름.",
+      "Issue #77300 'secrets apply scrub removes ...keyRef' (CLOSED-COMPLETED) — scrubAuthProfilesForProviderTargets 가 keyRef 를 결정론적으로 strip 하는 projection-logic 버그. 트랜잭션/락 gap 아님.",
+      "Issue #85118 'auth-profiles.json lock contention: gateway times out when external processes hold non-sidecar locks' (OPEN, P2) — 락 contention/timeout 운영 이슈. apply 가 락을 안 잡는 본 결함과 반대 방향(오히려 락 존재 전제)."
+    ],
+    "cal004_risk_assessment": "low — 지목 코드(apply.ts:836-854, store.ts:705, mutate.ts:475/499)가 감사 baseline 61c538e2 뿐 아니라 최신 upstream/main b474f429ee 에서도 무변경(3파일 baseline->upstream diff empty)임을 직접 확인. 최근 8주 src/secrets/ 커밋들 intent 분석 결과 어떤 것도 파일 간 트랜잭션 경계나 apply 의 AUTH_STORE_LOCK 획득을 도입하지 않았고, 근접 PR/issue 는 전부 다른 root cause. CAL-004 식 '하루 먼저 merge' 위험 징후 없음.",
+    "recommendation": "proceed"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": "cross-review/1",
+  "candidate_id": "CAND-049",
+  "role": "hot-path-tracer",
+  "verdict": "real-problem-real-fix",
+  "confidence": "high",
+  "summary": "지목된 multi-store 마이그레이션 경로(migrateLegacySessions / runLegacyStateMigrations)는 실제 production caller(interactive doctor)가 동일 branch 를 그대로 exercise 한다. 단 ordinary CLI startup 은 config-guard 의 migrateState:false 로 이 경로를 타지 않고 autoMigrateLegacyStateDir(단일 dir rename)만 돈다. 따라서 매-run hot-path 가 아니라 cold/one-shot 경로지만, branch 자체는 합성/테스트 전용이 아닌 실제 코드 경로이며 손상 데이터의 비가역 영구 유실(FIND-001) / split state(FIND-002)는 진짜 결함이다. 두 FIND 의 evidence(:1197-1199 OR 게이트에서 targetParsed.ok 미검사, :1316-1323 트랜잭션 없는 순차 await, grep 트랜잭션 프리미티브 match 0)는 소스에서 1:1 확인됨.",
+  "role_specific": {
+    "callers_of_target": [
+      "src/flows/doctor-health-contributions.ts:308 runLegacyStateHealth → runLegacyStateMigrations (live: interactive doctor 명령, detect preview 비어있지 않을 때 + confirm/non-interactive yes)",
+      "src/infra/state-migrations.ts:1588 autoMigrateLegacyState → migrateLegacySessions (re-export만 됨, runtime caller 없음 = 테스트 전용. src/commands/doctor-state-migrations.ts:5 는 단순 re-export)",
+      "src/infra/state-migrations.ts:1319 runLegacyStateMigrations → migrateLegacySessions/migrateLegacyAgentDir (내부 시퀀스)",
+      "ordinary CLI startup 은 NOT a caller: src/cli/program/config-guard.ts:59 가 migrateState:false 로 doctor-config-preflight 호출 → src/commands/doctor-config-preflight.ts:100-102 에서 autoMigrateLegacyStateDir(단일 state-dir rename)만 실행, multi-store merge 경로(migrateLegacySessions)는 미진입"
+    ],
+    "branch_activation_condition": "(1) ~/.openclaw/sessions/ legacy flat 레이아웃(sessions.json 또는 *.jsonl)이 디스크에 존재 = 구버전에서 업그레이드한 설치만 해당, 신규 설치는 hasLegacy=false 로 전체 skip(state-migrations.ts:1069-1071, 1142 early return). (2) 사용자가 doctor 실행 → 'Legacy state detected' preview 표시 → migrate confirm(또는 nonInteractive=true). FIND-001 추가 조건: target agents/{id}/sessions/sessions.json 이 이미 존재+손상(JSON5 파싱 실패)+legacy 미존재 키 보유, legacy readable+non-empty. FIND-002 추가 조건: multi-store legacy 레이아웃 동시 존재 + 마이그레이션 도중 fs throw(ENOSPC/EACCES/SIGKILL).",
+    "branch_taken_in_normal_usage": "거의 없음",
+    "actual_io_nature": "순수 local filesystem I/O (fs.renameSync :1232/:1284, fs.rmSync force :1242, fs.copyFileSync :281, saveSessionStore atomic write :1209). network call / driver IPC 없음. 결함은 이 비가역 fs 연산들을 묶는 transaction/checkpoint/backup 경계 부재 + save 게이트의 targetParsed.ok 비대칭 미검사.",
+    "production_hot_path_score": 2,
+    "classification": "edge_case",
+    "recommendation": "medium-impact-scope-down"
+  },
+  "strong_recommendation": "scope_down: FIND-002(split state, P2)는 추가로 'fs throw 가 정확한 단계 사이에 발생' 이라는 이중 우연 조건이 필요해 발현 surface 가 FIND-001 보다 더 좁다. epic 으로 두 FIND 를 동급 다룰 경우 PR 크기/리뷰 비용 대비 FIND-002 의 production 발현 가능성이 낮으므로, FIND-001(손상 target 무조건 덮어쓰기 = targetParsed.ok 게이트 수정만으로 닫히는 단일 결함)을 1차 SOL 표적으로 좁히고 FIND-002 는 후속/선택으로 강등 권고. (단 이는 frequency 근거의 권고일 뿐, FIND-002 가 false-positive 라는 뜻은 아님.)",
+  "scope_down_rationale": "production_hot_path_score=2(cold/one-shot, doctor 업그레이드 시나리오 한정). 두 FIND 모두 진짜 코드 경로이고 비가역 데이터 유실이라 abandon 은 부적합하나, 매-run 활성이 아니라서 P1 epic 전체를 동시 진행하기보다 가장 좁고 확정적인 FIND-001 부터 scope-down 하는 것이 비용효율적.",
+  "notes": [
+    "frequency 는 낮지만 severity warrant 는 유지: 손상 직후 사용자가 복구를 가장 원하는 시점에 마지막 사본을 비가역 파괴(FIND-001). hot-path 가 아니라는 점은 두 FIND 의 counter_evidence/impact_detail 에 이미 정확히 반영되어 있음(severity P0→P1, P2 하향).",
+    "autoMigrateLegacyState(full auto 경로)는 runtime caller 가 없어 사실상 doctor interactive 경로만이 유일한 live 진입점. 따라서 '매 run 당' 발현은 불가.",
+    "신규 설치/일반 CLI 사용자는 이 branch 를 절대 타지 않음(hasLegacy 가드 + migrateState:false)."
+  ]
+}

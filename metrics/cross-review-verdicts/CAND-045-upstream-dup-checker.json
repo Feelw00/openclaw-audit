@@ -1,0 +1,50 @@
+{
+  "role": "upstream-dup-checker",
+  "verdict": "real-problem-real-fix",
+  "confidence": "high",
+  "summary": "CAND-045 가 지목한 세 writer 는 모두 현재 upstream/main(b474f429ee) 에 raw writeFileSync 인 채로 그대로 존재한다: auth-storage.ts:119/164, transcript-jsonl.ts:27(rewriteFile→writeJsonlEntriesSync), settings-manager.ts:217. atomic 기준선 session-file-repair.ts:409 의 replaceFileAtomic 도 그대로 살아있어 \"파일별 불균일\" 전제가 유지된다. merged/open PR 어느 것도 이 세 writer 의 crash-atomicity 를 수정하지 않았다(#29021 atomic json-file 은 src/infra/json-file.ts 대상 CLOSED-미머지, #79910 은 sessions.json store-load 읽기측 recovery, #67077 은 auth-profiles, #44997 은 config write lock-only). issue #77783(sessions.json 0바이트) #63496(whatsapp creds) 은 동일 패턴의 sibling 이나 세 SoT writer 와는 다른 파일이라 중복 아님. CAL-004 재발 위험 낮음.",
+  "evidence_paths": [
+    "src/agents/sessions/auth-storage.ts:119",
+    "src/agents/sessions/auth-storage.ts:164",
+    "src/config/sessions/transcript-jsonl.ts:27",
+    "src/agents/sessions/session-manager.ts:800-804",
+    "src/agents/sessions/settings-manager.ts:217",
+    "src/agents/session-file-repair.ts:409"
+  ],
+  "role_specific": {
+    "upstream_current_state": {
+      "target_still_present": true,
+      "upstream_commit_sha_checked": "b474f429ee4bb584ba259ee148db1c2a6b578d16"
+    },
+    "recent_related_commits": [
+      {
+        "sha": "e1d7ba5915",
+        "subject": "fix(agents): remove transient session-repair backups",
+        "overlaps_target": false,
+        "overlap_reason": "session-file-repair.ts 의 *.bak 누적 제거(이슈 #80960). atomic 기준선(replaceFileAtomic, line 409)은 그대로 유지하고 backup 정리 로직만 변경 — 세 target writer 의 raw writeFileSync 비원자성은 미수정. 오히려 atomic sibling 이 건재함을 재확인."
+      },
+      {
+        "sha": "538605ff44",
+        "subject": "[codex] Extract filesystem safety primitives (#77918)",
+        "overlaps_target": false,
+        "overlap_reason": "replaceFileAtomic 등 fs-safe primitive 를 추출/정비. 헬퍼 제공측 변경일 뿐 세 SoT writer 가 이를 소비하도록 전환한 것은 아님 — target 결함 미해결."
+      },
+      {
+        "sha": "1188aa3b81",
+        "subject": "feat: add Claude Opus 4.8 support (#87890)",
+        "overlaps_target": false,
+        "overlap_reason": "target 파일들이 diff 에 포함되나 모델 카탈로그/지원 추가 목적. writeFileSync 의 atomicity 관련 변경 없음."
+      }
+    ],
+    "open_prs_issues": [
+      "PR #79910 (OPEN) fix(sessions): recover store from backup and tmp artifacts — sessions.json(store-load.ts) 읽기측 recovery, 세 target writer 와 다른 파일/접근(write-atomicity 아님)",
+      "PR #29021 (CLOSED, 미머지) fix: atomic JSON file writes to prevent crash corruption — src/infra/json-file.ts saveJsonFile 대상, 세 target writer 미포함",
+      "PR #67077 (OPEN) fix(auth-profiles): make post-success bookkeeping saves non-fatal — src/agents/auth-profiles/, sessions/auth-storage.ts 아님(EPERM 비치명화, atomicity 아님)",
+      "PR #44997 (OPEN) fix(config): serialize concurrent writeConfigFile calls with a file lock — config.ts/io.ts 동시성 lock-only, crash-atomicity 무관",
+      "Issue #77783 (OPEN) sessions.json 0바이트 손상 — sessions.json sibling 패턴, 세 SoT 파일 아님(중복 아님, 동일 atomic 규율 미적용의 또다른 사례)",
+      "Issue #63496 (CLOSED) WhatsApp creds.json 비원자 write 손상 — whatsapp 채널 파일, 세 target 아님(sibling)"
+    ],
+    "cal004_risk_assessment": "low — 세 target 라인이 최신 upstream/main(b474f429ee)에 그대로 raw writeFileSync 로 존재(직접 git show 확인). atomic 기준선 session-file-repair.ts:409 도 건재해 불균일 전제 유지. merged/open PR/issue 어느 것도 이 세 writer 의 atomicity 를 수정하거나 진행 중이지 않음. 동일 패턴의 sibling(sessions.json #77783, whatsapp creds #63496)은 존재하나 다른 파일이라 scope 미겹침.",
+    "recommendation": "proceed"
+  }
+}

@@ -122,18 +122,21 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     early-return 분기가 그 caller 의 후속 tail 경로 전체를 소멸시키는 함의를 끝까지 추적 못 함.
 #     사용자 "더 깊게 봐라" 편향 경고로 포착. CAL-009 §내부판단편향 강화 사례.
 #
-#   ## 2. 신규 축/도메인 CAND (2026-05-29 gatekeeper shadow 완료 → cross-review 대기)
-#   11 CAND(045~055) 전부 gatekeeper shadow 평가 완료(schema/grounding 11/11 OK).
-#   shadow 47→58 → 졸업 3지표 전부 충족(58/23/10). verdict 원문 + 라우팅:
-#   metrics/gatekeeper-verdicts/SUMMARY-20260529.md + CAND-NNN.json.
-#   ※ shadow 라 index state 는 pending_gatekeeper 유지(전이 없음). 사람이 cross-review 로 실판정.
-#   다음 액션 = R-11 cross-review (사용자 허락 필수). verdict 별 권고:
-#     approve@med (cross-review 후보 6): 045 047 048 049 050 053
-#     uncertain (3): 046(FIND-002 의도적 upstream drop) / 052(queueDepth 전제붕괴, abandon 우세) /
-#                    054(FIND-002 dup #79973 drop, FIND-001 split)
-#     reject_suspected (abandon 2): 051(primary-path self-heal) /
-#                    055(FIND-001 OPEN PR #83022 경합 + FIND-002 sweeper bound)
-#   주의: 048 secrets-apply = CODEOWNERS *auth* 게이트(PR 비용↑). cross-review approve 후 pre-sol proof → SOL → PR.
+#   ## 2. 신규 축/도메인 CAND (2026-05-29 gatekeeper + cross-review 완료)
+#   11 CAND(045~055) gatekeeper shadow 완료(shadow 47→58, 졸업 58/23/10).
+#   gatekeeper verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
+#
+#   approve 6건(045 047 048 049 050 053) R-11 post-harness cross-review 완료(5-agent 각):
+#     → 6건 전부 primary_decision = **proceed** (real 우세, fp/dup 0).
+#     verdict 원문 metrics/cross-review-verdicts/, 집계 metrics/cross-review-CAND-0NN-*.jsonl.
+#     다음 액션 = **R-12 pre-sol real behavior proof** (모든 severity, 사용자 허락 필수) → SOL → PR.
+#     SOL 작성 시 cross-review scope-down 권고 반영(epic→대표 FIND):
+#       045 → FIND-001(auth.json) 우선, 003 최약(후순위). 047 → FIND-002(즉시관측) 대표.
+#       048 → FIND-001(deterministic fs-fault) 먼저, 002 timing-test 후. 049 → FIND-001(targetParsed.ok gate).
+#       050 single(이미 단건). 053 → idle-queued-stall 분기로 scope.
+#     주의: 048 secrets-apply, 045 auth-storage = CODEOWNERS *auth*(secops) 게이트 → PR 전 owner 동의.
+#
+#   미진행 5건: uncertain 046/052/054 (scope-down 후보), reject 051/055 (abandon 우세). 사용자 판단 대기.
 #
 #   ## 2b. wave-2 도메인 (미실행, STRONG 백로그)
 #   acp-gateway-agent / embedded-agent-run-lifecycle / process-command-lanes /

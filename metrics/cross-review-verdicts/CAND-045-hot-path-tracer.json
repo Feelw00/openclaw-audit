@@ -1,0 +1,25 @@
+{
+  "role": "hot-path-tracer",
+  "verdict": "real-problem-real-fix",
+  "candidate_id": "CAND-045",
+  "confidence": 0.8,
+  "summary": "세 타깃 writer(auth-storage.ts:119/164, rewriteFile->transcript-jsonl.ts:27, settings-manager.ts:216) 는 모두 raw writeFileSync 로 기존 파일을 O_TRUNC 후 in-place 재기록하여 truncate~flush 사이 비원자 crash 창을 가진다(코드 인용 전부 직접 Read 검증). 동일 트리에 atomic 기준선(session-file-repair.ts:409 replaceFileAtomic, src/infra/replace-file.ts 가 @openclaw/fs-safe/atomic 을 in-tree 재노출 + replaceFileAtomicSync export)이 실재·사용 중이라 결함(real-problem)과 fix 방향(raw write -> replaceFileAtomic(Sync) temp+rename)이 모두 실재하고 crash-atomicity gap 을 충분히 닫는다 -> real-problem-real-fix. 다만 production hot-path 강도는 FIND 별로 비균일하다: 001-119(자격증명 persist, unconditional) 과 001-164(OAuth expiry refresh, getApiKey request 경로) 가 가장 높고, 002-741 은 pre-v3 legacy 세션 resume 한정 1회성(스키마 bump 직후 한시 확대 후 decay), 003-216 은 설정 변경 시에만 + 영향이 graceful silent reset(lockout/crash 없음). 손상의 실제 발현은 어느 경우든 그 짧은 동기 write 의 truncate~flush 창에 SIGKILL/전원차단이 겹쳐야 하는 crash-coincidence 다. verdict 와 별개로 fix 실행 제약 2건 기록: (a) FIND-001 타깃 auth-storage.ts 는 CODEOWNERS /src/agents/**/*auth*.ts -> @openclaw/openclaw-secops 소유라 소유자 동의 필요, (b) sync write 경로(119/216, rewriteFile)는 async replaceFileAtomic 대신 replaceFileAtomicSync 사용 필요.",
+  "role_specific": {
+    "callers_of_target": [
+      "auth-storage.ts:119 writeFileSync <- withLock <- persistProviderChange(286) <- set(317)/remove(325)/logout(417)/login(404 via set) : 모든 자격증명 영속 write 가 이 경로 (unconditional)",
+      "auth-storage.ts:164 writeFileSync <- withLockAsync(433) <- refreshOAuthTokenWithLock(425) <- getApiKey(509, needsRefresh=Date.now()>=cred.expires) ; getApiKey 호출처: model-registry.ts(2곳), embedded-agent-runner/stream-resolution.ts, llm/utils/oauth/index.ts -> OAuth 토큰 만료 시 request hot-path 에서 갱신 write",
+      "transcript-jsonl.ts:27 writeFileSync <- writeJsonlEntriesSync <- rewriteFile(804) <- setSessionFile migrate 분기(741, version<CURRENT_SESSION_VERSION=3) | empty/corrupt 분기(732, 이미 손실 데이터) | branch 분기(1271, 신규 파일)",
+      "settings-manager.ts:216 writeFileSync <- FileSettingsStorage.withLock <- SettingsManager 의 모든 설정 영속 변경 경로 : 설정 변경 시에만",
+      "기준선(atomic sibling): session-file-repair.ts:409 replaceFileAtomic <- repairSessionFile (temp+rename, 사전 backup 405) : 손상 transcript 복구 시에만, recovery-only"
+    ],
+    "branch_activation_condition": "001-119: set/remove/login 시 항상(프로세스 매 자격증명 변경). 001-164: OAuth provider 사용자가 만료된 토큰으로 getApiKey 호출 시(장기 세션에서 만료 주기마다, request 경로). 002-741: pre-v3(version<3) 세션을 resume 할 때만 - 마이그레이션 후 재발 없음(1회성). 002-732/1271: 이미 빈/손상 파일 또는 신규 파일 대상이라 추가 손실 미미. 003-216: 사용자가 설정을 변경할 때만. 손상 발현은 모든 경우 해당 writeFileSync 의 truncate~flush 창(작은 동기 write, sub-ms) 내 SIGKILL/전원차단 동시발생 필요.",
+    "branch_taken_in_normal_usage": "실패 시만",
+    "actual_io_nature": "세 target 모두 순수 로컬 디스크 동기 write (node:fs writeFileSync, O_TRUNC in-place). network call / driver IPC 없음. 작은 JSON/JSONL 한 번의 write 로 끝나 정상 경로에서 I/O 자체는 ms 단위. 손상은 I/O 빈도가 아니라 그 짧은 비원자 창과 crash 의 동시성 확률에 의존. proper-lockfile advisory lock 은 프로세스 간 mutual-exclusion 만 제공하며 single-write crash-atomicity 와 무관.",
+    "production_hot_path_score": 3,
+    "classification": "edge_case",
+    "recommendation": "medium-impact-scope-down",
+    "fix_feasibility_notes": "fix = raw writeFileSync -> replaceFileAtomic(async)/replaceFileAtomicSync(sync, temp+rename). 제약: (1) auth-storage.ts 는 CODEOWNERS @openclaw/openclaw-secops 소유 -> 소유자 동의 필요, (2) sync 경로는 replaceFileAtomicSync 사용, (3) lock-then-atomic-rename 상호작용(rename 후 stale lock 디렉터리) 별도 검토 권장. 결함/fix-direction 실재성은 이로 인해 바뀌지 않음."
+  },
+  "reasoning": "결함 자체(raw writeFileSync O_TRUNC in-place -> crash 비원자 창)는 세 타깃 모두에서 코드로 확인되는 real-problem 이고, 동일 트리의 replaceFileAtomic 사용(session-file-repair.ts:409)으로 입증되는 fix 방향이 crash-atomicity gap 을 충분히 닫으므로 verdict 는 real-problem-real-fix(synthetic-only/false-positive/upstream-duplicate 아님, fix-insufficient 도 아님 - atomic rename 이 정확히 비원자 창을 제거함). 다만 production hot-path 강도는 비균일: write taken 빈도는 001-119(unconditional)/001-164(OAuth expiry request 경로) 높음, 002-741 은 legacy resume 한정 1회성, 003-216 은 설정 변경 시에만 + 영향 graceful. 손상의 실발현은 sub-ms 창과 crash 동시성에 의존(=매 run 손상 아님, edge_case, score 3). 따라서 진행 자체는 정당하나 epic 전량보다 auth(FIND-001) 중심 scope-down 이 impact/effort 상 합리적이며 003 은 영향 최약(후순위/제외 후보) - 이 권고는 strong_recommendation/recommendation 필드에 둔다.",
+  "strong_recommendation": "epic 진행하되 auth(FIND-001) 우선 scope-down: FIND-001(119/164) 은 전 provider 자격증명 lockout + OAuth refresh request 경로라 impact·빈도 최고이므로 단독 PR 1순위. FIND-002 는 스키마 bump 직후 legacy resume 한정이나 손실이 대화 전체라 2순위. FIND-003 은 graceful silent reset(lockout/crash 없음) + 설정 변경 시에만이라 영향 최약 -> 후순위 또는 epic 에서 제외. auth-storage.ts 는 secops CODEOWNERS 소유라 PR 전 소유자 합의 필요, sync 경로는 replaceFileAtomicSync 적용."
+}

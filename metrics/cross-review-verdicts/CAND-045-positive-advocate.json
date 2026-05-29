@@ -1,0 +1,35 @@
+{
+  "role": "positive-advocate",
+  "verdict": "real-problem-real-fix",
+  "confidence": "high",
+  "summary": "CAND-045 의 세 FIND 모두 openclaw HEAD(61c538e2fc) 소스에서 실재가 확인된다: agent-session-store 도메인의 세 영속 critical SoT writer(auth.json / 세션 .jsonl transcript / settings.json)가 모두 raw writeFileSync 로 기존 파일을 O_TRUNC in-place 재기록하여 truncate~flush 사이 비원자 창을 만든다. 같은 트리에 replaceFileAtomic(temp+rename+backup) 헬퍼가 존재하고 session-file-repair.ts:402-409 가 동일 .jsonl 재기록에 실제로 이를 사용하므로, atomic 규율이 파일별로 불균일하다는 단일 인프라 축이 명확하다. crash 시 자격증명 lockout / 대화기록 폐기 / 설정 silent reset 으로 귀결되며 손상 데이터는 SoT 라 재생성 불가다. 기존 atomic sibling 이 그대로 fix 템플릿이 되어 fix-real 성립.",
+  "evidence_paths": [
+    "src/agents/sessions/auth-storage.ts:119",
+    "src/agents/sessions/auth-storage.ts:164",
+    "src/agents/sessions/auth-storage.ts:287",
+    "src/config/sessions/transcript-jsonl.ts:26-27",
+    "src/agents/sessions/session-manager.ts:740-741",
+    "src/agents/sessions/session-manager.ts:800-804",
+    "src/agents/sessions/session-manager.ts:728-732",
+    "src/agents/sessions/settings-manager.ts:216",
+    "src/agents/sessions/settings-manager.ts:332-333",
+    "src/agents/session-file-repair.ts:402-415",
+    "src/infra/replace-file.ts:10-21"
+  ],
+  "role_specific": {
+    "production_impact_scenarios": [
+      "FIND-001 자격증명 lockout: OAuth provider 로그인 상태에서 장기 세션 중 토큰 만료 -> withLockAsync 가 auth-storage.ts:164 writeFileSync 로 refresh 토큰 영속화 -> 그 truncate~flush 창에서 SIGKILL/전원차단 -> 다음 기동 reload() 의 JSON.parse 가 부분/0바이트 JSON 에서 throw -> loadError 세팅 -> persistProviderChange 가 :287 if(this.loadError) return 으로 손상 파일을 덮어쓰지도 못함 -> 사용자가 /login 재인증 전까지 전 provider 자격증명 lockout, LLM 호출 전면 불가. refresh 가 만료 주기마다 동일 write 를 수행해 노출이 반복적.",
+      "FIND-002 대화기록 영구 소실: CURRENT_SESSION_VERSION 이 3 으로 bump 된 직후 사용자가 구버전(v1/v2) 세션을 처음 resume -> setSessionFile(:721) 이 valid 전체 transcript 를 fileEntries 로 로드 -> migrateToCurrentVersion(:740) true -> rewriteFile(:741) -> writeJsonlEntriesSync(:804) -> transcript-jsonl.ts:27 writeFileSync 가 이미 정상이던 .jsonl 전량을 O_TRUNC -> 그 truncate~전량 flush 창에서 crash 시 빈/부분 JSONL -> 재 resume 시 setSessionFile 의 fileEntries.length===0 분기(:728-730)가 newSession() 으로 폐기 -> 전체 대화 영구 소실. 스키마 bump 후 기존 세션 첫 재개에서 광범위 실행, 큰 transcript 일수록 write 시간이 길어 crash 창이 넓음. rewriteFile 에는 파일락조차 없음.",
+      "FIND-003 설정 silent reset: 사용자가 비기본 settings.json 보유 상태에서 설정 변경 트리거 -> withLock 이 settings-manager.ts:216 writeFileSync 로 in-place truncate -> 그 창에서 SIGKILL/전원차단 -> 다음 기동 tryLoadFromStorage 의 JSON.parse 가 부분 JSON 에서 throw -> :332-333 catch 가 { settings: {}, error } 로 흡수 -> globalSettings/projectSettings 가 {} -> deepMergeSettings 결과가 비어 모든 사용자 커스텀 설정이 에러 표면화 없이 조용히 default 로 reset. auth 와 달리 lockout 은 없으나 사용자에게 알림 없는 silent data loss."
+    ],
+    "maintainer_receptiveness": "high - 메인테이너 가이드가 명시적으로 'Core issues like memory, plugin loading, cron, reliability' + 'bugs, critical issues, reliability and stability' 에 집중하고 feature 는 freeze 라고 했다. 본 CAND 는 정확히 reliability/data-integrity (crash 시 자격증명/대화기록/설정 영구 소실) 영역이며 feature 추가가 아니다. 더욱이 fix 방향이 추측이 아니라 같은 트리 안에 이미 존재하고 쓰이는 replaceFileAtomic(session-file-repair.ts:402-415) 으로의 규율 일관화라 신규 디펜던시/아키텍처 변경 없이 in-tree 패턴 적용이라는 점이 수용성을 높인다. 한계: 세 writer 가 서로 다른 모듈이라 'one thing per PR' 규율상 epic 1건이 아니라 FIND 별 개별 XS PR 로 분할 발행이 적절할 수 있다(이는 CAND scope 가 아닌 발행 전략 이슈).",
+    "reproducibility": "moderate - 결함 메커니즘(O_TRUNC open+write 분해로 truncate 직후 crash 시 빈/부분 파일)은 POSIX/Node 표준 동작이라 결정론적이지만, 자연 발생하는 SIGKILL 타이밍을 테스트에서 재현하려면 writeFileSync 진행 중 프로세스를 죽이는 fault injection 이 필요하다. 다만 단위 테스트로는 (a) writeFileSync 를 스텁해 truncate 후 throw 를 주입하거나 (b) 손상된(빈/부분) 파일을 사전 배치한 뒤 다음 기동 경로를 검증하는 방식으로 모델링 가능: FIND-001 은 부분 auth.json -> reload loadError -> persistProviderChange early-return 확인, FIND-002 는 빈 .jsonl -> setSessionFile 의 newSession 폐기 확인, FIND-003 은 부분 settings.json -> tryLoadFromStorage 의 {} fallback 확인. 후속 경로는 전부 결정론적이라 검증 가능. easy 가 아닌 이유는 crash-during-write 의 atomicity 자체를 직접 증명하려면 OS 레벨 타이밍 제어가 필요해서다.",
+    "concerns_acknowledged": [
+      "epic 으로 묶었으나 세 writer 는 서로 다른 모듈/파일이라 단일 PR 로 가면 openclaw 'one thing per PR' 규율과 충돌할 수 있음 (발행 시 FIND 별 분할 권장).",
+      "crash 창 자체의 직접 재현은 OS 타이밍 의존이라 단위 테스트는 손상 후 경로 모델링에 의존 (atomicity 보장은 간접 증명).",
+      "FIND-003 은 graceful {} fallback 으로 부팅 실패/lockout 이 없고 write 빈도가 낮아 impact 강도가 FIND-001/002 보다 낮음 (작성자 본인 P2 분류). proceed/abandon 경계가 아니라 severity 차이일 뿐이나 정직히 인정.",
+      "writeFileSync 가 작은 JSON 의 경우 단일 write syscall 로 끝나 부분 write 보다는 'truncate 직후 crash 로 빈 파일' 시나리오가 더 지배적 — 부분 JSON 보다 빈 파일이 실제 주요 손상 형태일 가능성 (메커니즘 존재 자체는 불변).",
+      "stale lock 디렉터리가 crash 후 다음 기동 lock 획득을 방해하는지는 별개 lifecycle 이슈로 본 CAND 범위 밖 (작성자도 미확인 표기)."
+    ]
+  }
+}

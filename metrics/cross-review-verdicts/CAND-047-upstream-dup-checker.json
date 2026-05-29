@@ -1,0 +1,47 @@
+{
+  "role": "upstream-dup-checker",
+  "verdict": "real-problem-real-fix",
+  "confidence": "high",
+  "summary": "CAND-047 이 지목한 task-registry.ts 의 deleteTaskRecordById(2153) 와 updateTask(tasks.set→persistTaskUpsert→try-는-syncFlowFromTask-만-감쌈) 코드는 현재 upstream/main (HEAD b474f429ee, 2026-05-29) 에서 FIND 증거와 바이트 단위로 동일하게 그대로 존재하며, in-memory↔sqlite 교차-스토어 rollback/보상 경계는 여전히 부재한다. withWriteTransaction 도 BEGIN IMMEDIATE 후 ROLLBACK+re-throw 그대로다. 최근 12주 task 영역 commit 중 이 결함을 고친 것은 없다 — 오히려 FIND-002 가 의존하는 sqlite-direct reader listFreshTasksForOwnerKey 는 PR #84006(37a9f58d1b, 2026-05-22) 이 막 도입한 함수로, 발산을 노출하는 쪽이지 fix 가 아니다. 동일 영역의 다른 commit(47e86bc1ac)은 순수 refactor. 열린/머지된 PR·issue 검색에서 이 교차-스토어 보상 결함을 다루는 중복 작업 없음. CAL-004 upstream-merge-lag 위험 낮음 — 중복 아님.",
+  "evidence_paths": [
+    "src/tasks/task-registry.ts:2153-2173",
+    "src/tasks/task-registry.ts:997-1012",
+    "src/tasks/task-registry.store.sqlite.ts:457-468",
+    "src/tasks/task-registry.ts:2092-2117",
+    "src/agents/media-generation-task-status-shared.ts:119"
+  ],
+  "role_specific": {
+    "upstream_current_state": {
+      "target_still_present": true,
+      "upstream_commit_sha_checked": "b474f429ee4bb584ba259ee148db1c2a6b578d16"
+    },
+    "recent_related_commits": [
+      {
+        "sha": "37a9f58d1b",
+        "subject": "Fix media completion duplicate delivery (#84006)",
+        "overlaps_target": false,
+        "overlap_reason": "FIND-002 의 sqlite-direct reader listFreshTasksForOwnerKey(2092) 를 이 commit 이 신규 도입했다(task-registry.ts +28). 즉 교차-스토어 발산을 노출하는 reader 를 추가한 쪽이지, in-memory↔sqlite rollback 경계를 추가하거나 ordering 을 고친 fix 가 아니다. updateTask/deleteTaskRecordById 의 선커밋-후-무보호-persist 패턴은 이 commit 이후에도 그대로. 따라서 CAND-047 결함은 이 commit 으로 해소되지 않고 오히려 관측 표면이 늘었다."
+      },
+      {
+        "sha": "47e86bc1ac",
+        "subject": "refactor: share task sqlite store helpers",
+        "overlaps_target": false,
+        "overlap_reason": "task-registry.store.sqlite.ts 를 건드리지만 순수 refactor(공유 helper 추출, 95+/115-). withWriteTransaction 의 BEGIN IMMEDIATE/ROLLBACK/re-throw 동작과 deleteTaskAndDeliveryStateFromSqlite/upsertTaskWithDeliveryStateToSqlite 의 의미는 불변. 교차-스토어 경계나 in-memory rollback 은 도입되지 않음. 라인 번호만 이동(FIND 인용 503/547/567 → 현재 457/508/528 부근)."
+      },
+      {
+        "sha": "37a9f58d1b",
+        "subject": "(store.sqlite.ts 변경분) media completion fresh owner reads",
+        "overlaps_target": false,
+        "overlap_reason": "task-registry.store.sqlite.ts 73줄 변경이 있으나 fresh owner read 경로/중복 delivery guard 관련이며 in-memory mutate 와 sqlite persist 를 묶는 트랜잭션/보상 도입 아님. CAND-047 의 단일 원인(교차-스토어 경계 부재) 미해소."
+      }
+    ],
+    "open_prs_issues": [
+      "PR #83238 MERGED 'fix(agents): persist subagent registry before returning accepted (#83132)' — src/agents/subagent-registry* 전용, task-registry 무관(다른 모듈). scope 미겹침.",
+      "PR #86088 OPEN 'fix(tasks): recover terminal lost cron rows' — cron lost row 복구, in-memory↔sqlite persist-fail rollback 경계와 무관.",
+      "PR #78595 / #f91de52f0d 'Refactor runtime state into SQLite' 는 #694ca50e97 로 Revert 됨 — 현 upstream 에 반영 안 됨.",
+      "issue 검색('task registry sqlite consistency persist', 'task delete reappear after restart', 'task status stale running completed media') 에서 이 교차-스토어 발산(lost-delete / stale sqlite-direct read) 결함을 다루는 open/closed issue 없음."
+    ],
+    "cal004_risk_assessment": "low — 지목 코드가 현재 upstream/main(b474f429ee)에 FIND 증거와 바이트 동일하게 잔존하고, withWriteTransaction re-throw 도 불변. 최근 12주 task 영역 commit 어느 것도 in-memory↔sqlite rollback/보상 경계를 추가하지 않았으며, 가장 근접한 #84006 은 결함 노출 reader 를 신규 도입한 쪽이다(즉 base 가 노후화돼 이미-merged 를 놓쳤을 위험의 정반대 — 결함은 최신 upstream 기준 현행). 중복 PR/issue 부재.",
+    "recommendation": "proceed"
+  }
+}

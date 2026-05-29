@@ -1,0 +1,40 @@
+{
+  "role": "reproduction-realist",
+  "candidate_id": "CAND-053",
+  "verdict": "real-problem-real-fix",
+  "summary": "coordinator(ref:generation) vs runtime(ref) in-flight 키 비대칭은 production heartbeat hot-path 에서 실재하고, mock 으로 branch 를 왜곡하지 않고 재현 가능하다. 단 FIND 의 mechanism 이 앞세운 processing 분기는 generation mutator 가 lastActivity 를 동시 reset 하므로 in-flight 윈도우 내 재판정이 사실상 자기상쇄된다. 재현은 idle-queued-stall 분기(diagnostic.ts:1247)에서만 견고하다 — 이 분기는 lastProgressAgeMs(별도 run-activity store)를 키로 쓰고 logMessageQueued 가 generation 만 bump 하고 그 store 는 건드리지 않기 때문. observable 증상은 중복 session.recovery.requested 이벤트(state non-mutating).",
+  "findings": [
+    {
+      "finding_id": "FIND-diagnostic-recovery-ordering-causality-001",
+      "verdict": "real-problem-real-fix",
+      "production_trigger": "diagnostic.ts:1268 / :1291 의 30초 heartbeat 가 classification.recoveryEligible(또는 isActiveAbortRecoveryEligible) 세션에 대해 requestStuckSessionRecovery({recover: recoverStuckSession, request:{stateGeneration: state.generation, ...}}) 호출. recover 기본값(diagnostic.ts:1269)이 recoverStuckSession(diagnostic.ts:159) → dynamic import → recoverStuckDiagnosticSession(runtime). 즉 coordinator 키(ref:generation)와 runtime 키(ref) 모두 동일 production 경로에서 동시에 실행됨. mock 없이 wiring 성립.",
+      "branch_taken_in_prod": "coordinator: requestStuckSessionRecovery 의 inFlightKey=`ref:generation`(coordinator.ts:150,166). runtime: recoverStuckDiagnosticSession 의 key=`ref`(runtime.ts:87,98) → recoveriesInFlight.has 먼저(runtime.ts:88) → 이미 in-flight 면 stale check(runtime.ts:101) 도달 전에 already_in_flight skip. 두 번째 tick 의 재판정 분기는 둘 중 하나: (A) processing: ageMs=now-lastActivity > stuckSessionWarnMs (diagnostic.ts:1253), (B) idleQueuedRecoverableStall: state=idle && queueDepth>0 && lastProgressAgeMs>staleMs (diagnostic.ts:1247, isIdleQueuedRecoverableSessionStall :542-563). FIND mechanism 은 (A)를 앞세우나 production 에서 견고히 성립하는 건 (B).",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "recoverStuckSession: vi.fn 으로 pending Promise 반환(in-flight 윈도우 유지) — CAL-003 의 branch 왜곡 mock 이 아니라 settleMs(15s) abort/drain await 를 fake-timer 환경에서 모사하는 정당한 seam. 기존 diagnostic.test.ts:1435-1446 이 동일 패턴으로 production recover 시그니처를 그대로 사용함",
+        "vi.useFakeTimers + advanceTimersByTime(heartbeat 30초 tick 구동) — 기존 :1462,:1465 와 동일",
+        "logMessageQueued (실제 production 함수) 로 in-flight 윈도우 중 generation bump — mock 아님, 실제 mutator 호출",
+        "idle-queued 분기 재현 시: 세션 state=idle + queueDepth>0 + run-activity lastProgressAgeMs stale (markDiagnostic* 미호출로 자연 stale) 셋업"
+      ],
+      "synthetic_risk": "low",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "proceed-with-real-test"
+    }
+  ],
+  "strong_recommendation": {
+    "recommendation": "proceed-with-real-test",
+    "scope_note": "재현 테스트는 반드시 idle-queued-stall 분기(diagnostic.ts:1247)로 작성하라. FIND mechanism 의 processing 분기(logMessageQueued 로 generation bump)는 generation mutator 3종(diagnostic.ts:657/869/915)이 모두 state.lastActivity=Date.now() 를 동시 reset 하므로, in-flight 윈도우(settleMs<=15s) 안에서 다음 stuck 재판정(ageMs>warnMs)이 발생하기 전에 T1 recover 가 recoveriesInFlight 를 비울 가능성이 높아 자기상쇄된다. 반면 idle-queued 분기는 lastProgressAgeMs(diagnostic-run-activity.ts 의 별도 store, logMessageQueued 가 touchSessionActivity 미호출이라 stale 유지)를 키로 쓰므로 generation 만 bump 되고 분기 조건은 그대로 성립 → 동일 ref 다른 generation 으로 두 번째 requested 이벤트 발행 + runtime already_in_flight skip 을 깨끗이 재현. assert 는 observable 증상(중복 session.recovery.requested 이벤트, requested!=completed 1:1)으로 한정 — skipped 는 non-mutating(diagnostic-session-recovery.ts:88-93)이라 state 단언 불가."
+  },
+  "evidence_refs": [
+    "src/logging/diagnostic-session-recovery-coordinator.ts:63-69 (recoveryRequestKey = ref:generation)",
+    "src/logging/diagnostic-session-recovery-coordinator.ts:150-168 (dedup add + emitSessionRecoveryRequested)",
+    "src/logging/diagnostic-stuck-session-recovery.runtime.ts:55-57 (recoveryKey = ref only)",
+    "src/logging/diagnostic-stuck-session-recovery.runtime.ts:88-98 (recoveriesInFlight.has 먼저, then add)",
+    "src/logging/diagnostic.ts:1268,1291 (heartbeat caller, stateGeneration: state.generation)",
+    "src/logging/diagnostic.ts:159-176 (recoverStuckSession default wiring → runtime)",
+    "src/logging/diagnostic.ts:1247-1255 (processing 분기 ageMs=now-lastActivity vs idleQueuedRecoverableStall 분기)",
+    "src/logging/diagnostic.ts:656-657,868-869,914-915 (generation bump + lastActivity reset 동시 발생 — processing 분기 자기상쇄 근거)",
+    "src/logging/diagnostic-run-activity.ts:319 (lastProgressAgeMs 별도 store, logMessageQueued message.queued 이벤트는 touchSessionActivity 미트리거)",
+    "src/logging/diagnostic.test.ts:1424-1488 (same-generation dedup 기존 테스트 — cross-generation sibling 빌드용 harness 존재 입증, 비대칭 미검증)"
+  ]
+}

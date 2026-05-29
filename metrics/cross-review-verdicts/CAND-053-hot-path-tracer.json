@@ -1,0 +1,22 @@
+{
+  "candidate_id": "CAND-053",
+  "finding_ids": ["FIND-diagnostic-recovery-ordering-causality-001"],
+  "role": "hot-path-tracer",
+  "verdict": "real-problem-real-fix",
+  "summary": "지목 함수 requestStuckSessionRecovery 의 두 caller 모두 30초 heartbeat 루프(기본 활성) 안이라 매 run 가동되나, 키 비대칭이 실제로 발현하려면 (a) 세션이 stuck 으로 recoveryEligible 판정 + (b) recover() in-flight 윈도우(최대 15s drain) 중 generation bump + (c) 다음 tick 재판정이 동시에 성립해야 한다. heartbeat 자체는 hot path 지만 결함 분기는 stall/실패 시에만 taken 되는 edge case. 영향은 관측(중복 requested 이벤트 + dedup 계층 불일치)로 한정되어 P2 가 정합적이며 scope-down 불필요.",
+  "confidence": "high",
+  "role_specific": {
+    "callers_of_target": [
+      "src/logging/diagnostic.ts:1268 (heartbeat setInterval 30_000 루프 내, classification.recoveryEligible 경로)",
+      "src/logging/diagnostic.ts:1291 (동일 heartbeat 루프 내, isActiveAbortRecoveryEligible / allowActiveAbort 경로)"
+    ],
+    "branch_activation_condition": "gateway 시작 시 diagnosticsEnabled(기본 true, config.diagnostics.enabled !== false)로 startDiagnosticHeartbeat 가동 → 30초 tick 마다 diagnosticSessionStates 순회. 같은 stuck 세션 S 가 연속 tick 에서 recoveryEligible 판정되고, 그 사이 logMessageQueued(:657)/logSessionStateChange(:869)/markDiagnosticSessionProgress(:915)가 state.generation 을 +1 한 상태에서, T1 의 recover()(abortAndDrainEmbeddedAgentRun, settleMs 최대 15s)가 아직 in-flight 면 coordinator 키 S:G+1 은 dedup 통과(코드상 recoveryRequestKey 가 generation 포함, :63-69)·runtime 키 S 는 already_in_flight skip(recoveryKey ref-only, runtime.ts:55-57). 두 키 정의 비대칭은 코드로 100% 확인됨.",
+    "branch_taken_in_normal_usage": "실패 시만",
+    "actual_io_nature": "heartbeat tick 은 매 30초 in-memory 순회. 비대칭 발현 시 추가되는 작업은 emitSessionRecoveryRequested 이벤트 1회 + coordinator recoveryRequestsInFlight Set add/delete(순수 in-memory bookkeeping)뿐 — runtime 이 already_in_flight 로 즉시 반환하므로 두 번째 요청에서는 실제 driver IPC/drain(abortAndDrainEmbeddedAgentRun, dynamic import) 가 일어나지 않는다. 즉 결함 자체의 부작용은 in-memory 메트릭/이벤트 왜곡이며 추가 real I/O 는 없음. (단 self-check 경계: T1 이 직전 완료되어 runtime 키가 비면 두 번째 recover() 가 실제 abort/drain IPC 수행 — 이중 abort 가능, abort idempotency 셀 범위 밖.)",
+    "production_hot_path_score": 2,
+    "classification": "edge_case",
+    "recommendation": "medium-impact-scope-down"
+  },
+  "strong_recommendation": null,
+  "notes": "production_hot_path_score=2: caller(heartbeat)는 매 run 가동되나 비대칭 분기 자체는 stuck 세션 + in-flight 윈도우 중 generation bump + 재판정 동시성립이 필요한 edge case. FIND 의 P2 severity 및 impact='wrong-output(관측 한정, state mutate 없음)' 는 코드 추적과 정합. 키 비대칭은 객관 사실이고 단일 surface 의 결정적 수정(runtime 키에 generation 반영 또는 coordinator 키를 ref-only 로 정렬)이 가능하므로 verdict=real-problem-real-fix. role_specific.recommendation 은 페르소나 enum(low/medium/high-impact)상 medium 으로 표기하나, 이는 강제 scope-down(strong_recommendation)이 아니라 영향 규모 라벨일 뿐 — 현 single CAND 범위가 이미 적정하여 strong_recommendation=null."
+}

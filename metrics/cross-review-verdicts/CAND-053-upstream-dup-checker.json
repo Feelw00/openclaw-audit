@@ -1,0 +1,58 @@
+{
+  "role": "upstream-dup-checker",
+  "candidate_id": "CAND-053",
+  "finding_ids": ["FIND-diagnostic-recovery-ordering-causality-001"],
+  "verdict": "real-problem-real-fix",
+  "summary": "coordinator recoveryRequestKey(`${ref}:${stateGeneration ?? \"unknown\"}`)와 runtime recoveryKey(`ref` only)의 in-flight 키 입도 비대칭은 현재 upstream/main(c559776c51)에 그대로 존재한다. 최근 4주 src/logging 커밋 중 두 개(6f76d9f246, ef8619d5f5)가 해당 두 파일을 건드렸으나, 6f76d9f246은 stale active run liveness reclaim(다른 결함), ef8619d5f5는 coordinator import 별칭 rename(emitInternalDiagnosticEvent)일 뿐 키 정의는 미변경. recoveryRequestKey/recoveriesInFlight 키 비대칭을 수정하거나 중복 session.recovery.requested 이벤트를 다루는 merged/open PR·issue 없음. CAL-004 risk 낮음 — upstream main은 오늘(2026-05-29) 시점 최신, 중복 merge 위험 없음.",
+  "verdict_rationale": "지목된 결함(coordinator ref:generation vs runtime ref 키 비대칭 → generation bump 후 재요청 시 coordinator dedup 통과·runtime skip → 중복 requested 이벤트 + dedup 계층 불일치)이 upstream/main에 현존하고, 이를 해소한 upstream commit/PR이 없다. 따라서 upstream-duplicate 아님. 결함 자체는 실재(real-problem)하며 CAND/FIND가 root cause를 정확히 짚고 fix 방향(runtime 키에도 generation 반영 또는 양쪽 키 입도 통일)이 타당(real-fix). 단 본 role은 해결책 코드 자체를 평가 범위로 두지 않으며, FIND self-check의 미확인 가정(T1 완료 직후 두 번째 recover가 실제 실행되어 이중 abort 가능성)은 abort idempotency 미검증으로 severity 상향 여지가 있으나 upstream 중복성 판정에는 영향 없음.",
+  "role_specific": {
+    "upstream_current_state": {
+      "target_still_present": true,
+      "upstream_commit_sha_checked": "c559776c51af6912949c78fcdf7cd4fc8423364d",
+      "coordinator_key_on_upstream": "`${ref}:${request.stateGeneration ?? \"unknown\"}` (src/logging/diagnostic-session-recovery-coordinator.ts recoveryRequestKey, generation 포함)",
+      "runtime_key_on_upstream": "`params.sessionKey?.trim() || params.sessionId?.trim()` (src/logging/diagnostic-stuck-session-recovery.runtime.ts recoveryKey, ref only — generation 미참조)",
+      "asymmetry_confirmed": true
+    },
+    "recent_related_commits": [
+      {
+        "sha": "6f76d9f246",
+        "subject": "fix(diagnostics): reclaim wedged session lanes with a stale leaked active run (#86056)",
+        "overlaps_target": false,
+        "overlap_reason": "runtime.ts에 isActiveRunProgressStale / staleActiveProgressAbortMs liveness 체크를 추가해 leaked active run을 reclaim하는 별개 결함 수정. recoveryKey 정의·recoveriesInFlight 키 입도는 변경하지 않음."
+      },
+      {
+        "sha": "ef8619d5f5",
+        "subject": "fix(diagnostics): expose missing telemetry signals (#86682)",
+        "overlaps_target": false,
+        "overlap_reason": "coordinator.ts 변경은 emitDiagnosticEvent → emitInternalDiagnosticEvent import 별칭 rename 1줄뿐. recoveryRequestKey 및 dedup 로직 미변경."
+      },
+      {
+        "sha": "286964cd6a",
+        "subject": "fix(diagnostics): recover orphaned session activity",
+        "overlaps_target": false,
+        "overlap_reason": "diagnostic-session-attention / session-write-lock / diagnostic.ts 변경. recovery 두 파일의 in-flight 키 미변경."
+      }
+    ],
+    "open_prs_issues": [
+      "PR #77865 (CLOSED, not merged) [codex] Fix noop diagnostic recovery state clearing — noop/no_active_work outcome에 대해 coordinator가 diagnostic state를 idle로 clear하도록 하는 다른 결함. in-flight 키 비대칭/중복 requested 이벤트는 미해결. proof transcript에 stateGeneration:2가 보이나 runtime 키 입도는 손대지 않음.",
+      "Issue #86159 (OPEN) Feature: diagnostics stuck-session recovery ladder — 기능 제안, 본 dedup 결함 무관.",
+      "Issue #85251 (OPEN) Codex app-server silent → embedded run wedges full recovery window — recovery 트리거 원인(다른 표면), 키 비대칭 무관.",
+      "PR #82733 (CLOSED) fix(diagnostics): recover stale idle embedded-run lanes — 6f76d9f246 계열 reclaim 작업, 키 비대칭 무관.",
+      "검색 키워드(recovery in-flight dedup / session recovery generation / recovery requested duplicate / recoveryRequestKey 등)로 in-flight 키 입도 비대칭 또는 중복 session.recovery.requested 이벤트를 직접 다루는 merged·open PR/issue 없음. gh search commits 'recoveryRequestKey' 0 hit."
+    ],
+    "cal004_risk_assessment": "low — git fetch upstream main 결과 upstream/main HEAD가 c559776c51(2026-05-29, 오늘)로 최신. 지목 코드가 현존하고 최근 4주 내 동일 영역 merge 중 결함 해소한 것 없음. 중복 merge 가능성 낮음. base 노후화 위험 없음(오늘 fetch).",
+    "recommendation": "proceed"
+  },
+  "strong_recommendation": null,
+  "checked_at": "2026-05-29",
+  "commands_run": [
+    "git fetch upstream main",
+    "git log upstream/main --since=\"4 weeks ago\" --oneline -- src/logging/",
+    "git show upstream/main:src/logging/diagnostic-session-recovery-coordinator.ts (recoveryRequestKey 확인)",
+    "git show upstream/main:src/logging/diagnostic-stuck-session-recovery.runtime.ts (recoveryKey 확인)",
+    "git show 6f76d9f246 / ef8619d5f5 / 286964cd6a (diff intent 분석)",
+    "gh pr list --repo openclaw/openclaw --search ... --state all/merged",
+    "gh issue list --repo openclaw/openclaw --search ... --state all",
+    "gh search commits --owner openclaw --repo openclaw recoveryRequestKey (0 hit)"
+  ]
+}

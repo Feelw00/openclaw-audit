@@ -1,0 +1,69 @@
+{
+  "role": "critical-devil",
+  "candidate_id": "CAND-050",
+  "verdict": "real-problem-real-fix",
+  "summary": "Primary-path inversion 결과: 주장이 성립하려면 (1) deliver 성공 직후 ack 전 crash + (2) 프로세스 재시작이 동시에 필요한데, 두 조건 모두 restart-continuation 경로의 자연스러운 활성화 구간이다. 유일하게 의미 있는 숨은 가드인 in-memory inbound dedupe(claimInboundDedupe, stable MessageSid 키)는 재시작 시 메모리 Map 이 비워져 cross-restart 시나리오를 막지 못한다. outbound 큐 대비 비대칭(recoveryState/reconcileUnknownSend 부재)도 코드로 확인됨. abandon/scope-down 근거를 찾지 못했다.",
+  "hidden_guards_found": [
+    {
+      "path": "src/auto-reply/reply/inbound-dedupe.ts:94-112 (claimInboundDedupe) + dispatch-from-config.ts:1541-1547",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "restart-continuation deliver 가 ctx.MessageSid=messageId(=restart-sentinel:sessionKey:kind:ts, 큐 entry 에 영속되어 replay 간 동일)로 dispatchReplyFromConfig 까지 흘러 claimInboundDedupe 를 거친다. 그러나 캐시는 resolveGlobalDedupeCache→createDedupeCache 의 'const cache = new Map<string, number>()'(dedupe.ts:20) 순수 in-memory 라 crash/restart 시 비워진다. FIND 시나리오는 정의상 재시작 후 첫 replay 이므로 cache.peek 가 false → status:'claimed' → 턴 재실행. 동일 프로세스 내 중복만 막고 cross-restart 는 못 막음."
+    },
+    {
+      "path": "src/infra/session-delivery-queue-recovery.ts:34-35,52-58 (drainInProgress / entriesInProgress claimRecoveryEntry)",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "claimRecoveryEntry 는 'if (entriesInProgress.has(entryId)) return false' 로 동일 프로세스 내 동시 복구만 차단. Set 도 모듈 전역 in-memory 라 재시작 시 초기화 → 재시작 후 복구 재진입을 막지 못함."
+    },
+    {
+      "path": "src/infra/session-delivery-queue-recovery.ts:152-155, 229-232 (re-read after claim)",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "loadPendingSessionDelivery 재읽기 후 'if (!currentEntry) continue' — *다른 복구 경로가 이미 ack 해 파일이 사라진* 경우만 skip. ack 전 crash 로 파일이 pending 으로 남은 경우 currentEntry!=null 이라 그대로 drainQueuedEntry→deliver 로 흐름. FIND counter_evidence 기술과 일치."
+    },
+    {
+      "path": "src/gateway/server-restart-sentinel.ts:265-277 (expectedSessionId)",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "'if (params.entry.expectedSessionId && (!entry?.sessionId || entry.sessionId !== params.entry.expectedSessionId))' — 세션 *변경* 시에만 skip(wake 로 강등). 세션 동일 + 턴 이미 실행/전송됨은 미검사. 인과 정보가 아님."
+    },
+    {
+      "path": "src/infra/session-delivery-queue-storage.ts:125-129 (idempotencyKey / jsonDurableQueueEntryExists)",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "'if (params.idempotencyKey) { if (await jsonDurableQueueEntryExists(filePath)) return id; }' — enqueue 단계 중복 *삽입*만 dedup. 동일 entry 재-deliver 는 enqueue 를 거치지 않으므로 무효."
+    },
+    {
+      "path": "src/infra/outbound/delivery-queue-recovery.ts:370-441 (outbound reconcileUnknownQueuedDelivery, baseline)",
+      "guard_type": "unconditional",
+      "blocks_claim": false,
+      "evidence_quote": "outbound 큐는 'if (entry.recoveryState === \"send_attempt_started\" || entry.recoveryState === \"unknown_after_send\")' 분기로 adapter 에 reconcileUnknownSend 를 물어 sent/not_sent 확인 후에만 replay 하고 확인 불가 시 ':417 refusing blind replay without adapter reconciliation' 로 거부. 이 가드는 *outbound* 에만 존재 — session 큐 4파일+restart-sentinel grep 결과 recoveryState|send_attempt_started|unknown_after_send|platformSendStartedAt|reconcileUnknownSend match 0. 비대칭 warrant 가 코드로 확정됨(이 가드의 부재가 바로 결함)."
+    }
+  ],
+  "primary_path_inversion_result": "주장(unack agentTurn blind replay→턴 중복 실행+응답 중복 전송)이 성립하려면 다음이 모두 우회/부재해야 한다: (a) deliver 성공과 ackSessionDelivery 사이의 crash — recovery.ts:107-108 의 'await opts.deliver(entry); await ackSessionDelivery(...)' 두 await 사이 window 로 구조적으로 존재(ack 시작 전 crash 면 파일 pending 잔존). (b) 프로세스 재시작 — in-memory inbound dedupe / entriesInProgress / drainInProgress 를 모두 무력화하는 단일 조건. restart-continuation 은 enqueue caller 가 server-restart-sentinel.ts:606 단일 — 정의상 crash/restart 직후 경로라 (a)+(b)가 자연스럽게 겹친다. (c) deliver=deliverQueuedSessionDelivery 가 agentTurn 일 때 dispatchAssembledChannelTurn 으로 dispatchReplyWithBufferedBlockDispatcher(턴 실행, 비-idempotent side-effect)를 먼저 호출 — 이 턴 재실행은 outbound 큐의 final-message reconcile 보다 앞단이라, 설령 최종 메시지 전송이 outbound reconcile 로 흡수돼도 '턴 자체 중복 실행(wrong-output)' 은 남는다. 결론: 어떤 lock/CAS/atomic/unconditional cleanup 도 cross-restart 시나리오를 막지 않는다. abandon/scope-down 을 정당화할 가드를 찾지 못함.",
+  "cal001_style_misses": [
+    "CAL-001 의 'in-memory 자료구조에 의존하는 가드를 영속 가드로 오인' 패턴 역방향 재적용: 여기서는 *방어 측*(dedupe.ts:20 Map, entriesInProgress Set)이 in-memory 라 crash 시 비워진다는 점을 명시 확인. CAND-004 에서 maintainer 가 지적한 '숨은 unconditional cleanup' 에 해당하는 영속 가드는 session 큐에 부재(recoveryState 필드/함수 grep match 0).",
+    "FIND self-check(line 163)가 미확인으로 남긴 'dispatchAssembledChannelTurn 내부 message-level dedup' 을 직접 추적함: 유일한 dedup 은 in-memory claimInboundDedupe 뿐이고, session.ts 에 persistent processed-message 추적(lastProcessedMessageId 류) 없음 → 미확인 lever 가 결함을 흡수하지 못함을 확정.",
+    "기존 테스트 우연 커버 여부: session-delivery-queue.recovery.test.ts 는 (a)success→ack(deliver toHaveBeenCalledTimes(1)), (b)transient throw→retryCount=1 재큐만 검증. 'deliver 성공 후 unack 재진입 시 중복 전달' 을 의도된 동작으로 못박은 케이스 없음 → blind replay 가 설계 의도로 확정된 바 없음(false-positive 방어 근거 부재)."
+  ],
+  "strong_recommendation": "proceed-with-caveat",
+  "caveats": [
+    "in-memory inbound dedupe(claimInboundDedupe, stable MessageSid)가 동일 프로세스 내 중복은 막으므로, 결함 발현은 'crash 후 재시작' window 로 한정된다 — FIND 가 P0 가 아닌 P1 로 둔 빈도 평가와 정합. SOL 단계의 repro 는 반드시 *프로세스 재시작 경계*를 넘긴 deliver→(no ack)→restart→re-deliver 흐름이어야 하며, 동일 프로세스 mock 만으로는 dedupe 에 가려져 red 가 안 날 수 있다(CAL-001 의 production-equivalent flow 검증 의무 직접 적용).",
+    "최종 메시지 전송(final payload→deliverInboundReplyWithMessageSendContext, kernel.ts:390)은 outbound 큐 reconcile 로 일부 중복 전송이 흡수될 여지가 있다. 따라서 SOL warrant 의 핵심 harm 은 '응답 중복 전송' 보다 '턴(LLM/툴) 비-idempotent 재실행' 에 무게를 둬야 한다. impact 를 '응답 중복' 단독으로 좁히면 outbound reconcile 가능성에 의해 약화될 수 있다.",
+    "CAND 는 problem-only(해결책 범위 밖)이며 verdict 의 'real-fix' 는 outbound 큐에 이미 존재하는 reconcileUnknownSend/blind-replay-거부 메커니즘이 명확한 fix 방향을 제시한다는 의미. fix 자체는 CODEOWNERS/계약 검토 후 SOL 에서 다룬다."
+  ],
+  "evidence_reads": [
+    "src/infra/session-delivery-queue-recovery.ts:98-124,145-199,219-275 (drainQueuedEntry deliver→ack, claim/re-read)",
+    "src/infra/session-delivery-queue-storage.ts:43-68,117-138 (QueuedSessionDelivery 타입 recoveryState 부재, enqueue idempotency)",
+    "src/gateway/server-restart-sentinel.ts:227-396,597-624 (deliverQueuedSessionDelivery, expectedSessionId, stable messageId, enqueue caller)",
+    "src/channels/turn/kernel.ts:357-428 (dispatchAssembledChannelTurn → dispatchReplyWithBufferedBlockDispatcher)",
+    "src/auto-reply/reply/provider-dispatcher.ts:15-24 → dispatch.ts:430-510,382-413 (call chain to dispatchReplyFromConfig)",
+    "src/auto-reply/reply/inbound-dedupe.ts:13-132 (claimInboundDedupe, MessageSid 키, 20m TTL)",
+    "src/infra/dedupe.ts:17-91 (createDedupeCache 순수 in-memory Map — restart 시 wipe)",
+    "src/infra/outbound/delivery-queue-recovery.ts:152-194,360-441 (reconcileUnknownQueuedDelivery, :417 blind replay 거부)",
+    "src/infra/session-delivery-queue.recovery.test.ts:13-72 (기존 테스트 blind replay 미고정)",
+    "grep: recoveryState|send_attempt_started|unknown_after_send|platformSendStartedAt|reconcileUnknownSend → session 큐 파일 match 0",
+    "gh issue/pr search → upstream duplicate 없음"
+  ]
+}

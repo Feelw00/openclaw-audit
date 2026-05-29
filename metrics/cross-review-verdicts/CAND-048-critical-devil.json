@@ -1,0 +1,58 @@
+{
+  "role": "critical-devil",
+  "verdict": "real-problem-real-fix",
+  "confidence": "medium",
+  "summary": "primary-path inversion 을 두 FIND 모두에 엄격 적용했으나 주장을 무효화하는 숨은 guard 를 찾지 못했다. FIND-001: secrets/ 전체에 2PC/저널/락 키워드 0 (grep EXIT 1), replaceConfigFile 의 lock 은 반환 시 해제(mutate.ts) 되고 satellite write 루프는 무경계, 롤백 restoreFileSnapshot 은 throw 를 던지는 동일 writeTextFileAtomic 를 swallowing try/catch 안에서 호출 — unconditional cleanup 아님(apply.ts:739-747,846-853). FIND-002: AUTH_STORE_LOCK 은 실재하고 그 주석(store.ts:706-708)이 바로 이 lost-update 를 막기 위함이라 명시하는데 apply 는 그 락을 우회(secrets/ withFileLock EXIT 1), 게다가 secrets apply 는 'gateway 정지' guard 없는 CLI 명령이고 게이트웨이는 secrets.reload RPC 가 보여주듯 live daemon 으로 동시 가동된다 → 동시성 전제는 synthetic 아님. 기존 idempotent 테스트(apply.test.ts:675-700)가 config+authStore 를 0o400 으로 chmod 하지만 두 번째 apply 가 changedFiles==0 으로 commit 블록 진입 전 early-return(apply.ts:792) 하므로 부분커밋/롤백실패 시나리오를 우연히도 커버하지 못한다. close 근거를 만들 hidden guard 부재.",
+  "evidence_paths": [
+    "src/secrets/apply.ts:816-855",
+    "src/secrets/apply.ts:727-755",
+    "src/secrets/apply.ts:380-396",
+    "src/secrets/shared.ts:57-67",
+    "src/agents/auth-profiles/store.ts:696-719",
+    "src/agents/auth-profiles/store.ts:1042-1062",
+    "src/agents/auth-profiles/oauth-manager.ts:435-438",
+    "src/cli/secrets-cli.ts:249-292",
+    "src/secrets/apply.test.ts:675-700"
+  ],
+  "role_specific": {
+    "hidden_guards_found": [
+      {
+        "path": "src/secrets/apply.ts:843-845",
+        "guard_type": "none",
+        "blocks_claim": false,
+        "evidence_quote": "for (const write of writes) { writeTextFileAtomic(write.path, write.content, write.mode); } — config 커밋(replaceConfigFile, 자체 lock 은 반환 시 해제) 이후 satellite write 가 파일 간 2PC/저널/단일 lock 없이 단순 순차 실행. 무경계 확인."
+      },
+      {
+        "path": "src/secrets/apply.ts:846-853",
+        "guard_type": "conditional-edge",
+        "blocks_claim": false,
+        "evidence_quote": "catch { for (...snapshots) { try { restoreFileSnapshot(pathname, snapshot); } catch { // Best effort only; preserve original error. } } } — 롤백은 throw 시에만(recovery-only) 도는 best-effort 이며 복원 write 자체가 swallowing try/catch. unconditional cleanup 아님 → FIND-001 의 '복원도 실패하면 영속' 전제를 차단하지 못함."
+      },
+      {
+        "path": "src/secrets/apply.ts:739-747",
+        "guard_type": "none",
+        "blocks_claim": false,
+        "evidence_quote": "restoreFileSnapshot 이 writeTextFileAtomic(pathname, snapshot.content, ...) 로 복원 — throw 를 유발한 ENOSPC/EACCES 와 동일한 write 경로라 같은 fault 조건에서 복원도 실패할 수 있음. CAL-001 식 '숨은 unconditional delete/restore' 없음."
+      },
+      {
+        "path": "src/agents/auth-profiles/store.ts:705-715",
+        "guard_type": "unconditional",
+        "blocks_claim": false,
+        "evidence_quote": "return await withFileLock(authPath, AUTH_STORE_LOCK_OPTIONS, async () => { // Locked writers must reload from disk... Otherwise a live gateway can overwrite fresher CLI/config-auth writes with stale in-memory auth state ... }) — 락은 실재하고 정확히 FIND-002 의 lost-update 를 막기 위함이라 주석이 자증하나, 이 가드는 lock-taker 끼리만 직렬화. apply 가 락을 안 잡으므로 apply↔gateway 충돌을 막지 못함(blocks_claim=false)."
+      },
+      {
+        "path": "src/cli/secrets-cli.ts:249-292",
+        "guard_type": "none",
+        "blocks_claim": false,
+        "evidence_quote": "runSecretsApply({ plan, write: true, ... }) 호출 전후로 gateway-정지 / isRunning / pidfile / 전역 lock 확인 없음(grep gateway|isRunning|lock EXIT 매치 없음). secrets.reload 는 live gateway RPC 라 게이트웨이 동시 가동이 정상 운영 모델 → FIND-002 동시성 전제 차단 가드 부재."
+      }
+    ],
+    "primary_path_inversion_result": "FIND-001 성립 조건: (A) config 커밋 성공(replaceConfigFile 반환) → (B) satellite for-loop 의 N번째 writeTextFileAtomic 가 ENOSPC/EACCES/EIO/0o700 mkdir 실패로 throw → (C) catch 의 best-effort 롤백 중 적어도 한 restoreFileSnapshot 이 동일 fault 로 실패. A,B,C 를 막을 all-or-nothing staging/journal 이 코드에 전무하며(secrets/ withWriteTransaction|BEGIN|journal|2PC|CAS grep EXIT 1), 롤백이 swallowing try/catch 라 C 를 막는 unconditional guard 도 없다. 즉 주장은 fault-injection 타이밍 의존이지 코드상 차단 불가 — false-positive 근거 못 만듦. FIND-002 성립 조건: apply 의 락-없는 read(apply.ts:391, projectPlanState)↔락-없는 write(apply.ts:844) 창 사이에 gateway 가 withFileLock 잡고 토큰 refresh write. 정규 writer 는 AUTH_STORE_LOCK 으로 상호 직렬화되지만 apply 는 그 직렬화에 불참하고, saveJsonFile/writeTextFileAtomic 둘 다 전체파일 overwrite 라 stale 스냅샷이 신토큰을 통째로 덮음(merge 가드 없음, store.ts:1042 saveJsonFile 확인). gateway 동시 가동은 secrets.reload RPC 로 입증되는 정상 운영 모델이라 동시성 전제는 synthetic 이 아니다. 양 FIND 모두 close/abandon 을 정당화할 inverted guard 를 Read/Grep 으로 찾지 못함.",
+    "cal001_style_misses": [
+      "apply.test.ts:675-700 'is idempotent on repeated write applies' 가 config+authStore 를 0o400 chmod 한 뒤 재apply 하여 모든 파일 불변을 단언 — 표면상 read-only commit 실패 + 무손상을 커버하는 듯 보이나, 두 번째 apply 는 첫 apply 가 이미 마이그레이션해 changedFiles.length===0 으로 apply.ts:792 에서 commit 블록 진입 전 early-return 한다. 따라서 '미해결 변경이 남은 채 commit 중간 throw' 인 FIND-001 의 핵심 경로를 우연히도 exercise 하지 않음. 이를 '부분커밋이 테스트로 커버됨' 으로 오독하면 CAL-001 식 false-negative 위험.",
+      "withFileLock 이 secrets/ 밖(src/infra/file-lock)·auth-profiles/ 에 다수 존재하므로 'apply 도 어딘가에서 잡겠지' 라고 가정하기 쉬우나 secrets/ 한정 grep(EXIT 1)으로 apply 경로가 무락임을 명시 확인해야 함. 인접 모듈의 락 존재를 apply 의 보호로 오귀속하는 CAL-001 식 hidden-guard 오분류 주의.",
+      "replaceConfigFile 이 자체 withFileLock+baseHash CAS 를 가져 'config 가 보호되니 트랜잭션이 있다' 고 오인 가능 — 그 lock 은 mutate.ts 의 함수 반환과 함께 해제되어 후속 satellite write 를 덮지 않음. 단일파일 가드를 다중스토어 트랜잭션 가드로 오독하는 패턴."
+    ],
+    "strong_recommendation": "proceed-with-caveat"
+  }
+}

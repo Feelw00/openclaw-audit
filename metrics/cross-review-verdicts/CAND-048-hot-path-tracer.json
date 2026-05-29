@@ -1,0 +1,30 @@
+{
+  "role": "hot-path-tracer",
+  "verdict": "real-problem-real-fix",
+  "confidence": "medium",
+  "summary": "runSecretsApply 의 write-mode 커밋 블록(apply.ts:835-855)과 auth-store write 루프(apply.ts:818-821,844)는 실재하는 코드 경로이며 비-test caller 3곳에서 호출된다. 그러나 write 모드에 도달하는 경로는 단 2곳 — `secrets configure --apply`(secrets-cli.ts:250)와 `secrets apply --from`(secrets-cli.ts:288) — 으로 둘 다 명시적·대화형 CLI 명령이며 confirm 프롬프트(특히 'one-way migration' 비가역 경고)로 게이트된다. 유일한 프로그램적 caller(configure.ts:981)는 write:false 의 dry-run preflight 라 발산 분기에 절대 진입하지 않는다. gateway/daemon/embedded/runtime 어디에서도 write 모드를 호출하지 않으므로 이 경로는 cold 마이그레이션 핫패스가 아니다. 두 FIND 의 발산 분기 자체도 매 run 활성이 아니라 실패-조건부다(FIND-001: config 커밋 성공 후 루프 중간 IO-fault throw AND best-effort 롤백도 동일 조건으로 실패, FIND-002: read↔write 창에서 라이브 게이트웨이 OAuth refresh 동시 발생). I/O 는 순수 로컬 파일시스템 atomic write(writeTextFileAtomic→@openclaw/fs-safe, network/driver-IPC 없음)이고, read↔write 창을 벌리는 것은 preflight 의 exec provider spawn 이다. 결론: 결함은 실재 커밋 경로 위의 진짜 문제(synthetic/false-positive/upstream-dup 아님)지만, write 경로가 cold-explicit-confirmed 이고 두 분기 모두 실패-조건부라 매-run 핫패스가 아니다 → edge_case, scope-down 권고.",
+  "evidence_paths": [
+    "src/secrets/apply.ts:757-855",
+    "src/secrets/apply.ts:818-821",
+    "src/secrets/apply.ts:835-855",
+    "src/secrets/apply.ts:843-845",
+    "src/secrets/apply.ts:847-853",
+    "src/cli/secrets-cli.ts:230-263",
+    "src/cli/secrets-cli.ts:274-300",
+    "src/secrets/configure.ts:981-985",
+    "src/secrets/shared.ts:35"
+  ],
+  "role_specific": {
+    "callers_of_target": [
+      "src/cli/secrets-cli.ts:250 — `secrets configure --apply` action, write:true (대화형 confirm + 비가역 경고 게이트)",
+      "src/cli/secrets-cli.ts:288 — `secrets apply --from <plan>` action, write:!opts.dryRun (대화형/플래그 명령)",
+      "src/secrets/configure.ts:981 — runConfigure preflight, write:false (dry-run only, 발산 분기 미진입)"
+    ],
+    "branch_activation_condition": "write 모드 진입은 사용자가 명시적으로 `secrets configure --apply` 또는 `secrets apply`(without --dry-run) 를 실행하고 confirm 프롬프트(특히 one-way migration 비가역 경고)를 통과해야만 한다 — process-start-only/runtime/embedded 경로 없음. 그 위에서 FIND-001 발산 분기는 config 커밋 성공 후 satellite for-loop writeTextFileAtomic 가 ENOSPC/EACCES/EIO 로 throw AND catch 의 best-effort restoreFileSnapshot 중 적어도 하나가 동일 조건으로 실패할 때만, FIND-002 lost-update 분기는 apply 의 락-없는 read(apply.ts:391)~write(apply.ts:844) 창 동안 라이브 게이트웨이의 OAuth refresh(updateAuthProfileStoreWithLock, store.ts:705) 가 같은 auth-profiles.json 을 동시 갱신할 때만 활성.",
+    "branch_taken_in_normal_usage": "실패 시만",
+    "actual_io_nature": "순수 로컬 파일시스템 atomic write — writeTextFileAtomic(apply.ts:844)→shared.js→@openclaw/fs-safe replaceFileAtomicSync. network call / driver-IPC 없음. read↔write 창을 벌리는 비자명 I/O 는 커밋 자체가 아니라 preflight(prepareSecretsRuntimeSnapshot, apply.ts:33)의 exec/file provider spawn(외부 프로세스 대기)로, FIND-002 의 경합 창을 형성하는 요인이다.",
+    "production_hot_path_score": 2,
+    "classification": "edge_case",
+    "recommendation": "medium-impact-scope-down"
+  }
+}

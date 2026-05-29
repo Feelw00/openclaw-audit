@@ -1,0 +1,78 @@
+{
+  "role": "critical-devil",
+  "candidate_id": "CAND-049",
+  "verdict": "real-problem-real-fix",
+  "summary": "Primary-path inversion 결과 FIND-001/002 가 주장하는 guard 부재가 실제로 확인됨. 손상 target 을 보호할 targetParsed.ok 검사, save 전 백업, 트랜잭션/락/CAS, save 시점 read-back-merge 가 전부 부재. CAL-001 식 숨은 unconditional cleanup 재탐색에서도 corrupt-target 을 self-heal 하거나 멀티스토어 시퀀스를 보상하는 경로를 못 찾음. close 사유 미발견.",
+  "files_read": [
+    "/Users/lucas/Project/openclaw/src/infra/state-migrations.ts (1040-1338, 960-1014, 1512-1611)",
+    "/Users/lucas/Project/openclaw/src/infra/state-migrations.fs.ts (30-73)",
+    "/Users/lucas/Project/openclaw/src/flows/doctor-health-contributions.ts (280-317)",
+    "/Users/lucas/Project/openclaw/src/commands/doctor-state-migrations.ts (1-13)",
+    "/Users/lucas/Project/openclaw/src/config/sessions/store.ts (360-635)",
+    "/Users/lucas/Project/openclaw/src/infra/state-migrations.test.ts (205-264)"
+  ],
+  "hidden_guards_found": [
+    {
+      "path": "src/infra/state-migrations.ts:1191-1195,1239-1247",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "if (!legacyParsed.ok) { warnings.push('Legacy sessions store unreadable; left in place ...') } ... if (legacyParsed.ok) { fs.rmSync(detected.sessions.legacyStorePath, {force:true}) }",
+      "note": "이 가드는 *legacy* 손상에만 작동(legacy 삭제 차단). FIND-001 이 주장한 비대칭 그대로 — target 손상에 대응하는 targetParsed.ok 검사가 save 분기 :1197-1216 에 전혀 없음. 주장 차단 못 함."
+    },
+    {
+      "path": "src/infra/state-migrations.ts:1073-1083",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "const legacyKeys = targetSessionParsed.ok ? listLegacySessionKeys({...}) : [];",
+      "note": "detect 단계에서 target 손상 시 legacyKeys=[] 가 되지만, hasLegacy = hasLegacySessions || legacyKeys.length>0 (:1120) 이라 legacy sessions.json/.jsonl 만 있으면 여전히 migrateLegacySessions 진입. detection 이 corrupt-target 시나리오를 막지 못함."
+    },
+    {
+      "path": "src/flows/doctor-health-contributions.ts:293-307",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "note(legacyState.preview.join('\\n'), 'Legacy state detected'); const migrate = ctx.options.nonInteractive === true ? true : await ctx.prompter.confirm({...})",
+      "note": "doctor 경로엔 confirm 프롬프트가 있으나 preview(:1095-1107)는 hasLegacy/경로만 표시하고 'target 손상' 신호를 전혀 안 줌 → 사용자가 손상 인지 못한 채 동의. 게다가 autoMigrateLegacyState(:1570-1601, startup/nonInteractive)는 confirm 없이 migrateLegacySessions 직접 호출. 주장 차단 못 함."
+    },
+    {
+      "path": "src/config/sessions/store.ts:604-612, 360-365",
+      "guard_type": "none",
+      "blocks_claim": false,
+      "evidence_quote": "await runExclusiveSessionStoreWrite(storePath, async () => { await saveSessionStoreUnlocked(storePath, store, opts) }); ... normalizeSessionStore(store);",
+      "note": "saveSessionStore 는 전달받은 store(=손상 시 legacy-only)를 그대로 atomic write. 기존 on-disk target 을 read-back 해 merge 하지 않고, .bak 백업도 안 만듦. skipMaintenance:true 라 maintenance 분기 전부 우회. 락+단일파일 원자성은 안전하나 *입력*이 손상 원본을 무시 — FIND-001 의 counter_evidence 그대로. 손상 target 보호 안 됨."
+    },
+    {
+      "path": "src/infra/state-migrations.ts:962-1013",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "fs.renameSync(targetDir, legacyDir); warnings.push('State dir migration rolled back ...')",
+      "note": "유일한 롤백은 autoMigrateLegacyStateDir 의 단일 state-dir rename 한정(:996). runLegacyStateMigrations 멀티스토어 시퀀스(:1316-1323)에는 try/catch·보상 전무. FIND-002 의 주장(롤백 범위제한) 정확."
+    },
+    {
+      "path": "src/infra/state-migrations.ts (전체) + state-migrations.fs.ts (전체)",
+      "guard_type": "none",
+      "blocks_claim": false,
+      "evidence_quote": "rg 'withWriteTransaction|BEGIN IMMEDIATE|withFileLock|baseHash|CAS|checkpoint|assertBaseHashMatch' state-migrations.ts state-migrations.fs.ts → match 0",
+      "note": "CAND-049 의 cluster 공통 증거(트랜잭션 프리미티브 부재) 재확인. 직접 rg 재실행, match 0."
+    }
+  ],
+  "primary_path_inversion_result": "FIND-001 이 성립하려면: (1) save gate 의 OR 조건 (legacyParsed.ok || targetParsed.ok) 이 target unreadable 인데도 통과해야 한다 — :1197-1199 에서 직접 확인, legacyParsed.ok=true 만으로 통과. (2) save 입력 merged 가 손상 target(={})을 무시한 legacy-only 여야 한다 — :1170 'merged = {...canonicalizedTarget.store}' 에서 targetStore={} 이므로 legacy-only 확정. (3) saveSessionStore 가 손상 원본을 백업 없이 덮어써야 한다 — store.ts:604/360 에서 read-back-merge·.bak 부재 확인. (4) 어떤 상위 가드(detection skip / confirm / corruption-warn / rollback)도 이를 막지 않아야 한다 — detect(:1120)·preview(:1095)·confirm(doctor only, 손상 신호 없음)·autoMigrate(:1588 confirm 없음) 전부 막지 못함 확인. 네 조건 모두 코드상 충족 → 주장 성립 조건이 정상 guard 우회 없이 그냥 만족됨(우회할 guard 자체가 없음). FIND-002 도 동일: runLegacyStateMigrations(:1316-1323) 4단계 순차 await + 함수레벨 try/catch 부재(:1310-1338 Read 확인) + 각 단계 비가역 renameSync/rmSync → 중간 throw 시 split state. 막을 guard 가 없으므로 주장 성립.",
+  "cal001_style_misses": [
+    "CAL-001 의 핵심 실패는 '자기 자신의 15s timer 가 무조건 delete' 라는 unconditional cleanup 을 놓친 것. 여기서 대응 질문 '손상 target 이 자동 복구/보호되는 unconditional 경로가 어딘가 있는가?' 를 재탐색 — saveSessionStore read-back, .bak 백업, detection-time corruption skip, doctor preview corruption-warn, post-migration verify-and-restore 다섯 후보 모두 부재 확인. CAL-001 과 달리 숨은 self-heal 경로 없음.",
+    "주의할 오독 가능 지점: :1239 legacyParsed.ok 가드를 'target 도 보호한다' 고 오독할 위험(CAL-001 에서 L250 을 조건부로 오독한 것과 동형). 실제로는 legacy *삭제 차단* 전용이라 target 덮어쓰기를 못 막음 — FIND-001 이 이미 비대칭으로 정확히 분류함.",
+    "또 다른 오독 위험: detect 의 targetSessionParsed.ok 검사(:1076)를 'corrupt target 시 마이그레이션 자체를 skip' 으로 오독. 실제로는 legacyKeys 계산에만 영향, hasLegacy 는 legacy 파일 존재로 별도 true(:1120) → skip 안 됨. 이 오독을 피하면 주장 유지."
+  ],
+  "test_coverage_check": "state-migrations.test.ts:205-264 의 happy-path 테스트는 정상 merge·legacy rmSync(:247 expectMissingPath)·canonicalize 만 검증. corrupt target sessions.json 주입(FIND-001) 또는 mid-sequence throw/split state(FIND-002) 를 우연히도 커버하지 않음. fs.test.ts:70-71 은 readSessionStoreJson5 가 invalid 입력에 {ok:false, store:{}} 반환만 단위 검증 — 오히려 FIND-001 의 swallow 메커니즘을 *확증*. 기존 테스트가 결함을 가리는 일 없음.",
+  "strong_recommendation": "proceed-with-caveat",
+  "caveat": "주장(guard 부재)은 코드상 확정. 단 두 FIND 모두 impact 가 조건부(trigger: legacy+corrupt-target 동시존재 또는 마이그레이션 중 fs throw, cold doctor/startup once-per-process). frequency 가 낮아 P1(001)/P2(002) severity 는 타당하나, FIND-001 의 '부분 복구 가능한 손상' 가정(trailing garbage vs 0바이트)·FIND-002 의 '런타임이 split state 를 어떻게 체감하는가'(로더 동작 미확인, allowed_paths 밖)는 self-check 에 명시된 미확정 항목. real-behavior-proof 단계에서 corrupt-target 주입 후 비-legacy 키 소실, 그리고 mid-throw 후 detect 재감지 실패를 실제 재현해 impact 를 굳혀야 함. close/abandon 근거는 미발견.",
+  "explored_categories": [
+    "primary-path-inversion",
+    "hidden-unconditional-cleanup (CAL-001 lens)",
+    "detection-skip-guard",
+    "confirm/preview-prompt-guard",
+    "save-time-backup/read-back-merge",
+    "transaction/lock/CAS-primitive",
+    "existing-test-accidental-coverage",
+    "rollback-scope",
+    "call-frequency"
+  ]
+}

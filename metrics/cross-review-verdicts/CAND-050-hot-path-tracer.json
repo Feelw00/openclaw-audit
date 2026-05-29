@@ -1,0 +1,45 @@
+{
+  "candidate_id": "CAND-050",
+  "finding_ids": ["FIND-infra-delivery-queue-ordering-causality-001"],
+  "role": "hot-path-tracer",
+  "verdict": "real-problem-real-fix",
+  "confidence": "medium",
+  "summary": "지목된 blind-replay 브랜치(session-delivery-queue-recovery.ts:107-108)는 gateway-start 시 1회 실행되는 실제 crash 복구 경로에 존재하며, 재실행 시 dispatchAssembledChannelTurn(에이전트 턴 재실행) + sendDurableMessageBatch(실 플랫폼 전송)라는 진짜 I/O 를 동반한다. 다만 중복이 실제 발현하려면 'deliver 성공 → ack 직전' 좁은 crash 서브윈도에 명중해야 하므로 매 run 활성이 아니라 crash-only edge case 다. outbound 큐(delivery-queue-recovery.ts:360-440 recoveryState + reconcileUnknownQueuedDelivery + :417 blind replay 거부)와의 비대칭은 소스로 확정(session storage/recovery 마커 grep match 0). 결함은 실재하고 outbound 패턴 이식이라는 명확한 수정 방향이 있으나 빈도가 낮아 P1 적정(P0 아님).",
+  "evidence_refs": [
+    "src/infra/session-delivery-queue-recovery.ts:98-124 (drainQueuedEntry: deliver→ack 무조건, reconciliation 분기 없음)",
+    "src/infra/session-delivery-queue-storage.ts:62-68 (QueuedSessionDelivery 타입에 recoveryState/platformSendStartedAt 필드 부재)",
+    "src/infra/outbound/delivery-queue-recovery.ts:360-440 (recoveryState 체크 + reconcileUnknownQueuedDelivery), :417 'refusing blind replay without adapter reconciliation'",
+    "src/infra/outbound/deliver.ts:600,618 (markDeliveryPlatformSendAttemptStarted / markDeliveryPlatformOutcomeUnknown 마커 영속)",
+    "grep recoveryState|markSession|attemptStarted|platformSend|reconcile in session-delivery-queue-{storage,recovery}.ts → MATCH 0 (비대칭 확정)",
+    "src/gateway/server-restart-sentinel.ts:253-396 (deliverQueuedSessionDelivery → dispatchAssembledChannelTurn + sendDurableMessageBatch, 실 I/O), :606 (유일 production enqueue caller), :475 (recoverPendingSessionDeliveries 호출)",
+    "src/gateway/server-runtime-services.ts:151-169,227 (recoverPendingSessionDeliveries → setTimeout 1250ms → recoverPendingRestartContinuationDeliveries, gateway-start only)",
+    "src/gateway/server.impl.ts:1534 (activateGatewayScheduledServices 진입)",
+    "src/gateway/server-startup-post-attach.ts:825-833 (scheduleRestartSentinelWake → drainRestartContinuationQueue, post-ready sidecar, gateway-start only)"
+  ],
+  "agreements": [
+    "FIND 의 핵심 warrant(session 큐 ↔ outbound 큐 reconciliation 비대칭)는 소스로 정확히 검증됨. session drainQueuedEntry 는 recoveryState 분기 없이 deliver→ack 무조건, outbound 는 send_attempt_started/unknown_after_send 마커 + adapter reconcile 후에만 replay + blind replay 명시 거부.",
+    "deliver=deliverQueuedSessionDelivery 가 agentTurn 일 때 실제 비-idempotent side-effect(LLM/툴 turn 재실행) + 실 플랫폼 전송을 수행한다는 주장 검증됨 — 순수 in-memory 아님.",
+    "production enqueue caller 1곳(restart continuation, 단일 entry), recovery 경로는 gateway-start only 라는 빈도 주장 검증됨.",
+    "P1(P0 아님) severity 적정 — crash/restart 경로 전용이라 window 활성화는 자연스럽되 매 run 은 아님."
+  ],
+  "disagreements": [
+    "FIND impact_detail 의 'window 가 활성화되기 쉽다' 표현은 다소 낙관적. 활성화되려면 (1) restart sentinel continuation enqueue, (2) deliver 성공(턴+전송 완료), (3) ackSessionDelivery 도달 전 crash 의 3중 조건이 동시 만족해야 한다. 이는 crash-only 의 좁은 서브윈도이며 정상 사용자에게 매 run 발현하는 hot-path 가 아니다(이론적 빈도는 아니나 edge case)."
+  ],
+  "scope_assessment": "single 유지 적정. 결함 본질은 session 큐 단일 도메인 내 두 큐의 정책 divergence 로, 수정도 outbound 마커/reconcile 패턴을 session 큐에 이식하는 단일 변경이다. 분할/확장 불필요.",
+  "strong_recommendation": null,
+  "role_specific": {
+    "callers_of_target": [
+      "drainQueuedEntry (session-delivery-queue-recovery.ts:98) — blind replay 브랜치 보유 함수",
+      "drainPendingSessionDeliveries (recovery.ts:184) → server-restart-sentinel.ts:445 drainRestartContinuationQueue → :825 scheduleRestartSentinelWake (post-ready sidecar, gateway-start only)",
+      "recoverPendingSessionDeliveries (recovery.ts:254) → server-restart-sentinel.ts:475 recoverPendingRestartContinuationDeliveries → server-runtime-services.ts:161 → :227 activateGatewayScheduledServices → server.impl.ts:1534 (gateway-start only, setTimeout 1250ms)",
+      "deliver fn = deliverQueuedSessionDelivery (server-restart-sentinel.ts:253) — dispatchAssembledChannelTurn(turn 재실행) + sendDurableMessageBatch(실 전송)",
+      "production enqueue: enqueueSessionDelivery (server-restart-sentinel.ts:606) — restart sentinel continuation 존재 시에만, 단일 entry"
+    ],
+    "branch_activation_condition": "재시작 후 session-delivery 큐에 pending entry 가 남아 있고, 그 entry 가 직전 run 에서 deliver 성공(에이전트 턴 재실행 + 플랫폼 전송 완료) 직후 ackSessionDelivery 도달 전에 crash/SIGKILL/OOM 으로 중단되어 생긴 unack pending 인 경우. recovery 코드 자체는 gateway-start 마다 실행되나, 중복 재전달 브랜치는 이 좁은 'deliver→ack' crash 서브윈도 명중 시에만 활성화.",
+    "branch_taken_in_normal_usage": "실패 시만",
+    "actual_io_nature": "실 I/O — deliver 가 dispatchAssembledChannelTurn 으로 에이전트 턴(LLM 호출/툴 실행 등 비-idempotent side-effect)을 재실행하고 sendDurableMessageBatch 로 플랫폼에 실 메시지를 네트워크 전송한다. 순수 in-memory 가 아니며 중복 시 외부 관측 가능한 부작용(응답 중복 전송 + 턴 부작용 중복) 발생.",
+    "production_hot_path_score": 2,
+    "classification": "edge_case",
+    "recommendation": "medium-impact-scope-down"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "role": "critical-devil",
+  "candidate_id": "CAND-053",
+  "verdict": "real-problem-fix-insufficient",
+  "summary": "키 비대칭(coordinator ref:generation vs runtime ref)은 코드상 실재(coordinator.ts:68 vs runtime.ts:56). 그러나 FIND 의 주 발현 메커니즘(step3/4: in-flight 윈도우 중 generation bump → coordinator 가 S:G+1 로 dedup 통과 → 두 번째 requested 이벤트)은 CAL-001 형 숨은 unconditional guard 를 놓쳤다: generation 을 +1 하는 모든 mutator 가 같은 블록에서 state.lastActivity = Date.now() 도 수행(diagnostic.ts:656-657/868-869/914-915). heartbeat 의 processing 분기(1253)는 ageMs = now - lastActivity > stuckSessionWarnMs(기본 120s, :75)를 요구하므로, ≤15s in-flight 윈도우 안의 bump 는 다음 30s tick 에서 ageMs 를 ~15-45s 로 만들어 재판정 자체가 안 일어난다 → processing 경로로는 주장 불성립. 단 idle-queued-stall 분기(1247-1254 / isIdleQueuedRecoverableSessionStall:557-562)는 lastProgressAgeMs(activity.lastProgressAt, run-activity.ts:319)에 의존하고 logMessageQueued 는 이를 refresh 하지 않으므로(touchSessionActivity:158-160 은 tool/model/run 이벤트에서만 발화), 큐 메시지가 generation 만 bump 시키고 lastProgressAgeMs 가 stale 로 남는 좁은 경로 1개로는 재현 가능. 결함은 실재하나 FIND 가 제시한 광범위(any generation bump) 발현 조건은 과장이고 실제 트리거 표면이 1개 분기로 한정. 영향은 관측 한정(non-mutating 확정: recovery.ts:88-92, coordinator.ts:90-92), 데이터 손상 없음 → P2 타당. proceed 하되 발현 조건을 idle-queued-stall 단일 분기로 scope-down 권고.",
+  "hidden_guards_found": [
+    {
+      "path": "src/logging/diagnostic.ts:656-657",
+      "guard_type": "unconditional",
+      "blocks_claim": true,
+      "evidence_quote": "state.lastActivity = Date.now();\\n  state.generation = (state.generation ?? 0) + 1;  // logMessageQueued: generation bump 과 lastActivity 갱신이 동일 블록에서 unconditional 동시 수행"
+    },
+    {
+      "path": "src/logging/diagnostic.ts:868-869",
+      "guard_type": "unconditional",
+      "blocks_claim": true,
+      "evidence_quote": "state.lastActivity = Date.now();\\n  state.generation = (state.generation ?? 0) + 1;  // logSessionStateChange: 동일 패턴"
+    },
+    {
+      "path": "src/logging/diagnostic.ts:914-915",
+      "guard_type": "unconditional",
+      "blocks_claim": true,
+      "evidence_quote": "state.lastActivity = Date.now();\\n  state.generation = (state.generation ?? 0) + 1;  // markDiagnosticSessionProgress: 동일 패턴"
+    },
+    {
+      "path": "src/logging/diagnostic.ts:1242,1253",
+      "guard_type": "conditional-edge",
+      "blocks_claim": true,
+      "evidence_quote": "const ageMs = now - state.lastActivity; ... (state.state === \"processing\" && ageMs > stuckSessionWarnMs)  // processing 재판정은 lastActivity 기준 120s(기본) 경과 요구 → in-flight 윈도우(<=15s) 내 bump 는 ageMs 를 리셋시켜 다음 tick 재판정 차단"
+    },
+    {
+      "path": "src/logging/diagnostic-stuck-session-recovery.runtime.ts:88",
+      "guard_type": "unconditional",
+      "blocks_claim": false,
+      "evidence_quote": "if (!key || recoveriesInFlight.has(key)) { return { status: \"skipped\", ... reason: ... \"already_in_flight\" ... } }  // runtime ref-단위 skip 은 실재하며 claim 의 비대칭 자체는 차단 안 함(오히려 비대칭의 한쪽)"
+    },
+    {
+      "path": "src/logging/diagnostic-run-activity.ts:158-160",
+      "guard_type": "conditional-edge",
+      "blocks_claim": false,
+      "evidence_quote": "function touchSessionActivity(activity, reason, now) { activity.lastProgressAt = now; ... }  // lastProgressAt 은 tool/model/run 진행 이벤트에서만 갱신, logMessageQueued 는 미갱신 → idle-queued-stall 분기에서만 generation bump 와 stale lastProgress 가 공존 가능 (claim 잔존 경로)"
+    }
+  ],
+  "primary_path_inversion_result": "주장(중복 requested 이벤트 + dedup 계층 불일치)이 성립하려면: (1) 같은 stuck 세션이 연속 heartbeat tick(30s)에서 반복 recovery 판정되어야 하고, (2) 두 tick 사이에 coordinator key 의 generation 성분이 변해야 한다. FIND 는 (2)를 'in-flight 윈도우 중 logMessageQueued 가 generation 을 bump' 로 충족시킨다. 그러나 generation bump 의 모든 출처(diagnostic.ts:656-657/868-869/914-915)는 state.lastActivity 를 동시에 Date.now() 로 리셋한다 (CAL-001 형 co-located unconditional guard, FIND 가 분석 누락). processing 재판정 분기(1253)는 ageMs = now - lastActivity > 120s(기본)를 요구하므로, bump 가 ageMs 를 리셋시켜 다음 tick 에서 재판정이 안 일어난다 → (1)과 (2)가 processing 경로에서는 상호배타적. 즉 'generation bump → 같은 세션 재stuck 판정'이라는 FIND 의 핵심 연결고리가 processing 분기에서 끊긴다. 잔존 성립 경로는 단 하나: idle-queued-stall 분기(state=idle, queueDepth>0, active/orphaned work, lastProgressAgeMs>staleMs; 1247-1254/557-562). 이 분기의 재판정 트리거는 lastActivity 가 아니라 lastProgressAgeMs(run-activity.ts:319)인데 logMessageQueued 는 lastProgressAt 을 갱신하지 않으므로(touchSessionActivity:158-160 은 tool/model/run 에서만), 큐 메시지가 generation 만 +1 하고 lastProgressAgeMs 는 stale 로 유지 → coordinator key S:G+1 신규, runtime key S 동일 → 두 번째 session.recovery.requested 발행 + runtime already_in_flight skip. 결론: 결함 실재하나 FIND 가 주장한 발현 조건('any generation bump 가 in-flight 중 끼면 발생')은 과장이며 실제 트리거 표면은 idle-queued-stall 단일 분기로 한정. abandon 사유는 못 됨(코드 비대칭+잔존 경로 확정), 그러나 fix/repro 는 이 단일 분기를 정확히 지목해야 하고 광범위 주장 기반 fix 는 불충분.",
+  "cal001_style_misses": [
+    "generation +1 과 state.lastActivity = Date.now() 가 동일 mutator 블록에 co-located 되어 있어, generation 변화 = stuck 타이머 리셋 이라는 점을 FIND 가 분석 안 함 (CAL-001 의 '15초 timer 가 cleanup 도 한다' 와 동형 — 변화를 일으키는 이벤트 자체가 보호 guard 를 동시 수행).",
+    "FIND mechanism step3 이 logMessageQueued 를 generation bump 출처로만 인용(:657)하고, 같은 함수가 lastActivity(:656)+lastStuckWarnAgeMs=undefined(:658)도 건드린다는 주변 맥락(R-5 execution-condition 분류)을 누락.",
+    "heartbeat 재판정 분기가 processing(lastActivity 기준)과 idle-queued-stall(lastProgressAgeMs 기준) 2종이고 둘이 서로 다른 타임스탬프를 쓴다는 사실을 FIND 가 구분 안 함 → '생산 경로에서 현실적으로 발생'(counter_evidence 4번)이 어느 분기를 말하는지 미명시. 실제로는 processing 분기에서 불성립, idle-queued 분기에서만 성립.",
+    "기존 테스트 우연 커버: diagnostic.test.ts:706-758 ('does not actively abort model calls with recent stream progress')는 lastProgressAt 갱신 시 recovery 미요청을 검증해 inversion guard 를 간접 증명. FIND 의 '비대칭 검증 테스트 없음' 주장은 맞으나, 인접 테스트가 progress-staleness 가 재판정의 실제 gate 임을 이미 보여줌 → 재현 테스트는 반드시 idle-queued-stall + lastProgressAgeMs stale + 큐잉으로만 generation bump 하는 셋업이어야 하고, processing 셋업으로 짜면 green 안 됨(false-repro 위험)."
+  ],
+  "strong_recommendation": "scope-down"
+}

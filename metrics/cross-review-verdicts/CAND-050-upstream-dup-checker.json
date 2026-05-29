@@ -1,0 +1,51 @@
+{
+  "role": "upstream-dup-checker",
+  "candidate_id": "CAND-050",
+  "verdict": "real-problem-real-fix",
+  "verdict_rationale": "CAND-050 의 지목 결함(session-delivery 큐 drainQueuedEntry 가 unacked agentTurn 을 reconciliation 없이 blind replay)은 현재 upstream/main(c559776c, 2026-05-29)에 그대로 존재한다. deliver→ack 2갈래 분류는 변하지 않았고, session 큐 storage 에는 여전히 send-attempt 마커/recoveryState 가 0건이며, outbound 큐만 reconcileUnknownQueuedDelivery + blind-replay 거부(:418)를 갖는 비대칭이 유지된다. 최근 8주 내 같은 파일을 건드린 commit 들은 backoff tiering / stale-tmp sweep / per-entry maxRetries / retry budget / session-key rotation 가드만 추가했고 unacked-replay reconciliation 은 전혀 도입하지 않았다. 동일 영역을 명시적으로 다루는 open PR/issue 도 없다(인접 #51628/#79376 은 outbound 큐 = CAND 가 baseline 으로 삼은 큐, 다른 메커니즘). upstream 중복 아님 → proceed.",
+  "summary": "지목 결함은 upstream/main 최신 HEAD 에 미수정 상태로 존재. 최근 관련 commit 들은 인접 기능만 손댔고 reconciliation 미도입. 동일 결함을 다루는 PR/issue 부재. 인접 duplicate-delivery 이슈는 outbound 큐(=대조 baseline)라 별개. upstream 중복 아님.",
+  "strong_recommendation": null,
+  "role_specific": {
+    "upstream_current_state": {
+      "target_still_present": true,
+      "upstream_commit_sha_checked": "c559776c51af6912949c78fcdf7cd4fc8423364d"
+    },
+    "recent_related_commits": [
+      {
+        "sha": "03addfe9ba59f368df91b48efaaabf1f46271103",
+        "subject": "fix(gateway): tighten session delivery recovery",
+        "overlaps_target": false,
+        "overlap_reason": "session-delivery-queue-recovery.ts/storage.ts 를 수정하나 (a) isSessionDeliveryEligibleForRetry 의 backoff tier off-by-one 수정, (b) stale .tmp 파일 sweep(5s mtime) 추가만. send-attempt 마커/recoveryState/reconcile 분기 없음 — drainQueuedEntry 의 deliver→ack unconditional 경로 그대로."
+      },
+      {
+        "sha": "0b8857d6536609b3c4d9c8bd48688603641b19cb",
+        "subject": "fix(gateway): honor restart continuation retry budget",
+        "overlaps_target": false,
+        "overlap_reason": "per-entry maxRetries 정책 필드(SessionDeliveryRetryPolicy) 추가 + drainPendingSessionDeliveries 의 retry 한도 resolve 만. 중복 재전달 차단용 reconciliation/마커 아님."
+      },
+      {
+        "sha": "a903df02f5ad5b166127a700fa4f2a56a6351162",
+        "subject": "fix(gateway): bound restart continuation recovery",
+        "overlaps_target": false,
+        "overlap_reason": "restart continuation recovery 의 budget/exports 정리. session 큐 deliver↔ack 인과나 send 마커와 무관."
+      },
+      {
+        "sha": "d8641a661b862ad5d249babe3644c1a9138e7b06",
+        "subject": "fix(sessions): avoid stale restart continuation reuse (Closes #86593)",
+        "overlaps_target": false,
+        "overlap_reason": "expectedSessionId 가드를 강화해 session-key 회전 시 system wake 로 fallback. 이는 FIND 가 이미 'partial — 세션 변경만 차단, 턴 이미 실행/전송됨 미검사' 로 분류한 바로 그 가드의 보강일 뿐, unacked-after-success blind replay 는 여전히 미차단."
+      }
+    ],
+    "open_prs_issues": [
+      "PR #74687 (open) avoid replaying channel restart recovery turns — src/agents/main-session-restart-recovery.ts (다른 모듈/계층); session-delivery-queue drainQueuedEntry 의 deliver→ack crash window 미해결",
+      "PR #86089 (open) Deliver restart recovery replies — 복구 응답이 silent 되지 않게 *전달 보장* 하는 반대 방향 관심사; reconciliation 미도입",
+      "PR #54900 (open) skip stale first-attempt entries during startup recovery — OUTBOUND delivery-queue-recovery.ts, retryCount===0 first-attempt staleness; unacked-after-success replay 와 다른 케이스",
+      "Issue #51628 (open) Telegram delivery queue recovery can replay old sendMessage — OUTBOUND 큐(=CAND 가 guarded baseline 으로 인용한 큐), 다른 메커니즘",
+      "Issue #79376 (open) delivery-recovery silently re-sends WhatsApp UNAVAILABLE — OUTBOUND 큐, dispatch 실패 후 replay; session 큐 아님",
+      "Issue #86742 (open) restart continuationMessage accepted but not queued after coalesced restart — enqueue-side loss(반대 증상)",
+      "session-delivery-queue 의 'unacked agentTurn 을 reconciliation 없이 replay' 를 명시적으로 다루는 open PR/issue 없음(검색 0 hit)"
+    ],
+    "cal004_risk_assessment": "low — upstream/main HEAD(c559776c, 2026-05-29 = 오늘) 기준 git fetch 후 git show 로 4개 지목 파일 라인 직접 재확인: drainQueuedEntry deliver→ack 분기 동일, storage 마커 grep 0건, outbound reconcile+:418 거부 존재. 최근 8주 commit 전수 검토에서 reconciliation 도입 commit 없음. base 노후화(CAL-004 핵심 실패) 위험 없음.",
+    "recommendation": "proceed"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "role": "reproduction-realist",
+  "candidate_id": "CAND-048",
+  "verdict": "real-problem-real-fix",
+  "strong_recommendation": "scope-down-to-FIND-001 (epic→single)",
+  "summary": "두 FIND 모두 production-taken branch 라 CAL-003 식 branch-inversion 은 없다. apply 의 커밋 블록(835-855)도 무락 auth-store write(818-821/844)도 write 모드 + changedFiles>0 에서 unconditional 직선 경로라 production 이 정확히 동일 분기를 실행한다. FIND-001 은 real-fs fault(read-only 부모 dir) 주입만으로 분기 왜곡 없이 throw + best-effort 롤백 실패를 재현 가능(synthetic risk low) → real-problem-real-fix. FIND-002 는 분기/full-file overwrite 의 lost-update 가 구조적으로 실재하나 재현이 concurrent OAuth refresh 를 read↔write 창에 정밀 interleave 하는 timing orchestration 에 의존(synthetic risk medium). 둘 다 결함은 real 이나 epic 으로 한 PR 에 묶으면 약한 쪽(FIND-002)의 재현 강건성이 강한 쪽을 끌어내므로 FIND-001 단독으로 scope-down 권고.",
+  "production_trigger_common": "openclaw secrets apply CLI 명령 → runSecretsApply({write:true}) (apply.ts:757). cold CLI 명령이며 hot-path 아님. write 모드 + changedFiles>0 일 때만 커밋 블록(apply.ts:835-855) 진입(apply.ts:777/792 early-return 직접 Read 확인). 미검증: secrets-cli.ts 의 정확한 entrypoint line은 본 감사에서 재확인 안 함(apply.ts 직선 경로만 Read 확인).",
+  "findings": [
+    {
+      "finding_id": "FIND-secrets-apply-cross-store-consistency-001",
+      "verdict": "real-problem-real-fix",
+      "production_trigger": "openclaw secrets apply (write 모드). plan 이 config 인라인 키 + 1개 이상 auth-store/.env plaintext 자격증명을 마이그레이션해 writes 길이 >= 1 일 때, config 커밋(apply.ts:836 replaceConfigFile) 성공 후 satellite for-loop(apply.ts:843-845)의 writeTextFileAtomic 가 fs fault(ENOSPC/EACCES/EIO/부모 0o700 생성 실패)로 throw.",
+      "branch_taken_in_prod": "write 모드 + changedFiles>0 이면 항상 try{ replaceConfigFile + for(writes) writeTextFileAtomic } catch{ restoreFileSnapshot best-effort } 분기를 unconditional 로 탄다. 조건 분기가 아니라 직선 코드라 production 이 정확히 이 경로를 실행한다(apply.ts:835-855 직접 Read 확인). throw 자체는 fs 결함 의존(edge)이지만 분기 선택의 inversion 은 없음.",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "없음(권장): 실제 tmpdir 에서 두 번째 auth-store 부모 디렉터리를 chmod 0o500/read-only 로 만들어 실제 writeTextFileAtomic throw 유도. 동일 read-only 조건이 restoreFileSnapshot 의 복원 write 도 실패시켜 best-effort 롤백 실패를 real 하게 재현.",
+        "대안(덜 권장): writeTextFileAtomic 를 N번째 호출에서만 throw 하도록 spy — 단 이러면 catch 의 restore 실패까지 자연 재현되지 않아 mock 정밀도 필요(분기 왜곡 위험 상승)."
+      ],
+      "synthetic_risk": "low",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "proceed-with-real-test"
+    },
+    {
+      "finding_id": "FIND-secrets-apply-cross-store-consistency-002",
+      "verdict": "real-problem-real-fix",
+      "production_trigger": "게이트웨이 라이브 운영 중 openclaw secrets apply (write) 가 auth-profiles.json 을 read(projectPlanState scrubAuthStoresForProviderTargets, apply.ts:391 readJsonObjectIfExists, 무락)한 뒤 ref resolve/preflight 동안, 같은 파일에 OAuth 자동 refresh(updateAuthProfileStoreWithLock → withFileLock(authPath, AUTH_STORE_LOCK_OPTIONS))가 새 토큰을 기록. 그 후 apply 커밋(apply.ts:818-821→844)이 stale 전체 스냅샷을 writeTextFileAtomic 로 무락 overwrite.",
+      "branch_taken_in_prod": "apply 의 auth-store write 는 무락 writeTextFileAtomic 로 unconditional(auth-store 변경 시). 정규 writer/OAuth refresh 만 AUTH_STORE_LOCK 을 잡는 비대칭은 src/secrets/ 에 lock 키워드 0(grep AUTH_STORE_LOCK|withFileLock|baseHash|CAS EXIT 1)으로 재확인. store.ts updateAuthProfileStoreWithLock 의 withFileLock(authPath, AUTH_STORE_LOCK_OPTIONS) + 주석('Otherwise a live gateway can overwrite fresher CLI/config-auth writes with stale in-memory auth state') 이 이 락의 목적이 정확히 본 lost-update 방지임을 입증(직접 Read). toJsonWrite(apply.ts:749)가 전체 store 를 JSON 직렬화하므로 full-file overwrite 라 다른 profile 의 신규 토큰도 stale 값으로 덮인다(lost-update 구조적 실재). 분기 inversion 없음.",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "concurrent OAuth refresh write 를 apply 의 read(apply.ts:391)↔write(apply.ts:844) 창에 끼우기 위한 interleaving 제어: ref resolve/preflight(prepareSecretsRuntimeSnapshot) 단계에 awaitable hook 또는 exec provider stub 로 창을 벌리고 그 안에서 updateAuthProfileStoreWithLock 를 실제 호출.",
+        "real fs(tmpdir) + 실제 withFileLock 사용 권장 — 락 자체를 mock 하면 비대칭 검증이 무의미해짐."
+      ],
+      "synthetic_risk": "medium",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "scope-down-to-one"
+    }
+  ],
+  "synthetic_risk": "medium",
+  "cal003_parallel": "differs from CAL-003",
+  "recommendation": "scope-down-to-one",
+  "rationale": "verdict=real-problem-real-fix: CAL-003 의 핵심 실수(test 가 production 미도달 branch=process.kill 를 mock 으로 강제)는 두 FIND 어디에도 없다. apply 의 커밋 블록도, 무락 auth-store write 도 production write 모드에서 unconditional 직선 경로라 정확히 동일 분기에서 exercise 가능하며(test_can_match_prod_branch=true ×2), 실제 fs/lock 를 쓰는 real fix(파일 간 트랜잭션 경계 / AUTH_STORE_LOCK 획득)로 해결되므로 synthetic-only/false-positive 가 아니다. upstream-duplicate 근거(기존 동시성/부분커밋 재현 테스트 또는 secrets 내 트랜잭션·락)는 grep EXIT 1 로 부재 확인. 별도 strong_recommendation(scope-down-to-FIND-001): FIND-001 은 real fs fault(read-only 부모 dir)만으로 throw + best-effort 롤백 실패를 분기 왜곡 없이 deterministic 재현(synthetic risk low). FIND-002 는 구조적으로 real 이나 재현이 concurrent OAuth refresh 를 read↔write 창에 정밀 interleave 하는 timing orchestration 의존으로 synthetic risk medium. epic(두 FIND 1 PR) 은 약한 쪽(FIND-002)의 재현 강건성이 강한 쪽(FIND-001)을 끌어내므로, 재현이 확실한 FIND-001 단독으로 scope-down(epic→single)하고 FIND-002 는 real interleave 테스트가 deterministic 하게 통과함을 별도 입증한 뒤에만 승격 권고. 이는 verdict(결함 자체 판정)가 아닌 워크플로우/PR 패키징 권고다."
+}

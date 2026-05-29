@@ -1,0 +1,59 @@
+{
+  "role": "reproduction-realist",
+  "candidate_id": "CAND-045",
+  "verdict": "real-problem-real-fix",
+  "strong_recommendation": "scope-down-to-one (FIND-002 migrate full-overwrite 를 단일 SOL/PR 로 먼저 발행, 나머지 2건은 후속). epic 3건 동시 발행은 one-thing-per-PR 위반 + 재현 난이도/severity 불균일.",
+  "summary": "세 FIND 모두 production 코드(writeFileSync raw in-place truncate)는 evidence_ref 그대로 upstream 61c538e2fc 에서 확인됨. atomic sibling(session-file-repair.ts:409 replaceFileAtomic)도 실재. CAL-003 같은 branch-inversion(process.kill vs process.emit) 형 false positive 가 아니라 atomicity property 자체의 결함이라 구조는 real 하고, 적용할 fix(replaceFileAtomic/Sync 헬퍼)도 동일 트리에 이미 존재하는 real-fix. 다만 결함의 핵심인 'truncate~flush 사이 crash window' 는 단일 writeFileSync 의 atomicity 라 deterministic 단위 테스트로 '실제 crash 손상'을 만들려면 process SIGKILL 주입 또는 writeFileSync mock 으로 부분쓰기 시뮬레이션이 필요 → synthetic risk 가 FIND 별로 다르다. migrate 경로(FIND-002 line 741)가 unconditional reachable + 이미 valid 한 전체 데이터를 truncate 하므로 재현 신뢰도/severity 가 가장 높다. 셋 다 묶은 epic 발행은 PR 분할 규율(one thing per PR) + 재현 난이도 차이상 단일 SOL 로 좁히는 것을 권고.",
+  "common_findings": [
+    "production code 3건 모두 evidence_ref(auth-storage.ts:119/164, transcript-jsonl.ts:27, settings-manager.ts:216) 가 upstream HEAD 와 정확히 일치 (직접 Read 확인). CAL-003 류의 hot-path/test-path 분기 불일치 아님.",
+    "atomic sibling 기준선(session-file-repair.ts:409 replaceFileAtomic + line 405 backup) 실재 확인. '같은 트리에 atomic 헬퍼가 있고 쓰이는데 critical writer 만 raw' 불균일 주장은 사실 → fix 가 synthetic 이 아니라 기존 헬퍼 재사용인 real-fix.",
+    "결함의 본질이 conditional branch fork 가 아니라 단일 writeFileSync 의 crash-atomicity property 라, '프로덕션에서 taken 되는 branch vs test branch' 비교 자체가 CAL-003 와 다른 축. R-7 의 branch-inversion 위험은 낮다.",
+    "단, '실제 crash 손상 데이터'를 deterministic 하게 만들려면 (a) child process SIGKILL 주입(통합테스트) 또는 (b) writeFileSync 를 부분쓰기로 mock 둘 중 하나 필요. (b) 는 production 의 writeFileSync 동작을 왜곡하는 mock 이라 CAL-003 식 'mock 이 강제하는 상태가 production 에서 발생 가능한가' 검증을 통과해야 함. POSIX O_TRUNC open+write 분해는 표준 동작이라 (a)/부분쓰기 자체는 production-가능하지만, fake-timer/promise-ordering 만으론 재현 불가(파일시스템 syscall 레벨이라 fake timer 무관).",
+    "self-heal 부재 분기(FIND-001 persistProviderChange loadError early-return:287, FIND-002 newSession discard:728-735, FIND-003 tryLoadFromStorage catch→{}:333) 도 production code 와 일치 확인. 손상→데이터소실 chain 의 후단은 real."
+  ],
+  "per_find": [
+    {
+      "finding_id": "FIND-agent-session-store-data-integrity-001",
+      "production_trigger": "set()/remove()/login() → persistProviderChange → storage.withLock → writeFileSync(119); 그리고 OAuth 토큰 만료 시 refreshOAuthTokenWithLock → withLockAsync → writeFileSync(164). 둘 다 unconditional 영속 write 경로(파일 존재 시 항상 이 경로). caller 실재 확인(auth-storage.ts:319/327/509).",
+      "branch_taken_in_prod": "writeFileSync(this.authPath, next) — O_TRUNC in-place rewrite. 분기 fork 아님, 단일 write atomicity. crash 미주입 시엔 정상 완료되는 동일 라인.",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "production-가능 방식: child process 띄워 writeFileSync(164) 진행 중 SIGKILL (통합)",
+        "또는 fs.writeFileSync 를 truncate-후-부분쓰기로 mock (production O_TRUNC 동작과 일치하는 한 정당) — 단 이 mock 이 production 동작을 왜곡하지 않음을 명시 필요",
+        "reload()/parseStorageData JSON.parse throw → loadError → persistProviderChange early-return(287) 검증은 mock 없이 손상 파일 fixture 로 가능"
+      ],
+      "synthetic_risk": "medium",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "proceed-with-real-test"
+    },
+    {
+      "finding_id": "FIND-agent-session-store-data-integrity-002",
+      "production_trigger": "구버전(version<3) 세션 resume → setSessionFile(721) → loadEntriesFromFile(724) → migrateToCurrentVersion 가 true(740) → rewriteFile(741) → writeJsonlEntriesSync → writeFileSync(transcript-jsonl.ts:27). migrate 분기는 version<CURRENT 면 unconditional reachable 이고 migrateV1ToV2/V2ToV3 가 실재(version.ts CURRENT=3). 이미 valid 한 전체 transcript 를 full overwrite 하므로 손상 단위='전부' — 셋 중 재현 가치 최고.",
+      "branch_taken_in_prod": "rewriteFile → writeJsonlEntriesSync(filePath, fileEntries) → writeFileSync O_TRUNC full-rewrite. line 732(empty-file recovery)/1271(branch=새파일) 은 위험 낮음, line 741(migrate) 이 핵심 hot-path.",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "version:2 헤더 .jsonl fixture 준비 후 setSessionFile 호출 → migrate 분기 진입은 mock 없이 자연 도달",
+        "crash 손상: child SIGKILL 또는 writeFileSync 부분쓰기 mock",
+        "재 resume 시 fileEntries.length===0 → newSession discard(728) 검증은 손상 fixture 로 mock 없이 가능"
+      ],
+      "synthetic_risk": "low",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "proceed-with-real-test"
+    },
+    {
+      "finding_id": "FIND-agent-session-store-data-integrity-003",
+      "production_trigger": "설정 변경 → SettingsManager → storage.withLock(scope,fn) → writeFileSync(216). unconditional 영속 write 경로지만 write 빈도가 설정 변경 시에만이라 노출 최저(P2). 손상 결과는 lockout 아닌 silent {} reset(tryLoadFromStorage catch:333) — graceful 하게 기동되어 crash 가 아닌 silent data-loss.",
+      "branch_taken_in_prod": "writeFileSync(path, next) O_TRUNC in-place rewrite. 단일 write atomicity, 분기 fork 아님.",
+      "test_can_match_prod_branch": true,
+      "required_mocks": [
+        "child SIGKILL 또는 writeFileSync 부분쓰기 mock",
+        "재기동 tryLoadFromStorage→{} fallback(333) 검증은 손상 settings.json fixture 로 mock 없이 가능"
+      ],
+      "synthetic_risk": "medium",
+      "cal003_parallel": "differs from CAL-003",
+      "recommendation": "scope-down-to-one"
+    }
+  ],
+  "epic_assessment": "epic 클러스터의 단일 원인(raw writeFileSync in-place truncate vs replaceFileAtomic 불균일)은 cross-file 로 타당하나, 발행/재현 측면에서 3 writer 를 한 PR 로 묶으면 (1) one-thing-per-PR 규율 위반 위험, (2) 재현 신뢰도/severity 가 FIND-002(low/P1) > FIND-001(medium/P1) > FIND-003(medium/P2) 로 불균일. atomicity 수정 자체는 동일 헬퍼(replaceFileAtomic/Sync) 적용이라 기계적이나, 재현 테스트는 각 writer 의 crash window 를 따로 exercise 해야 함. 가장 deterministic 하고 손상 단위가 '전부'인 FIND-002(migrate full-overwrite)를 단일 SOL/PR 로 먼저 좁혀 발행하고 나머지는 후속으로 두는 것을 권고.",
+  "verdict_rationale": "verdict=real-problem-real-fix: production 코드/atomic sibling/self-heal 부재 chain 모두 upstream 에서 그대로 확인되어 CAL-003 식 branch-inversion false positive 가 아니다(real problem). 적용할 fix 도 freeform 신규 구현이 아니라 동일 트리의 기존 replaceFileAtomic/Sync 헬퍼 재사용이라 real-fix(fix-insufficient 아님). synthetic-only 가 아닌 이유: 결함이 fake-timer/promise-ordering 가짜 시나리오가 아니라 POSIX O_TRUNC write 의 실제 crash window 이며 production caller 가 unconditional 도달함. upstream-duplicate 아님: 동일 결함을 고친 기존 PR/패치 확인 안 됨. 다만 결함이 단일 writeFileSync 의 crash-atomicity 라 deterministic 재현엔 SIGKILL 주입 또는 부분쓰기 mock 이 필요하고 그 신뢰도/severity 가 FIND 별로 갈리므로, scope-down 은 verdict 가 아닌 strong_recommendation 으로 둔다."
+}

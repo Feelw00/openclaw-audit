@@ -1,0 +1,31 @@
+{
+  "role": "positive-advocate",
+  "candidate_id": "CAND-050",
+  "verdict": "real-problem-real-fix",
+  "claim_summary": "session-delivery 큐의 복구 경로 drainQueuedEntry(session-delivery-queue-recovery.ts:106-110)가 deliver(entry) 성공 직후 ackSessionDelivery 직전에 crash 하면, 큐 파일이 pending 으로 남아 다음 복구가 동일 agentTurn 을 reconciliation 없이 무조건 blind replay 한다. 결과적으로 같은 사용자 턴이 두 번 실행되고(LLM/툴 등 비-idempotent side-effect 포함) 응답이 중복 전송된다. 평행 outbound 큐는 동일 시나리오를 send_attempt_started/unknown_after_send 마커 + reconcileUnknownQueuedDelivery 로 막고 blind replay 를 명시 거부(delivery-queue-recovery.ts:417)하지만, session 큐는 storage 타입(QueuedSessionDelivery)에 recoveryState/send-attempt 마커 자리 자체가 없어 동등 가드가 전무하다. 같은 도메인 안 두 큐의 보장 수준이 비대칭이다.",
+  "evidence_for": [
+    "session drainQueuedEntry 는 deliver→ack 순서로 호출하며 재진입 시 '이미 전송됨' reconciliation 분기가 없음을 직접 확인: src/infra/session-delivery-queue-recovery.ts:106-110 (try { await opts.deliver(entry); await ackSessionDelivery(...); ... } catch ...). recovered/failed 두 갈래만 분류.",
+    "QueuedSessionDelivery 타입에 recoveryState/platformSendStartedAt 등 send-attempt 마커 필드가 없음: src/infra/session-delivery-queue-storage.ts:62-68 (id/enqueuedAt/retryCount/lastAttemptAt/lastError 만 존재). 인과 정보를 영속할 자리 자체가 없음.",
+    "outbound 큐의 비대칭 가드 확인: src/infra/outbound/delivery-queue-recovery.ts:370-441 — recoveryState 가 send_attempt_started/unknown_after_send 면 reconcileUnknownQueuedDelivery 로 adapter 에 실제 전송 여부를 물어 sent/not_sent 확인 후에만 replay, 확인 불가 시 :417 'refusing blind replay without adapter reconciliation' 명시 거부.",
+    "outbound 마커 영속 지점 확인: src/infra/outbound/deliver.ts:600 markDeliveryPlatformSendAttemptStarted, :618 markDeliveryPlatformOutcomeUnknown. session deliver 경로에는 동등한 마커 기록이 전무.",
+    "session deliver 경로가 agentTurn 에서 (a)턴 재실행 (b)응답 전송 을 수행함을 확인: src/gateway/server-restart-sentinel.ts:324 dispatchAssembledChannelTurn(...) + :355 sendDurableMessageBatch(...). 성공 시 :370-376 throw 안 하고 아무 '전송됨' 흔적도 영속하지 않은 채 반환.",
+    "production enqueue caller 가 restart continuation 단일 경로임을 확인: src/gateway/server-restart-sentinel.ts:606 enqueueSessionDelivery(...) 가 :597 if (payload.continuation) 가드 안에서만 호출. session-delivery-queue.ts 는 단순 re-export 배럴이라 별도 caller 없음. 게이트웨이 재시작 직후 중단 턴 이어받기 경로.",
+    "보조 가드 무력함 확인: idempotencyKey 는 enqueue 시 jsonDurableQueueEntryExists 중복 *삽입* 만 dedup(storage.ts:125-129) — 동일 id 재-deliver 엔 무효. expectedSessionId 가드는 세션이 *바뀐* 경우만 skip(restart-sentinel.ts:265-277) — crash 후 동일 세션 재전달은 가드를 통과.",
+    "기존 테스트가 blind replay 를 의도로 못박지 않음: src/infra/session-delivery-queue.recovery.test.ts 는 성공→ack, transient throw→재큐만 검증하며 deliver 호출 1회만 단언(:35,:105,:147). 'unack 재진입 시 중복 전달' 케이스 부재 → blind replay 가 의도 확정된 동작 아님."
+  ],
+  "production_impact_scenarios": [
+    "게이트웨이 재시작 후 restart continuation(server-restart-sentinel.ts:606)으로 중단된 사용자 턴이 enqueue → 복구가 deliverQueuedSessionDelivery 로 agentTurn 재실행 + 응답 전송 성공(restart-sentinel.ts:324,355) → ackSessionDelivery(recovery.ts:108) 도달 전 SIGKILL/OOM/재시작 → 큐 파일 pending 잔존 → 다음 복구가 동일 entry blind replay → 같은 사용자 메시지에 응답이 두 번 전송됨(wrong-output).",
+    "위 재실행 시 dispatchAssembledChannelTurn 내부의 agentTurn 이 비-idempotent side-effect(LLM 호출 과금, 툴 실행으로 외부 메시지 발송/명령 수행 등)를 포함하면 그 부작용이 중복 수행됨. 응답 텍스트 중복뿐 아니라 외부 상태 변경 중복 가능.",
+    "이 경로는 정의상 crash/restart 직후 불안정 구간 전용이라(restart continuation), deliver↔ack 사이 좁은 crash window 의 활성화가 일반 hot-path 보다 자연스럽다. 동일 시나리오를 outbound 큐로 돌리면 reconcileUnknownSend 가드로 2회차 전송이 차단되는 대비가 그대로 드러나, session 큐만 무방비임이 코드 레벨에서 입증됨."
+  ],
+  "maintainer_receptiveness": "high — 메인테이너 가이드가 'Core issues like memory, plugin loading, cron, reliability' 를 최우선 도움 영역으로 명시했고 feature 는 frozen. 본 건은 정확히 infra delivery-queue 의 crash-recovery reliability(at-least-once 큐의 중복 실행/중복 전송)이며 신규 feature 가 아니다. warrant 가 '동일 코드베이스 내 평행 outbound 큐가 이미 채택한 reconciliation 패턴(deliver.ts:600,618 / recovery.ts:370-441)' 이라 수용된 선례가 같은 repo 안에 존재 — '이 패턴을 session 큐에도 맞춰달라' 는 프레이밍이 가능해 설득력이 높다.",
+  "reproducibility": "moderate — 기존 session-delivery-queue.recovery.test.ts 가 deliver 스텁 주입 + recoverPendingSessionDeliveries 호출 패턴을 이미 갖춰 토대가 있다(:35,:105,:147 의 toHaveBeenCalledTimes 단언). unack pending 재현은 deliver 스텁이 성공 반환하도록 두고 ack 단계를 한 번 가로막거나(ackSessionDelivery spy throw/intercept) deliver 성공 후 ack 전에 entry 를 그대로 둔 채 recover 를 재호출해 deliver 가 2회 호출됨을 관측하면 된다. 같은 시나리오를 outbound 경로로 돌려 reconcile 가드가 2회차를 차단하는 대비를 보일 수 있어 비대칭 입증도 가능. dispatchAssembledChannelTurn/sendDurableMessageBatch 까지 통째로 돌리지 않고 deliver fn 경계에서 스텁하면 production 동일 branch(recovery.ts:106-108)를 그대로 친다. ack 직전 crash 의 'atomic rename 시작 전' 타이밍을 단위테스트로 충실히 모사하는 부분은 약간의 정밀도가 필요해 easy 가 아닌 moderate.",
+  "concerns_acknowledged": [
+    "dispatchAssembledChannelTurn 내부에 messageId 기반 platform 측 dedup/idempotency 가 존재하면 중복 전송이 흡수되어 영향이 '턴 재실행 부작용' 으로 축소될 수 있음 — turn/kernel 경로가 allowed_paths 밖이라 미확인(finding self-check 도 인정).",
+    "실제 crash 빈도(deliver↔ack window 명중률)는 정량 미측정. window 가 좁아 발현은 드물 수 있음 → severity 가 P0 가 아닌 P1 인 이유와 일관.",
+    "production enqueue caller 가 restart continuation 단일 경로(단일 entry)뿐이라 영향 표면이 좁음. systemEvent kind 는 deliver 시 enqueueRestartSentinelWake 로 분기(restart-sentinel.ts:260-262)되어 dispatch 미수행이라 중복-전송 위험은 agentTurn kind 에 한정됨.",
+    "maxRetries 소진 후 moveToFailed(recovery.ts:160-172,236-245)가 반복 재전달을 결국 종료시키나, 그 전에 이미 발생한 중복 실행/전송은 되돌리지 못함 — 즉 가드가 아니라 한도일 뿐."
+  ],
+  "strong_recommendation": true,
+  "recommendation_rationale": "핵심 주장 5건이 모두 source 직접 확인으로 입증됨: (1) session drainQueuedEntry 의 deliver→ack + reconciliation 분기 부재, (2) QueuedSessionDelivery 타입의 send-attempt 마커 필드 부재, (3) outbound 큐의 reconcile+blind-replay-거부 비대칭, (4) deliver 경로의 agentTurn 재실행+전송, (5) 보조 가드(idempotencyKey enqueue-only / expectedSessionId 세션변경-only) 무력. warrant 가 추측이 아니라 '같은 repo 의 평행 큐가 이미 채택한 패턴과의 divergence' 이며 메인테이너 우선 영역(reliability/crash-recovery)과 정합. 재현도 기존 테스트 토대 위에서 moderate 로 가능. 인정 약점(platform 측 dedup 미확인, crash 빈도 미측정)은 영향의 *상한* 을 깎을 뿐 결함 존재 자체를 부정하지 않는다 — 따라서 진행을 강하게 추천."
+}

@@ -1,0 +1,79 @@
+{
+  "candidate_id": "CAND-047",
+  "role": "critical-devil",
+  "verdict": "real-problem-real-fix",
+  "reviewed_files": [
+    "issue-candidates/CAND-047.md",
+    "findings/ready/FIND-task-registry-store-cross-store-consistency-001.md",
+    "findings/ready/FIND-task-registry-store-cross-store-consistency-002.md",
+    "calibration/CAL-001-maintainer-verdict-CAND-004.md",
+    "openclaw/src/tasks/task-registry.ts",
+    "openclaw/src/tasks/task-registry.store.ts",
+    "openclaw/src/tasks/task-registry.store.sqlite.ts",
+    "openclaw/src/tasks/task-registry.maintenance.ts",
+    "openclaw/src/cli/gateway-cli/run-loop.ts",
+    "openclaw/src/agents/media-generation-task-status-shared.ts"
+  ],
+  "summary": "primary-path inversion 결과: 주장된 cross-store 발산이 성립하려면 (a) persist throw 가 swallow 되지 않고 전파되어야 하고 (b) in-memory rollback / 자가-heal 경로가 부재해야 하는데, 두 조건 모두 코드상 직접 확인됨. CAL-001 의 '숨은 unconditional cleanup' 함정은 본 CAND 에는 적용되지 않는다 — heal 방향의 unconditional guard 가 존재하지 않고, 오히려 발산을 막는 guard 가 전무함을 Read 로 확인. 추가로 스케줄러(maintenance.ts:1077)는 sweepTaskRegistry().then(clearSweepInProgress, clearSweepInProgress) 로 persist throw 를 swallow 만 하여 발산을 치유하지 않고 silent 하게 영속화한다. abandon/scope-down 근거를 찾지 못함.",
+  "role_specific": {
+    "hidden_guards_found": [
+      {
+        "path": "src/tasks/task-registry.store.sqlite.ts:496-507",
+        "guard_type": "unconditional",
+        "blocks_claim": false,
+        "evidence_quote": "withWriteTransaction: BEGIN IMMEDIATE -> try { write; COMMIT } catch { db.exec(\"ROLLBACK\"); throw error; } — sqlite 내부 원자성은 보장하나(부분커밋 없음) error 를 re-throw 하므로 caller 의 in-memory 발산은 막지 못함. 이 guard 는 sqlite 측만 보호."
+      },
+      {
+        "path": "src/tasks/task-registry.ts:1011-1020",
+        "guard_type": "conditional-edge",
+        "blocks_claim": false,
+        "evidence_quote": "persistTaskUpsert(next) 직후의 try(1012)는 syncFlowFromTask/syncManagedFlowCancellation 만 감싼다. persistTaskUpsert 호출 자체는 try 밖 -> upsert throw 는 이 try 에 안 잡히고 caller 로 전파. in-memory next 되돌림 없음."
+      },
+      {
+        "path": "src/tasks/task-registry.ts:2153-2173",
+        "guard_type": "none",
+        "blocks_claim": false,
+        "evidence_quote": "deleteTaskRecordById 함수 전체에 try/catch 없음. tasks.delete(2162)/taskDeliveryStates.delete(2163) 후 persistTaskDelete(2165)/persistTaskDeliveryStateDelete(2166) 가 보호 블록 밖 — throw 시 in-memory 삭제 복구 경로 전무."
+      },
+      {
+        "path": "src/tasks/task-registry.ts:268-302",
+        "guard_type": "none",
+        "blocks_claim": false,
+        "evidence_quote": "persistTaskUpsert / persistTaskDelete 본체에 try/catch 없음. default store 에서 store.upsertTaskWithDeliveryState / store.deleteTaskWithDeliveryState 분기로 진입(saveSnapshot fallback 미도달)하므로 throw 가 그대로 전파됨 — error 를 swallow 하는 숨은 분기 없음."
+      },
+      {
+        "path": "src/tasks/task-registry.store.ts:57-61",
+        "guard_type": "unconditional",
+        "blocks_claim": false,
+        "evidence_quote": "default store 가 listTasksForOwnerKey(58)/upsertTaskWithDeliveryState(59)/deleteTaskWithDeliveryState(61) 를 모두 sqlite 트랜잭션/직접-read 구현에 바인딩. 즉 production 에서 granular tx 경로 + sqlite-direct reader 가 항상 활성 -> 비트랜잭션 sibling 은 test-only override 로만 도달(counter_evidence 주장 정확)."
+      },
+      {
+        "path": "src/tasks/task-registry.maintenance.ts:1069-1078",
+        "guard_type": "none",
+        "blocks_claim": false,
+        "evidence_quote": "startScheduledSweep: sweepTaskRegistry().then(clearSweepInProgress, clearSweepInProgress) — rejection handler 가 persist throw 를 swallow(flag reset 만). unhandled rejection/crash 도, reload 도 트리거하지 않음 -> 발산을 치유하지 않고 은폐. heal guard 가 아니라 결함 은폐 동작."
+      },
+      {
+        "path": "src/cli/gateway-cli/run-loop.ts:794-802",
+        "guard_type": "conditional-edge",
+        "blocks_claim": false,
+        "evidence_quote": "reloadTaskRegistryFromStore() 는 SIGUSR1 in-process restart hook 에서만 호출 — persist 실패 시 reconciliation 으로 호출되지 않음. reload 발생 시 sqlite(SoT)가 in-memory 를 덮어써 FIND-001 부활 / FIND-002 lost-update 를 오히려 확정(발산 해소 방향이 결함 방향)."
+      }
+    ],
+    "primary_path_inversion_result": "FIND-001 lost-delete 가 성립하려면: (1) persistTaskDelete 의 sqlite write 가 throw(BUSY/FULL/IOERR) AND (2) 그 throw 가 swallow 되지 않고 in-memory delete 가 복구 안 됨 AND (3) reload/restart 가 sqlite SoT 를 재적재. (1) withWriteTransaction 이 re-throw(505) 확인. (2) deleteTaskRecordById/persistTaskDelete 양쪽 모두 try/catch 부재 확인(2153-2173, 288-302); 스케줄러(maintenance:1077)는 swallow 하지만 그것은 in-memory 복구가 아니라 단순 은폐. (3) restoreTaskRegistryOnce(946) loadSnapshot 재적재 + run-loop SIGUSR1 in-process restart hook(run-loop.ts:802) + 신규 프로세스 startup(ensureTaskRegistryReady->restoreTaskRegistryOnce) 확인. 세 조건 모두 충족 -> 주장 성립. 추가로 persist-delete throw 후 in-memory 에서는 이미 삭제됐으므로 periodic sweeper(maintenance:1206)가 그 task 를 다시 iterate 하지 않아 sqlite delete 재시도조차 없음 -> auto-retry 부재 확인되어 발산이 reload 까지 영속(주장 강화). FIND-002 wrong-output 이 성립하려면: persistTaskUpsert throw(551->503 tx re-throw 확인) + in-memory=next/sqlite=current 발산 + sqlite-direct reader 가 동일 프로세스에서 stale 노출. listFreshTasksForOwnerKey(2092-2117)가 store.listTasksForOwnerKey(=listTaskRegistryRecordsByOwnerKeyFromSqlite, sqlite-direct) 를 읽고 media-generation 의 두 production caller(src/agents/media-generation-task-status-shared.ts:119,314)가 이를 호출함을 확인 -> reload 불요, 즉시 관측. 단 same-process 관측 창은 (i) updateTask caller 가 throw 를 swallow 해 프로세스 생존 + (ii) media-gen reader 가 발산 창 안에서 조회, 두 타이밍/caller 조건에 추가 의존(FIND-002 self-check 이 명시). reload-time lost-update 는 무조건적. 인버전 결과: 두 FIND 모두 주장이 의존하는 정상 guard(in-memory rollback / unconditional heal)가 실제로 부재하거나 sqlite 측에만 국한되어 cross-store 발산을 못 막음. 반증 불성립.",
+    "cal001_style_misses": [
+      "CAL-001 핵심 함정은 '각 entry 자체 timer 가 line 249 unconditional delete' 라는 숨은 primary cleanup 이었다. 본 CAND 에서 그에 대응하는 숨은 heal 경로 = 'persist throw 후 in-memory 를 sqlite 와 재동기하는 unconditional 경로' 인데, persistTaskRegistry/saveSnapshot 전체-스냅샷 재기록은 default store granular 분기에 가려 persist 실패 경로에서 호출되지 않음 -> heal 함정 부재 확인. (놓칠 뻔한 후보였으나 default store 바인딩 추적으로 배제)",
+      "또 다른 CAL-001-style 후보: caller(예: maintenance sweep deleteTaskRecordById@1158, updateTask wrapper들@1142-1942)가 throw 를 catch 해서 reload 를 트리거->heal 시킬 가능성. 그러나 caller 가 catch 하더라도 in-memory 삭제/갱신은 이미 commit 된 상태라 reload 전까지 발산 유지, reload 시엔 sqlite SoT(stale/잔존)가 이김 -> 어느 경우든 발산 방향 동일. caller 처리와 무관하게 결함 성립(FIND-001 self-check 의 동일 주장과 일치).",
+      "스케줄러 .then(clearSweepInProgress, clearSweepInProgress)(maintenance.ts:1077) 를 '에러 핸들링=복구'로 오독할 위험. 실제로는 flag reset 만 하는 swallow 이며 발산을 은폐할 뿐 치유하지 않음 — CAL-001 의 'L250 을 조건부로 오독' 과 대칭되는 오독 함정. 직접 확인으로 배제.",
+      "재현 테스트 작성 시 CAL-001 production-equivalent flow 교훈: FIND-001 은 persist throw 주입 후 reloadTaskRegistryFromStore() 까지 실제로 흘려 '부활'을 검증해야 함(in-memory 만 보면 삭제 상태라 버그가 안 보임). FIND-002 은 fake-timer 가 아니라 'updateTask throw catch -> 동일 프로세스에서 listFreshTasksForOwnerKey 호출' 순서를 명시 검증해야 함.",
+      "경로 인용 정밀도: FIND-002 가 sqlite-direct caller 를 'media-generation-task-status-shared.ts' 로 적되 디렉터리를 명시하지 않음. 실제 파일은 src/agents/media-generation-task-status-shared.ts. 라인(119,314)/함수명/동작은 정확 -> 실질 오류 아닌 citation 정밀도 흠결. SOL/PR 단계에서 경로 보강 권고(반증 사유는 아님)."
+    ],
+    "strong_recommendation": "proceed-with-caveat"
+  },
+  "verdict_rationale": "verdict=real-problem-real-fix: 두 FIND 의 코드 주장(in-memory 선커밋, persist try/catch 부재, withWriteTransaction re-throw, sqlite-direct reader 의 production caller, default store 의 tx/direct 바인딩)을 전부 Read/Grep 으로 직접 확인 -> real-problem. CAND 가 지목한 근본 원인(in-memory<->sqlite 교차-스토어 보상 경계 부재)이 정확하고, 그 경계를 도입하는 방향의 수정(persist-실패 시 in-memory rollback 또는 persist-우선 ordering)이 결함을 정확히 닫으므로 fix 방향이 유효 -> real-fix(단 SOL 미작성이라 fix 충분성 평가는 SOL/pre-sol proof 단계로 이연). primary-path inversion 상 발산을 막을 정상 guard(in-memory rollback / unconditional heal)가 부재하며 sqlite 측 guard 는 cross-store 경계를 못 막음. CAL-001 의 숨은-unconditional-cleanup 함정은 본 CAND 에 부재(직접 배제). false-positive/synthetic-only/upstream-duplicate 근거 없음. abandon/scope-down 의 코드적 근거 미발견 -> strong_recommendation=proceed-with-caveat.",
+  "caveats": [
+    "FIND-002 의 media-generation caller 경로를 src/agents/media-generation-task-status-shared.ts(119,314) 로 SOL/PR 단계에서 명시·보강할 것(라인/동작은 정확).",
+    "발현 트리거(sqlite write throw: disk-full/다중-writer BUSY 5s 초과/IOERR)는 환경 의존 — pre-sol real-behavior-proof 에서 강제 throw 주입으로 발산 재현 필요. FIND-001(P1)은 reload/restart 시점에서만 부활 관측, FIND-002(P2)는 same-process 즉시 관측이 가능하나 caller-swallow + reader-타이밍 조건에 의존하고 reload-time lost-update 는 무조건.",
+    "epic 클러스터 타당: 동일 파일·동일 mutator 군(delete/update)·동일 ordering+보호 부재·동일 위반 baseline(sqlite withWriteTransaction)을 공유하고 frontmatter cross_refs 로 저자 의도 명시(clusterer Step2/3, persona '기존 cross_refs 존중' 부합)."
+  ]
+}

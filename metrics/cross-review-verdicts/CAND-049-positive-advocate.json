@@ -1,0 +1,43 @@
+{
+  "role": "positive-advocate",
+  "candidate_id": "CAND-049",
+  "verdict": "real-problem-real-fix",
+  "strong_recommendation": "advance",
+  "claim_summary": "infra/state-migrations.ts 의 legacy→target 마이그레이션은 다수 영속 스토어를 다루면서 트랜잭션/체크포인트/백업 경계가 전무하다(grep withWriteTransaction|BEGIN IMMEDIATE|withFileLock|baseHash|CAS|checkpoint → match 0, 재현됨). 발현 두 갈래: (FIND-001 P1) migrateLegacySessions 의 save 게이트가 OR 조건 (legacyParsed.ok || targetParsed.ok)(:1197-1199)이고 targetParsed.ok 를 독립 검사하지 않아, 손상된 target sessions.json 이 legacy-only 병합본으로 무조건 덮어써져 legacy 미존재 키 영구 유실. (FIND-002 P2) runLegacyStateMigrations(:1310-1338)이 4단계 스토어 이동을 함수 레벨 try/catch·보상 로직 없이 순차 await 하여 중간 throw 시 split state 영속. 두 결함의 root cause 가 동일 모듈의 교차-스토어 경계 프리미티브 부재로 수렴 → epic 묶음 타당.",
+  "evidence_verified_against_upstream": {
+    "head": "61c538e2fc22d01b8e08549b07a9e530e6eee35c",
+    "FIND-001": [
+      "src/infra/state-migrations.ts:1197-1199 save 게이트 (legacyParsed.ok || targetParsed.ok) 확인 — OR 조건이며 targetParsed.ok 독립 검사 없음",
+      "src/infra/state-migrations.ts:1170 merged 가 canonicalizedTarget.store(손상 시 빈 객체) 기준으로 시작 → legacy-only 병합 확인",
+      "src/infra/state-migrations.ts:1209 saveSessionStore(targetStorePath, normalized) 가 손상 target 덮어쓰기 확인",
+      "src/infra/state-migrations.fs.ts:51-57 readSessionStoreJson5 가 read/parse 실패를 try/catch 로 삼키고 {store:{}, ok:false} 반환 — 손상↔빈파일 구분 불가 확인",
+      "src/infra/state-migrations.ts:1239 legacy 손상엔 legacyParsed.ok 가드(삭제 차단)·:1191 warn 존재하나 target 에는 비대칭 무방비 확인"
+    ],
+    "FIND-002": [
+      "src/infra/state-migrations.ts:1316-1323 4단계(plugin-state-import / sessions / agentDir / channel) 순차 await 확인",
+      "src/infra/state-migrations.ts:1310-1338 runLegacyStateMigrations 함수 레벨 try/catch·롤백·체크포인트 전무 확인",
+      "src/infra/state-migrations.ts:1232/1242/1300 renameSync/rmSync(force)/renameSync 비가역 fs 연산 확인",
+      "grep withWriteTransaction|BEGIN IMMEDIATE|withFileLock|baseHash|CAS|checkpoint|transaction state-migrations.ts/.fs.ts → exit 1 (match 0) 재현됨"
+    ],
+    "reachability": [
+      "production caller 1: src/flows/doctor-health-contributions.ts:308 runLegacyStateMigrations 호출 확인",
+      "production caller 2: src/commands/doctor-state-migrations.ts (autoMigrateLegacyState / runLegacyStateMigrations import) 확인",
+      "frequency guard: src/cli/program/config-guard.ts:59 ordinary CLI startup 은 migrateState:false → cold doctor/startup 전용 경로라는 findings 의 빈도 평가 정확함 (hot-path 아님)"
+    ]
+  },
+  "production_impact_scenarios": [
+    "FIND-001 data-loss: target agents/{id}/sessions/sessions.json 이 trailing garbage 등으로 JSON5 파싱 실패한 상태에서 legacy sessions 가 동시에 존재하는 사용자가 doctor/cold-startup 마이그레이션을 1회 돌리면, readSessionStoreJson5(:51-57)가 {store:{},ok:false} 반환 → targetStore 빈 객체 → merged(:1170)는 legacy-only → save 게이트(:1197 OR)가 legacyParsed.ok 만으로 통과 → saveSessionStore(:1209)가 손상 원본을 legacy-only 로 덮어씀. legacy 미존재 키였던 target 세션 레코드 영구 소실 + 손상 파일 수동 복구 마지막 기회 상실. 비가역. legacy 가 ok 라 warning 도 안 뜸(:1191 분기 미진입).",
+    "FIND-002 split state: legacy sessions + legacy agent dir 동시 존재 상태에서 단계2 migrateLegacySessions 가 sessions 를 새 위치로 이동·legacy rmSync(:1242) 한 직후, 단계3 migrateLegacyAgentDir 의 ensureDir/renameSync(:1284 부근)가 EACCES/ENOSPC 로 throw → runLegacyStateMigrations(:1319-1320)에 try/catch 없어 즉시 전파 종료. 결과: sessions 는 새 레이아웃 / agent dir 은 legacy 레이아웃으로 split 영속. 비가역. autoMigrateChecked once-flag 로 같은 프로세스 재시도 막히고, 다음 기동 detect 가 부분상태 오판 위험.",
+    "공통 증폭 요인: sessions.json 등은 세션 SoT(파생 캐시 아님, 재생성 불가)이고 유일한 롤백(:996)은 단일 state-dir rename 한정이라 멀티스토어 시퀀스·손상 덮어쓰기 어느 쪽도 보호하지 못함. 손상/crash 가 마이그레이션과 겹치는 순간 마지막 사본을 비가역 파괴한다는 점에서, 빈도는 낮아도 사용자가 가장 복구를 원하는 시점에 정확히 타격."
+  ],
+  "maintainer_receptiveness": "high — 메인테이너 가이드는 명시적으로 'core issues like memory, plugin loading, cron, reliability' + 'data loss / reliability and stability' 에 집중하고 feature freeze 라 했다. 본 CAND 는 reliability/data-integrity 버그(feature 아님)이고 infra/state(plugin-state import 포함)·세션 영속 경로라 가이드의 정중앙. 추가로 git log 가 이 파일(state-migrations.ts)이 활발히 유지보수 중임을 보여줌(최근 'fix(sessions): preserve Matrix room-id case', 'fix(plugin-state): evict current namespace', 'test: generalize legacy state migration coverage'). 즉 메인테이너가 이 모듈에 실제로 fix/test PR 을 머지해온 선례가 있다. 단 P2(FIND-002)는 트리거 조건(fs throw + 동시 legacy 존재) 중첩 필요라 P1(FIND-001)만큼 강하진 않음.",
+  "reproducibility": "easy — 저장소에 이미 풍부한 테스트 하니스가 있다: src/infra/state-migrations.test.ts, state-migrations.fs.test.ts, doctor-state-migrations.test.ts, doctor.runs-legacy-state-migrations-yes-mode-without.e2e.test.ts. 결정적으로 state-migrations.fs.test.ts:70-71 이 이미 readSessionStoreJson5(corrupt)→{ok:false,store:{}} 를 검증 — FIND-001 이 의존하는 swallow 메커니즘이 repo 에서 이미 test-confirmed. FIND-001 재현은 (a) target sessions.json 에 garbage 주입 + 비-legacy 키 N개 (b) legacy 정상 키 M개 (c) migrateLegacySessions/runLegacyStateMigrations 실행 (d) 결과 target 에 legacy M개만 남고 N개 소실 단언 — 기존 e2e 하니스 확장으로 충분. FIND-002 는 단계3 target 경로 read-only 로 throw 유발하는 fs 권한 셋업 필요라 moderate 쪽이지만 동일 진입점 사용 가능.",
+  "prior_fix_or_upstream_precedent": "git log 상 이 모듈에 fix(sessions)/fix(plugin-state)/test(legacy state migration) 커밋이 반복 머지됨 — 동일 surface 의 reliability fix 가 수용되어온 선례. 프레이밍: '기존 readSessionStoreJson5 의 ok 플래그가 이미 존재하지만 save 경로(:1197)에서만 미사용 — 결함은 신규 프리미티브 추가가 아니라 이미 있는 ok 신호를 target 측에도 대칭 적용/abort 하는 최소 변경' 으로 제시하면 XS 범위 + one-thing-per-PR 에 부합. FIND-001(P1, data-loss, 명확 비대칭 결함)을 우선 PR 화하고 FIND-002 는 child task 로 분리하는 것이 메인테이너 수용성·PR 크기 면에서 유리.",
+  "concerns_acknowledged": [
+    "target 손상의 실제 발생 빈도(다른 writer 의 비원자 쓰기 등)는 이 셀 범위 밖이라 미확인 — 빈도 낮으면 발현 드묾. 단 발현 시 영향(영구 데이터 손실)은 큼.",
+    "FIND-002(P2)는 fs throw(ENOSPC/EACCES/SIGKILL) + 동시 legacy 존재라는 조건 중첩이 필요해 단독 발현 확률은 FIND-001 보다 낮음. epic 묶음에서 P1 상속이지만 두 FIND 의 trigger 가능성은 비대칭.",
+    "부분 split state 후 런타임 로더가 실제로 어떻게 동작하는지(빈 store 시작? 에러?)는 allowed_paths 밖이라 미확인 → FIND-002 의 사용자 체감 심각도는 로더 동작 의존(findings 도 self-check 에서 인정).",
+    "detect 가 부분상태를 재감지해 다음 기동에서 회복하는지(:1046-1134 분기)는 미테스트 — 회복 가능하면 FIND-002 P2→P3 하향 여지.",
+    "단일 파일 원자성은 안전(saveSessionStore:604 락+atomic write) — 결함은 cross-store 병합 결정/멀티스토어 시퀀스 경계에 한정. 과대 일반화(단일파일 비원자 주장) 금지."
+  ]
+}
