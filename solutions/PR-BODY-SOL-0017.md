@@ -27,9 +27,7 @@ Touched files:
 
 ## Linked Issue
 
-Closes #<ISSUE_NUMBER>
-
-(Issue to be filed before opening the PR; this PR body assumes a tracking issue describing the corrupt-target overwrite.)
+Closes #88017
 
 ## Root Cause
 
