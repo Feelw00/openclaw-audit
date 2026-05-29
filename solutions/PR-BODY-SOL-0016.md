@@ -27,7 +27,7 @@ Files:
 
 ## 4. Linked Issue
 
-`Closes #<TBD>` (issue to be filed before publish; reliability bug, credential source-of-truth divergence on faulting `secrets apply`).
+Closes #88012
 
 ## 5. Root Cause
 
