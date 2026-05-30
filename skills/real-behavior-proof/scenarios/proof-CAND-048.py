@@ -167,17 +167,31 @@ async function runTrial(injectFault) {
   let errMsg = "";
 
   if (injectFault) {
+    // Model a real per-directory disk fault (ENOSPC on store#2's filesystem,
+    // sticky EACCES on store#1's during rollback). Match by directory, not exact
+    // filename: the base build writes the satellite directly (filePath === storeB),
+    // while the fixed build stages it to a temp file in the SAME directory
+    // (filePath === <storeB dir>/.openclaw-secrets-*.tmp). A genuine ENOSPC/EACCES
+    // fails every write into that directory, including the staged temp, so a
+    // directory match faithfully injects the fault on whichever write path the
+    // build takes -- this is what makes the fault reach the new staging path.
+    const dirA = path.dirname(s.storeA);
+    const dirB = path.dirname(s.storeB);
     const writeCounts = new Map();
     __setFsSafeTestHooksForTest({
       beforeFileStoreSyncPrivateWrite: (filePath) => {
-        const n = (writeCounts.get(filePath) ?? 0) + 1;
-        writeCounts.set(filePath, n);
-        // store #2 (beta): fail its commit (first) write -> mid-loop throw.
-        if (filePath === s.storeB && n === 1) {
+        const dir = path.dirname(filePath);
+        const n = (writeCounts.get(dir) ?? 0) + 1;
+        writeCounts.set(dir, n);
+        // store #2 (beta): fail the first private write into its directory -- the
+        // satellite commit on base, the staged temp write on the fix.
+        if (dir === dirB && n === 1) {
           throw new Error("INJECTED-FAULT: ENOSPC at store#2 commit");
         }
-        // store #1 (alpha): fail its rollback restore (second) write -> best-effort rollback fails.
-        if (filePath === s.storeA && n === 2) {
+        // store #1 (alpha): fail the second write into its directory -- base's
+        // best-effort rollback restore. The fix never reaches a rollback write
+        // (staging aborts before any rename), so this only fires on the base build.
+        if (dir === dirA && n === 2) {
           throw new Error("INJECTED-FAULT: EACCES at store#1 rollback");
         }
       },
@@ -363,7 +377,8 @@ def render_pr_evidence(without_fix: dict[str, Any], with_fix: dict[str, Any]) ->
     )
     environment = (
         "macOS (darwin arm64), Node 23.x, OpenClaw worktrees checked out at the base and head shas "
-        "(base = c559776c51). tsx executes src/secrets/apply.ts directly (--skip-build). Each trial "
+        "(base = 615199a6a4, the fork-point this branch rebases onto). tsx executes src/secrets/apply.ts "
+        "directly (--skip-build). Each trial "
         "builds a fresh isolated temp HOME via fs.mkdtempSync (os.tmpdir()); production ~/.openclaw "
         "and real credentials are never touched, and the temp HOME is removed after each trial. "
         "No external dependencies (no OAuth / LLM / network). The disk fault is injected "

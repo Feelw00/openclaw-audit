@@ -4,6 +4,17 @@
 
 ## 내 active PR (Feelw00)
 
+### #88029 — fix(agents): atomic auth.json write to prevent credential lockout on crash
+
+- **유형**: 파이프라인 SOL-0014 (CAND-045 / FIND-agent-session-store-data-integrity-001, P1). issue #88028.
+- **상태**: OPEN / MERGEABLE (2026-05-29 발행), head `edd0dbf578`, base 현재 upstream/main. 라벨 `agents`, `size: S`.
+- **fix**: `withLock`/`withLockAsync` 의 raw `writeFileSync(auth.json)`+`chmodSync` → `replaceFileAtomicSync` (temp+rename, `syncTempFile`+`syncParentDir` durable flush). 2-hunk + 회귀테스트.
+- **proof**: post-sol collected (real-process RLIMIT_FSIZE interrupted-write: base raw lockout 20/20 / head atomic 0/20). `proofs/PROOF-SOL-0014-post-20260529-113603.md`. PR body `evaluateRealBehaviorProof`=passed.
+- **트리거 서사**: interrupted write = disk-full(ENOSPC)/quota(EDQUOT)/power-loss. SIGKILL 은 macOS 단일 write() syscall 이라 비-트리거(PR body What-was-not-tested 에 명시).
+- **clawsweeper R1 (head 46a1a9478e)**: `proof: supplied`+`proof: sufficient`(🦞 diamond lobster) + patch [P1] durability finding(`syncTempFile`/`syncParentDir` 누락 → claim 한 power-loss 미구현). `P2`/`merge-risk: auth-provider`/`rating: gold shrimp`/`status: waiting on author`.
+- **대응 (head edd0dbf578)**: 두 호출에 `syncTempFile: true`+`syncParentDir: true` 추가(power-loss durable) → 대상 회귀테스트 green → force-push + PR body 갱신 + `@clawsweeper review` 재트리거(comment 4575917779). **R2 verdict 대기.**
+- **게이트**: secops(`/src/agents/**/*auth*.ts`) CODEOWNERS 승인 필요. clawsweeper R2 대기 (Greptile 2026-05-29 폐지).
+
 ### #68669 — fix(agents): dedupe subagent browser session cleanup wrapper with dispatch flag
 
 - **유형**: 파이프라인 CAND-011, post-harness + pre-pr + post-commit cross-review (총 11 agent) 모두 real

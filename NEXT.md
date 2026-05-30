@@ -96,24 +96,24 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ mcp-memory(integrated→PR#71648) / mcp-lifecycle(done, PR#82426 indirect-merge 종결)
 #   ✓ mcp-concurrency(0 FIND) / mcp-error-boundary(zero_find). mcp v2(cap/FIFO)만 #71648 머지 후 보류.
 #
-# OPEN openclaw PR (다음 세션에서 상태 확인 우선):
-#   • #68669 (CAND-011) — `proof: supplied+sufficient` + `triage: refactor-only`, MERGEABLE
-#     (CodeQL NEUTRAL 로 mergeState=UNSTABLE, 차단 아님). 2026-05-29 upstream/main(61c538e2fc) 위로
-#     rebase 하여 stale-base CI(voice-call TS6133) 적색 해소 → 전 CI green. head e3e70aad8e.
-#     clawsweeper [P2] 해소 (cleanup wrapper 로 축소 + held-first-cleanup regression).
-#     `status: ready for maintainer look`. 메인테이너 머지 대기.
-#   • #71648 (CAND-025→SOL-0008) — `proof: supplied+sufficient`, MERGEABLE/CLEAN. R-13 post-sol proof
-#     (PROOF-SOL-0008-post-20260520): without-fix 100 잔존 / with-fix 0 drain, real wall-clock 70min.
-#     PR body Real behavior proof 섹션을 real setInterval 측정으로 교체 → clawsweeper `proof: sufficient`
-#     부여, rating platinum hermit, `status: ready for maintainer look`. blocking finding 없음.
-#     메인테이너 머지 대기 (rank-up moves 2건은 메인테이너 판단: 1h TTL 수용 + PR #56420 통합 조율).
-# 상세 본문 / merged history / 종결된 PR / 폐기 사유 → openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
+# OPEN openclaw PR (8건, 2026-05-30 확인). 2026-05-29 SOL 배치 6건(0014~0019) 전부 PR 발행 완료.
+#   상세 outcome/history: openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
+#   • #88029 (SOL-0014, issue #88028): auth.json atomic write. clawsweeper ready-for-maintainer-review (diamond x3 + proof:sufficient). [P1]2=secops owner 확인 항목. secops(*auth*) 게이트.
+#   • #88018 (SOL-0017, issue #88017): state-migrations guard corrupt target. 컨트리뷰터 sjf APPROVED + CI 전부 green. 메인테이너 머지 대기.
+#   • #88016 (SOL-0018, issue #88015): session delivery reconcile. ready-for-maintainer-review + proof:sufficient. [P1]=fail-safe vs at-least-once 제품 결정(메인테이너 몫, 봇은 marker-write-failure까지 covered 판정).
+#   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. ready-for-maintainer-review (platinum/diamond). 잔여 Phase B rename/crash scope 분리 명시. secops(/src/secrets/) 게이트.
+#   • #88011 (SOL-0019, issue #88010): diagnostic recovery dedup. clawsweeper "needs maintainer review" 대기.
+#   • #88008 (SOL-0015, issue #88007): task-registry persist-before-memory. ready-for-maintainer-review + proof:sufficient + [P2]만. pre-pr cross-review가 잡은 delete 이중-write/snapshot 부활 결함 fix 완료(head 10524ca2ee, 회귀 4건), CI 78 green. 상세=SOL-0015 cross_refs.
+#   • #68669 (CAND-011): subagent cleanup dedup. 메인테이너 머지 대기. mergeable UNKNOWN.
+#   • #71648 (SOL-0008): mcp pending leak. CI 적색, stale base → rebase 점검. proof:sufficient 라벨.
+#   주: Greptile 봇 2026-05-29 폐지 - clawsweeper 만 트리거.
 #
 # 활성 큐 + 다음 우선순위:
 #
-#   ## 0. PR 모니터링
-#   - #68669 — 메인테이너 머지 대기. greptile 재리뷰 응답 점검 (트리거 완료, 무응답 상태).
-#   - #71648 — 메인테이너 머지 대기. clawsweeper proof:sufficient + blocking finding 없음.
+#   ## 0. PR 모니터링 — 2026-05-30 부팅: 봇 verdict 전부 도착, 능동 트리아지 0
+#   open PR 8건 전부 메인테이너/머지 대기 (우리 측 추가 액션 없음). 위 인벤토리 = 현재 상태.
+#   다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.
+#   재점검 트리거: #71648 stale-base CI 적색(rebase 필요), 또는 메인테이너/clawsweeper 신규 코멘트 도착.
 #
 #   ## 1. CAL 작성 후보
 #   - CAL-011 placeholder (alternative-axis acceptance, PR #71040)
@@ -122,54 +122,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     early-return 분기가 그 caller 의 후속 tail 경로 전체를 소멸시키는 함의를 끝까지 추적 못 함.
 #     사용자 "더 깊게 봐라" 편향 경고로 포착. CAL-009 §내부판단편향 강화 사례.
 #
-#   ## 2. 신규 축/도메인 CAND (2026-05-29 gatekeeper + cross-review 완료)
-#   11 CAND(045~055) gatekeeper shadow 완료(shadow 47→58, 졸업 58/23/10).
-#   gatekeeper verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
-#
-#   [2026-05-29] 6 SOL **PR 발행 준비 완료** (push/PR 미실행 — 사용자가 하나씩 발행). 우선순위 0015/0017/0018/0019 → 0014/0016.
-#     | SOL | branch (worktree pr-SOL-00NN) @commit | post-sol | pre-pr | PR body | CODEOWNERS |
-#     | 0015 | fix/task-registry-persist-before-memory @900b4937b3 | collected | proceed | PR-BODY-SOL-0015.md | - |
-#     | 0017 | fix/state-migrations-guard-corrupt-target @6747eb16e0 | collected | proceed | PR-BODY-SOL-0017.md | - |
-#     | 0018 | fix/session-delivery-reconcile-unacked @1dd073a5b4 | collected | proceed | PR-BODY-SOL-0018.md | - |
-#     | 0019 | fix/diagnostic-recovery-dedup-key-align @9fd04067d6 | collected | proceed | PR-BODY-SOL-0019.md | - |
-#     | 0014 | fix/auth-storage-atomic-write @294819ced4 | blocked-env(real-process 미재현, 아래 2c) | proceed | PR-BODY-SOL-0014.md | *auth* secops |
-#     | 0016 | fix/secrets-apply-stage-then-commit @85fc0add0b | collected | proceed | PR-BODY-SOL-0016.md | secrets+auth secops |
-#     전부 base upstream/main 9de6abd8d7, RED→GREEN repro + tsgo:core green. PR body = solutions/PR-BODY-SOL-00NN.md (13섹션 + Real behavior proof).
-#
-#   ## 2c. SOL-0014 post-sol 미해결 (선택 — 발행은 이대로도 가능)
-#   - 5건(0015/0016/0017/0018/0019) post-sol collected 완료. 0014만 real behavior proof 자동 "collected" 미달.
-#   - 원인: auth.json crash-truncate 결함은 (a) proof-CAND-045.py 의 "authPath 직접 truncate" 모델은 fix(temp+rename)와
-#     무관해 with/without 동일 → blocked, (b) proof-CAND-045-realproc.py(real-process SIGKILL, trial당 25 retry)도
-#     이 macOS/APFS+Node 에선 raw freeze=0/100, atomic 0/100 → SIGKILL 이 buffered writeFileSync 를 파괴적으로 못 끊음
-#     (O_TRUNC 부분창 sub-ms). 즉 도구 문제 아니라 플랫폼 사실.
-#   - fix 는 commit 된 vitest RED→GREEN 회귀테스트(auth-storage.test.ts)로 입증됨. PR body Real behavior proof 는
-#     pre-sol(without-fix lockout 재현) + 그 회귀테스트로 구성 (로컬 evaluateRealBehaviorProof "passed" 확인) → 발행 가능.
-#   - 미시도(다음 선택지): ulimit -f 2048KB(=2MB) 단일 run 으로 6MB write 를 EFBIG/SIGXFSZ 로 중간에 끊어 결정론적
-#     raw 손상 재현 (real-process, 타이밍 무관). **주의: proof-CAND-045-realproc.py 의 writer 는 for(;;) 무한루프라
-#     orchestrator 중단 시 자식 node 가 무한 증식(이번에 210개 발생, 정리 완료). 재시도 시 단일-set writer + 포그라운드
-#     단일 run + 확실한 회수 필수.**
-#   ### PR 발행 절차 (사용자, SOL 하나씩):
-#     1. cd /Users/lucas/Project/openclaw-worktrees/pr-SOL-00NN
-#     2. (rebase 필요 시) git fetch upstream && git rebase upstream/main
-#     3. **full green gate 필수**: pnpm build && pnpm check && pnpm test  (sandbox 밖/CI 동등 환경)
-#     4. git push origin <branch>  (fork Feelw00/openclaw)
-#     5. gh pr create --repo openclaw/openclaw --base main --head Feelw00:<branch> --title "<SOL title>" --body-file <PR body>
-#        (PR body 의 Closes #N 은 발행 시 채우거나 제거. AI-assisted 표시 포함됨.)
-#     6. 발행 후 clawsweeper/greptile 트리거 + 모니터링 (NEXT.md §0). SOL frontmatter status→pr-opened, openclaw_pr_number 기록.
-#     CODEOWNERS(0014/0016): secops 팀 리뷰 없이 머지 불가 — PR 에 secops notify.
-#   ---- (이력) ----
-#   approve 6건 cross-review proceed → pre-sol collected → **SOL 작성 완료(6건, scope-down 반영)**:
-#     SOL-0014(CAND-045, XS, data-integrity, auth.json→replaceFileAtomicSync) [CODEOWNERS *auth*]
-#     SOL-0015(CAND-047, S, cross-store, persist-before-in-memory, #83238 fix-shape)
-#     SOL-0016(CAND-048, S, cross-store, stage-all-temp-then-rename) [CODEOWNERS secrets+auth]
-#     SOL-0017(CAND-049, XS, cross-store, save-gate targetParsed.ok guard)
-#     SOL-0018(CAND-050, S, ordering, session 큐 recoveryState 마커+reconcile, outbound 대칭)
-#     SOL-0019(CAND-053, XS, ordering, in-flight dedup 키 정렬)
-#     전부 chosen_fix=0 제안 + repro_test_draft + pre_sol_proof:collected. status=drafted.
-#     다음 액션 = chosen_fix 확정(사람) → **R-13 post-sol proof**(with/without 비교, 사용자 허락) →
-#       pre-pr cross-review → PR. 045 crash-truncate / 050 crash-before-ack 는 post-sol 에서 real process boundary 권장.
-#     주의: SOL-0014(auth), SOL-0016(secrets+auth) = CODEOWNERS secops 게이트 → PR 전 owner 동의.
-#
+#   ## 2. 신규 축/도메인 CAND 백로그 (2026-05-29 gatekeeper + cross-review 완료)
+#   11 CAND(045~055) gatekeeper shadow 완료. verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
+#   045/047/048/049/050/053 → SOL-0014~0019 로 PR 발행 완료(§0).
 #   미진행 5건: uncertain 046/052/054 (scope-down 후보), reject 051/055 (abandon 우세). 사용자 판단 대기.
 #
 #   ## 2b. wave-2 도메인 (미실행, STRONG 백로그)
