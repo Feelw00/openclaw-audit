@@ -105,7 +105,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   • #88011 (SOL-0019, issue #88010): diagnostic recovery dedup. clawsweeper "needs maintainer review" 대기.
 #   • #88008 (SOL-0015, issue #88007): task-registry persist-before-memory. ready-for-maintainer-review + proof:sufficient + [P2]만. pre-pr cross-review가 잡은 delete 이중-write/snapshot 부활 결함 fix 완료(head 10524ca2ee, 회귀 4건), CI 78 green. 상세=SOL-0015 cross_refs.
 #   • #68669 (CAND-011): subagent cleanup dedup. 메인테이너 머지 대기. mergeable UNKNOWN.
-#   • #71648 (SOL-0008): mcp pending leak. CI 적색, stale base → rebase 점검. proof:sufficient 라벨.
+#   • #71648 (SOL-0008): mcp pending leak. 2026-05-30 upstream/main(d13c8b03c9) 위로 rebase 완료(504 커밋 forward, 충돌 0, head 2d6158ba16). 로컬 게이트 green(build+check+target mcp 18/18). clawsweeper 재리뷰 트리거(ack 수신). proof:sufficient 라벨. CI 재실행 중 - 단 auto-response/label 적색은 openclaw 자체 봇 GitHub API rate-limit(installation 106147218)이라 코드 무관. 과거 메인테이너 RomneyDa 관여 이력(Dependency Guard).
 #   주: Greptile 봇 2026-05-29 폐지 - clawsweeper 만 트리거.
 #
 # 활성 큐 + 다음 우선순위:
@@ -113,7 +113,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ## 0. PR 모니터링 — 2026-05-30 부팅: 봇 verdict 전부 도착, 능동 트리아지 0
 #   open PR 8건 전부 메인테이너/머지 대기 (우리 측 추가 액션 없음). 위 인벤토리 = 현재 상태.
 #   다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.
-#   재점검 트리거: #71648 stale-base CI 적색(rebase 필요), 또는 메인테이너/clawsweeper 신규 코멘트 도착.
+#   재점검 트리거: #71648 clawsweeper 재verdict + CI 코드체크 결과(rebase 완료, 봇 rate-limit 적색은 무관), 또는 메인테이너/clawsweeper 신규 코멘트 도착.
 #
 #   ## 1. CAL 작성 후보
 #   - CAL-011 placeholder (alternative-axis acceptance, PR #71040)
