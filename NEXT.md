@@ -104,7 +104,7 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. ready-for-maintainer-review (platinum/diamond). 잔여 Phase B rename/crash scope 분리 명시. secops(/src/secrets/) 게이트.
 #   • #88011 (SOL-0019, issue #88010): diagnostic recovery dedup. clawsweeper "needs maintainer review" 대기.
 #   • #88008 (SOL-0015, issue #88007): task-registry persist-before-memory. ready-for-maintainer-review + proof:sufficient + [P2]만. pre-pr cross-review가 잡은 delete 이중-write/snapshot 부활 결함 fix 완료(head 10524ca2ee, 회귀 4건), CI 78 green. 상세=SOL-0015 cross_refs.
-#   • #68669 (CAND-011): subagent cleanup dedup. 메인테이너 머지 대기. mergeable UNKNOWN.
+#   • #68669 (SOL-0002, CAND-011): subagent cleanup dedup. 메인테이너 머지 대기. mergeable UNKNOWN.
 #   • #71648 (SOL-0008): mcp pending leak. 2026-05-30 upstream/main(d13c8b03c9) 위로 rebase 완료(504 커밋 forward, 충돌 0, head 2d6158ba16). 로컬 게이트 green(build+check+target mcp 18/18). clawsweeper 재리뷰 트리거(ack 수신). proof:sufficient 라벨. CI 재실행 중 - 단 auto-response/label 적색은 openclaw 자체 봇 GitHub API rate-limit(installation 106147218)이라 코드 무관. 과거 메인테이너 RomneyDa 관여 이력(Dependency Guard).
 #   주: Greptile 봇 2026-05-29 폐지 - clawsweeper 만 트리거.
 #
@@ -158,7 +158,7 @@ R-3 Grep 결과를 counter_evidence.reason 에 명시.
 새 셀 착수 시:
 
 1. **메인테이너 공개 우선순위 부합 도메인** 우선 (memory / plugin loading / cron / reliability)
-2. PR queue 여유 확인 (`gh pr list --author "@me" --repo openclaw/openclaw --state open` ≤ 7)
+2. PR queue 여유 확인 (`gh pr list --author "@me" --repo openclaw/openclaw --state open` ≤ 7) — 2026-05-30 현재 **8 open** (soft 한도 초과, 하드 10). 새 PR 발행은 머지로 큐 빠진 뒤 권고.
 3. 기존 abandoned CAND 와 axis 중복 회피 (CAL-004/CAL-008 패턴)
 4. 신규 도메인 진입 시 `domain-notes/<name>.md` 신규 작성 의무
 
@@ -171,9 +171,10 @@ wc -l metrics/shadow-runs.jsonl metrics/human-verdicts.jsonl metrics/self-consis
 # 목표: 50 / 10 / 10
 ```
 
-현재 (2026-05-14, 9 CAND pre-sol proof 일괄 완료 후): **46 / 23 / 10** —
-self-consistency 졸업, human-verdicts 졸업, shadow-runs 4 누적 더 필요 (50 목표).
-2026-05-14 세션의 9 proof transition 으로 shadow-runs 28→46 점프. SOL/post-sol 단계 진입 시 50 도달 확실.
+현재 (2026-05-30): **58 / 23 / 10** — 세 임계 전부 충족(목표 50/10/10 달성).
+shadow-runs 가 50 목표를 초과(58), human-verdicts·self-consistency 도 졸업 유지.
+SOL/post-sol 배치(0014~0019) proof transition 으로 shadow-runs 46→58 도달. 졸업 조건 충족 —
+shadow→자동화 전환은 사용자 결정 대기(파이프라인은 현행 shadow 운영 유지 중).
 
 ## 6. 세션 종료
 
