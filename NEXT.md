@@ -115,9 +115,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 # 활성 큐 + 다음 우선순위:
 #
 #   ## 0. 활성 작업 — 2026-06-01
-#   #88885 (SOL-0020): 발행 완료. clawsweeper Codex 리뷰 verdict 대기 — 도착 시 §2 결정트리(봇 P1+ → CAL-009
-#     검증→반박/반영). CAND-056 SQLite-재검증 사이클은 PR화로 종료. (R-14 fix-hardening 신설/dogfood 완료:
-#     diff_guard Layer A + cross-review fix-hardening Layer B — §7.6.)
+#   #88885 (SOL-0020): **ready-for-maintainer-review** (clawsweeper R2: platinum hermit/diamond proof,
+#     CI green, P1#1 코드결함 해소). 잔여 [P1]2=메인테이너 명시 수용 항목(fail-safe vs at-least-once +
+#     proof harness)으로 PR body에 문서화 완료. **우리 코드 액션 없음** — 메인테이너(steipete) 판단 대기.
+#     clawsweeper/메인테이너 신규 코멘트 도착 시에만 재트리아지. (R-14 dogfood 완료: clawsweeper P1#1을
+#     (B) 근본fix로 해소 — Layer A/B + 근본개선 사이클이 봇 verdict를 unranked→platinum으로 끌어올림.)
 #   #88013 (open, mergeable UNKNOWN): base가 옛 upstream(5c5711f061)이라 GitHub 미재계산. 최신 upstream 위 rebase →
 #     mergeable 재확인 → push. 직전 red는 무관 gateway 샤드 flaky timeout(코드 무관). 또는 메인테이너 머지 대기.
 #   그 다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.
