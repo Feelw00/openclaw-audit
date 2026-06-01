@@ -2872,13 +2872,18 @@ items:
     created_at: '2026-06-01T00:46:16+00:00'
     updated_at: '2026-06-01T01:11:23+00:00'
   SOL-0020:
-    kind: solution
-    state: drafted
+    kind: sol
+    state: proof-collected-post
     transitions:
     - from: null
       to: drafted
       actor: solution-drafter
       reason: CAND-056 SQLite-arch fix. chosen_fix=wire-recovery-state. sentinel 미변경.
       at: '2026-06-01T01:11:23+00:00'
+    - from: drafted
+      to: proof-collected-post
+      actor: real-behavior-proof
+      reason: scenario=proof-CAND-056 mode=post-sol
+      at: '2026-06-01T02:51:19+00:00'
     created_at: '2026-06-01T01:11:23+00:00'
-    updated_at: '2026-06-01T01:11:23+00:00'
+    updated_at: '2026-06-01T02:51:19+00:00'

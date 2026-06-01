@@ -108,9 +108,9 @@ try {
     process.exit(0);
   }
 
+  // with-fix 는 단일 마커(send_attempt_started)만 노출한다(O2). base 에는 이 export 가 없다.
   const hasMarkerApi =
-    typeof storage.markSessionDeliveryPlatformSendAttemptStarted === "function" &&
-    typeof storage.markSessionDeliveryPlatformOutcomeUnknown === "function";
+    typeof storage.markSessionDeliveryPlatformSendAttemptStarted === "function";
 
   let deliverCount = 0;
   const deliveredIds = [];
@@ -144,10 +144,9 @@ try {
     await storage.markSessionDeliveryPlatformSendAttemptStarted(entry1.id, stateDir);
   }
   await deliver(entry1);
-  if (hasMarkerApi) {
-    await storage.markSessionDeliveryPlatformOutcomeUnknown(entry1.id, stateDir);
-  }
-  // (4) <-- 여기서 crash. ackSessionDelivery 미호출. entry 는 pending 으로 잔존.
+  // <-- 여기서 crash. ackSessionDelivery 미호출. entry 는 pending 으로 잔존.
+  // (with-fix 는 단일 마커 send_attempt_started 만 쓴다 — deliver 전 1회 영속이 곧 crash 증거.
+  //  post-deliver upgrade 는 redundant 라 제거됨[O2]. base 는 마커 API 자체가 없다.)
 
   const pendingAfterCrash = (await loadPendingSessionDeliveries(stateDir)).length;
   const stillPendingEntry = await loadPendingSessionDelivery(id, stateDir);
