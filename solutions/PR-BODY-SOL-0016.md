@@ -93,7 +93,7 @@ See the Real behavior proof section below for the live before/after measurement 
 
 ## 10. Human Verification
 
-- Read the full diff and confirmed the two-phase ordering: Phase A stages every satellite write to a temp via `writeTextFileAtomic` (the same private-store atomic write the live commit uses); on any Phase A throw, temps are discarded and the apply rethrows with no live file touched; Phase B renames temps then commits config last via `replaceConfigFile`.
+- Read the full diff and confirmed the two-phase ordering: Phase A stages every satellite write to a temp via `writeTextFileAtomic` (the same private-store atomic write the live commit uses); on any Phase A throw, temps are discarded and the apply rethrows with no live file touched; Phase B commits config first via `replaceConfigFile`, then renames the staged temps into place.
 - Confirmed the healthy path is unaffected: the no-fault control trial migrates all stores + config exactly as before (verified in the real-behavior proof control trial).
 - Confirmed no public contract change: `runSecretsApply` signature unchanged, no new exports. `stageWrite` reuses `writeTextFileAtomic` from `shared.ts` (the same primitive `restoreFileSnapshot` already uses), so staging shares the established private-store write path instead of introducing a new one.
 - Confirmed no plaintext credential is written to logs or fixtures (stub tokens carry `// pragma: allowlist secret`).
