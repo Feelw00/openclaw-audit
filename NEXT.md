@@ -343,12 +343,24 @@ CHECK2 `failure-path-untested` (WARN) — 새 side-effect `await` 의 throw/reje
 CHECK3 `vi-mock-export-drift` (WARN) — 새 export 가 mock factory 에 누락.
 loop-until-dry: FAIL 0 까지 수정→재스캔(build/check/타깃테스트로 rewrite 검증, proof 아님).
 
-### Layer B (미구현, staged) — 적대 에이전트 1-2개
+### Layer B (구현됨) — 적대 에이전트 3개, `skills/cross-review/` `fix-hardening` 모드
 
-`skills/cross-review/` 신규 `fix-hardening` 모드. judgment 클래스 주입: partial-failure 재귀("이 diff 의
-새 write/persist 가 실패하면 불변식 유지?"), ordering/divergence(resurrect/double-write). 산출=구체 결함
-+ 회귀테스트. 자기개선: 봇이 PR 후 새 클래스 잡으면 렌즈 카탈로그 + (기계화 가능 시) Layer A 검사에 추가.
-시드 = 위 3클래스 + CAL-001~013.
+crab-review **원리만 차용**(전역 crab-review 스킬은 미변경): 다관점 적대 리뷰 → 구조화 findings.
+단 PR 미발행 로컬 diff 대상 pre-PR, 코멘트 게시 X, findings 를 **우리가 소비**(수정). aggregate.py
+(verdict) 비경유 — findings-기반.
+
+```bash
+# fix diff 를 봇 렌즈로 선제 적대 리뷰 (사용자 허락 게이트). 출력 JSON 의 prompts 3개를 Agent tool 병렬 dispatch.
+/tmp/openclaw-audit-venv/bin/python skills/cross-review/harness/run.py \
+  --target SOL-NNNN --mode fix-hardening --worktree /Users/lucas/Project/openclaw-worktrees/<wt>
+# 각 agent: findings JSON 저장 + "SAVED:" → 메인 세션이 3 파일 Read → dedup → P1 게이트
+```
+
+역할(ROLES.md): `fix-fuzzer-failpath`(partial-failure 재귀, SOL-0018 클래스), `fix-fuzzer-ordering`
+(write-divergence/resurrection, SOL-0015 클래스), `fix-conventions-warden`(openclaw 규약 위반).
+게이트(modes/fix-hardening.yaml): 살아남은 P1≥1 → rewrite→diff_guard→재실행 loop-until-dry(proof 안 돎),
+P1==0 → post-sol proof 진행. 자기개선: 봇이 여러 PR 에 걸쳐 놓친 클래스 지속 관측 시 새 role 또는 diff_guard
+검사 추가(one-off 무시). 시드 = 위 3클래스 + CAL-001~013.
 
 ## 8. 긴급 참조
 

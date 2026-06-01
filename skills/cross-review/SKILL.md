@@ -12,14 +12,15 @@ CAL-003 (synthetic-only false positive) + CAL-006 (maintainer tone misstep) 사�
 ```
 /Users/lucas/Project/openclaw-audit/skills/cross-review/
 ├── SKILL.md           (이 파일)
-├── ROLES.md           역할 카탈로그 (8 역할)
+├── ROLES.md           역할 카탈로그 (11 역할)
 ├── modes/
 │   ├── post-harness.yaml
 │   ├── pre-pr.yaml
-│   └── maintainer-response.yaml
+│   ├── maintainer-response.yaml
+│   └── fix-hardening.yaml      # R-14 Layer B (crab-review 원리 차용, findings-기반, pre-PR)
 └── harness/
     ├── run.py         target + mode → 역할별 프롬프트 렌더
-    └── aggregate.py   agent JSON 수집 → consensus + 매트릭스
+    └── aggregate.py   agent JSON 수집 → consensus + 매트릭스 (verdict 모드 전용; fix-hardening 은 findings-기반이라 비경유)
 ```
 
 ## 호출 규약 (5단계)
@@ -32,6 +33,7 @@ CAL-003 (synthetic-only false positive) + CAL-006 (maintainer tone misstep) 사�
 - post-harness: "CAND-NNN 에 대해 cross-review 5 agent 병렬 실행할까? (y/n)"
 - pre-pr: "SOL-NNNN PR 발행 직전 cross-review 3 agent 병렬 실행할까? (y/n)"
 - maintainer-response: "메인테이너 리뷰 답변 전 cross-review 5 agent 병렬 실행할까? (y/n)"
+- fix-hardening (R-14 Layer B): "SOL-NNNN fix diff 를 PR 전 적대 hardening 3 agent 병렬 실행할까? (y/n)" — `--worktree` 필수, findings 는 게시 안 하고 우리가 소비, post-sol proof *앞* 단계
 
 ### Step 2. harness/run.py 로 프롬프트 렌더
 

@@ -128,6 +128,7 @@ def render_prompt(
         "invariant": extra_context.get("invariant", "(N/A)"),
         "pr_reference": extra_context.get("pr_reference", "(N/A)"),
         "relevant_paths": extra_context.get("relevant_paths", "src/"),
+        "worktree": extra_context.get("worktree") or "(--worktree 미지정)",
     }
 
     out = template
@@ -151,12 +152,13 @@ def _infer_target_type(target: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description="cross-review 프롬프트 렌더러")
     ap.add_argument("--target", required=True, help="CAND-011 / SOL-0002 / PR#68543 / path")
-    ap.add_argument("--mode", required=True, choices=["post-harness", "pre-pr", "maintainer-response"])
+    ap.add_argument("--mode", required=True, choices=["post-harness", "pre-pr", "maintainer-response", "fix-hardening"])
     ap.add_argument("--roles", help="comma-separated role names (생략 시 mode 기본값)")
     ap.add_argument("--maintainer-quote", default="")
     ap.add_argument("--invariant", default="")
     ap.add_argument("--pr-reference", default="")
     ap.add_argument("--relevant-paths", default="src/")
+    ap.add_argument("--worktree", default="", help="fix-hardening: fix diff 가 있는 openclaw worktree 경로")
     args = ap.parse_args()
 
     mode_cfg = load_mode(args.mode)
@@ -202,6 +204,7 @@ def main() -> None:
         "invariant": args.invariant,
         "pr_reference": args.pr_reference,
         "relevant_paths": args.relevant_paths,
+        "worktree": args.worktree,
     }
 
     prompts = []

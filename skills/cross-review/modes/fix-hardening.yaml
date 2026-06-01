@@ -1,0 +1,51 @@
+# fix-hardening mode (R-14 Layer B)
+# crab-review 원리 차용(다관점 적대 리뷰 → 구조화 findings → 점수/게이트). 단 PR 미발행 상태의
+# 로컬 fix diff 를 대상으로 pre-PR 에서 돌고, 결과 코멘트를 게시하지 않고 *우리가 소비*(수정)한다.
+# 목적: clawsweeper 가 라운드마다 잡던 결함을 PR 전에 선제 차단 → 봇 리뷰 라운드↓.
+# 배치: fix 구현 완료(build+check+타깃테스트 GREEN) 후, diff_guard(Layer A) clean 뒤, post-sol proof *앞*.
+#       (proof 앞에 둬야 hardening rewrite 마다 proof 재실행하는 시간 곱셈을 피한다.)
+# 근거 데이터: 최근 6 SOL 평균 ~4 봇 P1/P2, SOL-0018 3라운드 동일 클래스(sent-before-error).
+
+description: "PR 발행 전 fix diff 적대 hardening (R-14 Layer B, crab-review 원리 차용)"
+target_types: [SOL, PR, file]
+
+# findings-기반 (verdict 합의 아님). aggregate.py(verdict 파서) 비경유 — 메인 세션이 findings 소비.
+output_mode: findings
+
+required_roles:
+  - fix-fuzzer-failpath        # partial-failure / fail-after-side-effect (SOL-0018 클래스)
+  - fix-fuzzer-ordering        # ordering / write-divergence / resurrection (SOL-0015 클래스)
+  - fix-conventions-warden     # openclaw 규약 위반 (diff_guard 가 못 잡는 판단성)
+
+optional_roles: []
+
+min_agents: 3
+default_agents: 3
+
+# 게이트 (findings-기반, crab-review 점수 가드 차용)
+gate_rules:
+  must_harden:
+    condition: "살아남은 P1 finding >= 1"
+    action: "fix rewrite → diff_guard(Layer A) 재실행 → fix-hardening 재실행 (loop-until-dry). proof 안 돌림."
+  ready_for_proof:
+    condition: "P1 finding == 0 (P2 는 사람 판단으로 수용 가능)"
+    action: "post-sol proof 1회로 진행"
+
+# 필수 인자
+required_args:
+  - "--worktree <openclaw worktree 경로>   # fix diff = git -C <worktree> diff upstream/main"
+
+user_permission_gate: required
+permission_prompt: |
+  R-14 fix-hardening (Layer B, {min_agents} agent 병렬). crab-review 원리 차용.
+  fix diff 를 봇 렌즈로 선제 적대 리뷰(partial-failure / ordering / 규약). findings 는 게시 안 하고 우리가 소비.
+  proof *앞* 단계 (rewrite loop 가 proof 비용 곱셈 안 하도록). 진행할까? (y/n)
+
+notes: |
+  - 실행 경로: run.py --target SOL-NNNN --mode fix-hardening --worktree <wt> → 3 agent 병렬 dispatch
+    (한 메시지) → 각 agent 가 findings JSON 저장 + "SAVED:" → 메인 세션이 3 파일 Read 후 dedup.
+  - dedup: 같은 file + line±5 + 제목 유사 → 1건. severity 최고값 채택.
+  - loop-until-dry: 살아남은 P1 0 될 때까지 (rewrite 검증은 build/check/타깃테스트, proof 아님).
+  - Layer A(diff_guard.py) 가 mock/type-drift·failure-path 미커버를 먼저 결정적으로 거른 뒤 이 단계.
+  - 자기개선: 봇이 PR 후에도 여러 PR 에 걸쳐 놓친 클래스를 잡으면 → 새 role(렌즈) 또는 diff_guard 검사 추가.
+  - crab-review(전역 스킬)는 건드리지 않는다 — 원리만 차용한 별도 모드.
