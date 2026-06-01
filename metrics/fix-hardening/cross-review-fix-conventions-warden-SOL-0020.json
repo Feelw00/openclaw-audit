@@ -1,0 +1,6 @@
+{
+  "role": "fix-conventions-warden",
+  "verdict": "fix-hardening",
+  "target": "SOL-0020",
+  "findings": []
+}
