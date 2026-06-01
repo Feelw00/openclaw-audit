@@ -64,7 +64,8 @@ open PR worktree 는 `fix/*` 브랜치라 main 업데이트와 독립. rebase �
 | pre-sol `collected` / `blocked-external-dep` / `blocked-env` | 사람 최종 검토 → SOL 작성 착수 (blocked 사유는 SOL frontmatter `pre_sol_proof.status` 에 trace) |
 | pre-sol `unreproducible` | CAND abandon (false-positive-by-reproduction). cross-review 가 놓친 false positive 의 마지막 안전망 |
 | gatekeeper `uncertain` / `needs-human-review` | cross-review 결과로 approve/scope-축소/abandon 결정 |
-| `solutions/` 에 `status: drafted` SOL + `chosen_fix` 결정 + 사용자 허락 | **R-13 post-sol real behavior proof** — `skills/real-behavior-proof/` 스킬 (mode: post-sol). with-fix vs without-fix 비교 + 6 필드 PR body evidence 산출. §7.5 참조 |
+| `solutions/` 에 `status: drafted` SOL + `chosen_fix` 결정 + fix 구현 완료(build+check+타깃테스트 GREEN) | **R-14 fix-hardening (post-proof 비용 곱셈 회피 위해 proof *앞*)** — Layer A 결정적 스캐너 `diff_guard.py` (아래 §7.6) loop-until-dry. proof 불필요(diff+테스트만). clean 후 다음 행 |
+| R-14 Layer A clean + `chosen_fix` + 사용자 허락 | **R-13 post-sol real behavior proof** — `skills/real-behavior-proof/` 스킬 (mode: post-sol). 굳은 fix 1회 측정. with-fix vs without-fix 비교 + 6 필드 PR body evidence 산출. §7.5 참조 |
 | post-sol `collected` | pre-pr cross-review (§7.2) → PR 발행 (PR body 에 `pr_body_section` paste, `proof: supplied` 자동 부여) |
 | post-sol `blocked-external-dep` / `blocked-env` | 회귀 테스트만으로 PR 발행 + PR body 에 blocked 사유 명시 (`proof: sufficient` 미부여 수용) |
 | post-sol `unreproducible` | fix 효과 없음 → SOL abandon 또는 `chosen_fix` 재선택 |
@@ -320,6 +321,34 @@ production `~/.openclaw/` 손상 0. OAuth profile 만 read-only 복사 (LLM 호�
 guard `_check_no_inline_heading` 가 line-start `# ` 패턴 (policy 가 거기서 break) 자동 raise.
 
 **상세**: `skills/real-behavior-proof/SKILL.md` (5 단계 호출 규약 + 시나리오 작성 규약).
+
+## 7.6 Fix-hardening (R-14) — 봇 리뷰 라운드 선제 차단
+
+동기: 최근 6 SOL 이 PR 당 평균 ~4 봇 P1/P2, SOL-0018 은 3라운드 동안 같은 클래스(sent-before-error)
+반복. 봇이 라운드마다 잡는 결함을 PR *전* 에 우리가 먼저 턴다. **배치 = fix 구현 완료 후, post-sol
+proof 앞** (proof 뒤에 두면 rewrite 마다 proof 재실행 → 시간 곱셈; proof 는 굳은 fix 에 1회).
+
+### Layer A (구현됨) — 결정적 스캐너 `skills/openclaw-audit/harness/diff_guard.py`
+
+```bash
+# worktree 의 fix diff(vs upstream/main) 스캔. exit 2 = FAIL(차단), 0 = OK(WARN 허용)
+/tmp/openclaw-audit-venv/bin/python skills/openclaw-audit/harness/diff_guard.py \
+  --repo /Users/lucas/Project/openclaw-worktrees/<wt> --base-ref upstream/main [--json]
+# 로직 검증: --self-test (clean=ok, drift=FAIL+WARN)
+```
+
+검사: CHECK1 `vi-mock-import-drift` (FAIL) — production 이 새로 import 한 심볼을 그 모듈을 `vi.mock`
+하는 테스트가 (spread/importOriginal 없이) 미제공 → 로드 시 undefined (SOL-0018 클래스 + #88008).
+CHECK2 `failure-path-untested` (WARN) — 새 side-effect `await` 의 throw/reject 회귀 테스트 부재.
+CHECK3 `vi-mock-export-drift` (WARN) — 새 export 가 mock factory 에 누락.
+loop-until-dry: FAIL 0 까지 수정→재스캔(build/check/타깃테스트로 rewrite 검증, proof 아님).
+
+### Layer B (미구현, staged) — 적대 에이전트 1-2개
+
+`skills/cross-review/` 신규 `fix-hardening` 모드. judgment 클래스 주입: partial-failure 재귀("이 diff 의
+새 write/persist 가 실패하면 불변식 유지?"), ordering/divergence(resurrect/double-write). 산출=구체 결함
++ 회귀테스트. 자기개선: 봇이 PR 후 새 클래스 잡으면 렌즈 카탈로그 + (기계화 가능 시) Layer A 검사에 추가.
+시드 = 위 3클래스 + CAL-001~013.
 
 ## 8. 긴급 참조
 
