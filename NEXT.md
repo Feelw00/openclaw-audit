@@ -106,10 +106,10 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     onSendDeferred)에서 배선 → crash 후 unacked agentTurn blind-replay 거부, pre-send/busy retryable.
 #     #88016(SOL-0018, 파일기반)이 #88665 SQLite 이관으로 close된 뒤 CAND-056 재검증으로 재구현.
 #     clawsweeper R2: platinum hermit/diamond proof/CI green/P1#1 해소. 잔여=메인테이너 수용 항목(§0).
-#   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. head 31536f00a1(upstream/main 위
-#     clean rebase, build+check green). mergeable UNKNOWN(GitHub 재계산). 직전 CI red는 무관 gateway
-#     샤드 flaky timeout(911s SIGTERM, 형제 PR엔 통과), 코드 무관. rating platinum 온전. CI 재실행
-#     admin 권한 없음. secops(/src/secrets/) 게이트.
+#   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. **MERGEABLE**, head a2104c9b29
+#     (2026-06-01 최신 upstream c0195f7ed5 위 rebase). 충돌=apply.ts commit-loop(OURS 유지) +
+#     새 no-shadow 규칙 대응 `write`→`writeLocal`. check/build/apply.test 22 green. rating platinum,
+#     clawsweeper 재리뷰 대기. secops(/src/secrets/) 게이트.
 #   주: Greptile 봇 2026-05-29 폐지 - clawsweeper 만 트리거. openclaw sqlite 테스트는 Node24 필요(로컬 v23.9.0 불가).
 #
 # 활성 큐 + 다음 우선순위:
@@ -120,8 +120,9 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #     proof harness)으로 PR body에 문서화 완료. **우리 코드 액션 없음** — 메인테이너(steipete) 판단 대기.
 #     clawsweeper/메인테이너 신규 코멘트 도착 시에만 재트리아지. (R-14 dogfood 완료: clawsweeper P1#1을
 #     (B) 근본fix로 해소 — Layer A/B + 근본개선 사이클이 봇 verdict를 unranked→platinum으로 끌어올림.)
-#   #88013 (open, mergeable UNKNOWN): base가 옛 upstream(5c5711f061)이라 GitHub 미재계산. 최신 upstream 위 rebase →
-#     mergeable 재확인 → push. 직전 red는 무관 gateway 샤드 flaky timeout(코드 무관). 또는 메인테이너 머지 대기.
+#   #88013 (SOL-0016): 2026-06-01 최신 upstream(c0195f7ed5) 위 rebase 완료 → **MERGEABLE**, head a2104c9b29.
+#     충돌(apply.ts commit-loop + no-shadow 리네임) 해소, check/build/apply.test 22 green. clawsweeper 재리뷰 대기.
+#     supersede 아님(upstream secrets 변경=lint/cleanup). 우리 액션 없음 — clawsweeper/메인테이너 대기.
 #   그 다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.
 #
 #   ## 1. CAL 작성 후보

@@ -50,6 +50,14 @@ IMPORT_BLOCK_RE = re.compile(r"import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+[\"']([
 EXPORT_NAMED_RE = re.compile(r"export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z_]\w*)")
 VI_MOCK_RE = re.compile(r"vi\.mock\(\s*[\"']([^\"']+)[\"']")
 
+# Node builtins are mocked per-test-file for unrelated reasons; a new production
+# import of one (e.g. randomUUID from node:crypto) is not a vi.mock drift on our code.
+_NODE_BUILTINS = {
+    "crypto", "fs", "fs/promises", "path", "os", "util", "stream", "events", "http",
+    "https", "net", "url", "child_process", "worker_threads", "zlib", "buffer",
+    "assert", "process", "timers", "timers/promises", "node:sqlite",
+}
+
 
 def _module_basename(spec: str) -> str:
     """import specifier 의 basename (확장자 제거). './a/b.js' -> 'b'."""
@@ -95,6 +103,10 @@ def _imported_names_by_module(added_lines: list[str]) -> dict[str, set[str]]:
     blob = "\n".join(added_lines)
     out: dict[str, set[str]] = {}
     for names_raw, spec in IMPORT_BLOCK_RE.findall(blob):
+        # node: builtins (and bare builtins) are mocked per-test-file for unrelated
+        # reasons; a new production import of one is not a vi.mock drift on our code.
+        if spec.startswith("node:") or spec in _NODE_BUILTINS:
+            continue
         base = _module_basename(spec)
         for tok in names_raw.split(","):
             tok = tok.strip()
