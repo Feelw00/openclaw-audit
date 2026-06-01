@@ -5,57 +5,97 @@ finding_ids:
 - FIND-infra-delivery-queue-ordering-causality-001
 origin:
   supersedes_cand: CAND-050
-  closed_pr: 88029-na  # see note: closed PR is #88016 (SOL-0018)
+  closed_pr: 88029-na
   closed_pr_number: 88016
   closed_sol: SOL-0018
-  upstream_substrate_change: 88665  # "refactor: move delivery queues to SQLite"
-cluster_rationale: |
-  CAND-050 (SOL-0018 / 닫힌 PR #88016) 의 SQLite-아키텍처 재검증 CAND.
+  upstream_substrate_change: 88665
+cluster_rationale: 'CAND-050 (SOL-0018 / 닫힌 PR #88016) 의 SQLite-아키텍처 재검증 CAND.
+
 
   upstream #88665 ("refactor: move delivery queues to SQLite", commit 1af4c035e4)
+
   가 session-delivery 큐 저장 계층을 파일기반에서 공용 SQLite backing
+
   (src/infra/delivery-queue-sqlite.ts) 으로 재작성했다. CAND-050 / SOL-0018 의
+
   결함 진단·repro·proof 는 전부 파일기반 큐 시절에 검증된 것이라, 현재 upstream
+
   (7562afdca3) 기준으로 결함 생존 여부와 fix 형태를 재검증한다 (CAL-007).
 
+
   결함은 substrate 변경에도 그대로 살아있다(코드 레벨): 복구 경로
+
   drainQueuedEntry (src/infra/session-delivery-queue-recovery.ts:111) 와
+
   recoverPendingSessionDeliveries (:214) 는 #88665 가 건드리지 않았다. drain 은
+
   여전히 deliver(entry) 성공 직후 ackSessionDelivery(:121) 로 entry 를 제거하는
+
   at-least-once 흐름이고, deliver 성공 후 ack 전 crash 시 entry 가 pending 으로
+
   남아 다음 복구가 같은 agentTurn 을 reconciliation 없이 blind replay 한다.
 
+
   변경된 것은 fix 의 자리다. SQLite 이관이 공용 backing 에 recovery_state 컬럼을
+
   이미 추가했다 (delivery-queue-sqlite.ts:27 recoveryState? / :38 recovery_state /
+
   :66 load 매핑 / :118 persist). 그러나 session-delivery 쪽은 그 컬럼을 쓰지 않는다:
+
   QueuedSessionDelivery 타입(session-delivery-queue-storage.ts)에 recoveryState
+
   필드가 노출돼 있지 않고, 마커를 set/clear 하는 함수도 없으며, drainQueuedEntry 가
+
   recovery_state 를 읽어 blind replay 를 거부하는 분기도 없다. 따라서 fix 는
+
   파일기반 마커를 재구현하는 게 아니라 *이미 존재하는 recovery_state 컬럼을
+
   session-delivery drain 에 배선* 하는 것으로 단순화된다 (해결책 자체는 본 CAND
+
   범위 밖).
 
+
   비대칭 warrant 는 CAND-050 과 동일하되 현행 코드로 갱신: 평행 outbound 큐는
+
   복구 시 recovery_state 마커를 보고 adapter reconcile 후에만 replay 하며 확인
+
   불가 시 blind replay 를 거부한다 (src/infra/outbound/delivery-queue-recovery.ts).
+
   #88665 로 두 큐가 같은 SQLite backing + recovery_state 컬럼을 공유하게 됐는데도
+
   session 큐만 그 가드를 안 쓴다 — 동일 도메인 내 두 큐의 정책 divergence.
 
+
   single 인 이유: 도메인에 묶을 다른 신규 FIND 없음 (FIND 1 ↔ CAND 1).
+
+  '
 proposed_title: 'fix(infra): wire session-delivery drain recovery guard onto the shared
   SQLite recovery_state column (unacked agentTurn blind replay → crash 후 턴 중복 실행)'
 proposed_severity: P1
 existing_issue: null
 created_at: 2026-06-01
 pre_sol_proof:
-  status: pending
-  note: |
-    CAND-050 의 옛 proof (PROOF-CAND-050-pre-20260529-070811.md, deliverCount=2,
-    recoveryStateAfterCrash=field-absent) 는 파일기반 큐 기준이라 무효. SQLite
-    아키텍처(현재 upstream) 에서 pre-sol real-behavior-proof 로 결함 생존을 재확인하는
-    것이 본 사이클의 게이트다. Node 24 확보(StatementSync.columns) 로 로컬 실측 가능.
-    재현되면 cross-review → 새 SOL(recovery_state 배선) → post-sol proof → PR.
-    재현 안 되면 abandon (false-positive-by-reproduction / superseded).
+  status: collected
+  proof_record: proofs/PROOF-CAND-056-pre-20260601-005729.md
+  measurements:
+    scenario: proof-CAND-056
+    node_bin: /tmp/node-v24.16.0-darwin-arm64/bin
+    trials: 1
+    deliverCount: 2
+    deliveredIds:
+    - c2c7fa23-99b8-4d78-9a1b-85c86feb7bbc
+    - c2c7fa23-99b8-4d78-9a1b-85c86feb7bbc
+    markerApiPresent: false
+    pendingAfterEnqueue: 1
+    pendingAfterCrash: 1
+    recoveryStateAfterCrash: field-absent
+    pendingAfterRecover: 0
+    recovered: 1
+    failed: 0
+    skippedMaxRetries: 0
+    deferredBackoff: 0
+    storageBackend: sqlite
+  scenario: proof-CAND-056
 ---
 
 # session-delivery 큐 (SQLite 이관 후): unacked agentTurn blind replay → 턴 중복 실행 + 응답 중복 전송

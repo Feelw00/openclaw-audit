@@ -310,3 +310,4 @@
 {"item_id": "SOL-0016", "from": null, "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-048 mode=post-sol", "at": "2026-05-29T09:03:59+00:00", "extras": {}}
 {"item_id": "SOL-0016", "from": "proof-collected-post", "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-048 mode=post-sol", "at": "2026-05-29T13:06:29+00:00", "extras": {}}
 {"item_id": "CAND-056", "from": null, "to": "pending", "actor": "clusterer", "reason": "CAND-050 SQLite-재검증 (upstream #88665 substrate change, PR #88016 closed). pre-sol proof 게이트 대기.", "at": "2026-06-01T00:46:16+00:00", "extras": {}}
+{"item_id": "CAND-056", "from": "pending", "to": "proof-collected-pre", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-056 mode=pre-sol", "at": "2026-06-01T00:57:29+00:00", "extras": {}}
