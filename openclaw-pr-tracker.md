@@ -12,8 +12,9 @@
   - #68669 (SOL-0002) 2026-05-30 · #71648 (SOL-0008) 2026-05-30
   - #88029 (SOL-0014) 2026-05-31 · #88018 (SOL-0017) 2026-05-31 · #88011 (SOL-0019) 2026-05-31 · #88008 (SOL-0015) 2026-05-31
   - #88008 특기: rebase 충돌해소 시 test import(`markTaskTerminalById`/`getTaskById`)를 working tree 에만 고치고 커밋 누락 → 첫 push 후 CI `check-test-types` TS2304 + node test 실패. amend(276adadc73) + Node24 로 22/22 실측 후 재push → 머지. 교훈=[[feedback_verify_committed_not_worktree]].
+- **#88016 (SOL-0018) CLOSED 2026-06-01 → #88885 (SOL-0020)로 대체**: #88665("move delivery queues to SQLite")가 storage 계층을 파일→SQLite 재작성 → #88016 CONFLICTING. 파일기반 마커 force-fit 대신 CAND-056 재검증 사이클로 재구현. #88016 정직한 close 코멘트(substrate 변경 + 새 PR 예고) 후 close.
 - **OPEN 2**:
-  - #88016 (SOL-0018): **CONFLICTING**. upstream 584fa3215c(#88161, restart-sentinel send→outbound 큐 이관)와 sentinel.ts 충돌. 로컬에서 recovery-레이어로 narrow(3e841357b3, sentinel 변경 드롭; sent-before-error 윈도우가 outbound 큐로 이관돼 typed-error 메커니즘 dead → 트림 결정). build+check green + Node24 recovery/sentinel 36/36. **아직 push 안 함** — 트림 마무리 → 최신 upstream rebase → push 필요.
+  - #88885 (SOL-0020, CAND-056, Closes #88015): **OPEN 2026-06-01 발행**, head ce765f008c. session-delivery drain 에 기존 SQLite recovery_state 컬럼 배선(crash 후 unacked agentTurn blind-replay 거부). post-sol proof with=1/without=2(SQLite arch, Node24) → `proof: supplied` 자동 라벨. R-14 dogfood: Layer A(diff_guard) FAIL=0 + 회귀 보강, Layer B(fix-hardening 3-agent)가 coarse-marker over-refusal + markUnknown redundant 잡아 O2 단순화 + over-refusal 트레이드오프 PR body Risks 선제 명시(clawsweeper 라운드 선제 차단 의도). sentinel 미변경. clawsweeper Codex verdict 대기.
   - #88013 (SOL-0016): head 31536f00a1(clean rebase, build+check green). mergeable UNKNOWN. 직전 CI red 는 무관 gateway 샤드 flaky timeout(911s SIGTERM), 형제 PR 통과. rating platinum 온전. CI 재실행 admin 권한 없음.
 
 ### #88029 — fix(agents): atomic auth.json write to prevent credential lockout on crash  **MERGED 2026-05-31** (steipete)

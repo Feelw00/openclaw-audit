@@ -97,15 +97,15 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ mcp-memory(integrated→PR#71648) / mcp-lifecycle(done, PR#82426 indirect-merge 종결)
 #   ✓ mcp-concurrency(0 FIND) / mcp-error-boundary(zero_find). mcp v2(cap/FIFO)만 #71648 머지 후 보류.
 #
-# OPEN openclaw PR (2건, 2026-06-01 확인). SOL 배치 0014~0019 중 4건 + 과거 2건 = 6건 머지, 2건 잔류.
+# OPEN openclaw PR (2건, 2026-06-01 확인). SOL 배치 0014~0019 중 4건 + 과거 2건 = 6건 머지.
 #   머지/history 상세: openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
 #   머지 6건 (2026-05-30~31, 전부 steipete 직접 머지): #68669(SOL-0002) #71648(SOL-0008)
 #     #88029(SOL-0014) #88018(SOL-0017) #88011(SOL-0019) #88008(SOL-0015).
-#   • #88016 (SOL-0018, issue #88015): **CLOSED 2026-06-01** (우리가 close). upstream #88665
-#     (1af4c035e4 "move delivery queues to SQLite")가 storage 계층을 파일→SQLite로 재작성 →
-#     substrate 변경. fix는 supersede 안 됨(drain blind-replay 그대로)이나, 파일기반 마커를
-#     force-fit 대신 **CAND-056으로 재검증 파이프라인 재실행**(SQLite arch에서 recovery_state
-#     컬럼 배선). CAND-056 = pending(FSM), pre-sol proof 게이트 대기.
+#   • #88885 (SOL-0020, CAND-056, issue #88015): **OPEN 2026-06-01 발행**. session-delivery drain 에
+#     기존 SQLite recovery_state 컬럼 배선(blind-replay 거부). #88016(SOL-0018, 파일기반)이 #88665
+#     SQLite 이관으로 close된 뒤 CAND-056 재검증 사이클로 재구현. proof:supplied 자동 라벨(post-sol
+#     with=1/without=2). R-14 Layer A/B dogfood 거침(over-refusal 트레이드오프 PR body Risks 선제 명시).
+#     clawsweeper Codex 리뷰 대기. head ce765f008c.
 #   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. head 31536f00a1(upstream/main 위
 #     clean rebase, build+check green). mergeable UNKNOWN(GitHub 재계산). 직전 CI red는 무관 gateway
 #     샤드 flaky timeout(911s SIGTERM, 형제 PR엔 통과), 코드 무관. rating platinum 온전. CI 재실행
@@ -114,11 +114,10 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #
 # 활성 큐 + 다음 우선순위:
 #
-#   ## 0. 활성 작업 — 2026-06-01 (능동 액션 있음)
-#   CAND-056 (CAND-050 SQLite-재검증, #88016 close 후 재실행): **pre-sol real-behavior-proof 게이트** —
-#     SQLite arch(현재 upstream)에서 unacked agentTurn blind-replay 재현 확인(Node24 필수, StatementSync.columns).
-#     재현 O → gatekeeper(이미 코드근거 강함) → cross-review(P1 필수) → SOL(recovery_state 배선) → post-sol → 새 PR.
-#     재현 X → abandon(superseded/false-positive). proof 시나리오 신규 작성 필요(SQLite task_runs 아닌 session-delivery 큐 drain).
+#   ## 0. 활성 작업 — 2026-06-01
+#   #88885 (SOL-0020): 발행 완료. clawsweeper Codex 리뷰 verdict 대기 — 도착 시 §2 결정트리(봇 P1+ → CAL-009
+#     검증→반박/반영). CAND-056 SQLite-재검증 사이클은 PR화로 종료. (R-14 fix-hardening 신설/dogfood 완료:
+#     diff_guard Layer A + cross-review fix-hardening Layer B — §7.6.)
 #   #88013 (open, mergeable UNKNOWN): base가 옛 upstream(5c5711f061)이라 GitHub 미재계산. 최신 upstream 위 rebase →
 #     mergeable 재확인 → push. 직전 red는 무관 gateway 샤드 flaky timeout(코드 무관). 또는 메인테이너 머지 대기.
 #   그 다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.

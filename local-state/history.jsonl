@@ -314,3 +314,4 @@
 {"item_id": "CAND-056", "from": "proof-collected-pre", "to": "solution-drafted", "actor": "solution-drafter", "reason": "CAND-056 → SOL-0020 (wire-recovery-state-into-session-drain). pre-sol collected.", "at": "2026-06-01T01:11:23+00:00", "extras": {}}
 {"item_id": "SOL-0020", "from": null, "to": "drafted", "actor": "solution-drafter", "reason": "CAND-056 SQLite-arch fix. chosen_fix=wire-recovery-state. sentinel 미변경.", "at": "2026-06-01T01:11:23+00:00", "extras": {}}
 {"item_id": "SOL-0020", "from": "drafted", "to": "proof-collected-post", "actor": "real-behavior-proof", "reason": "scenario=proof-CAND-056 mode=post-sol", "at": "2026-06-01T02:51:19+00:00", "extras": {}}
+{"item_id": "SOL-0020", "from": "proof-collected-post", "to": "published", "actor": "pipeline", "reason": "PR #88885 발행 (Closes #88015). proof:supplied. CAND-056 SQLite-재검증 사이클 PR화.", "at": "2026-06-01T03:10:10+00:00", "extras": {}}
