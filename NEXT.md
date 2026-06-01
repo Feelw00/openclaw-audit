@@ -101,11 +101,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   머지/history 상세: openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
 #   머지 6건 (2026-05-30~31, 전부 steipete 직접 머지): #68669(SOL-0002) #71648(SOL-0008)
 #     #88029(SOL-0014) #88018(SOL-0017) #88011(SOL-0019) #88008(SOL-0015).
-#   • #88885 (SOL-0020, CAND-056, issue #88015): **OPEN 2026-06-01 발행**. session-delivery drain 에
-#     기존 SQLite recovery_state 컬럼 배선(blind-replay 거부). #88016(SOL-0018, 파일기반)이 #88665
-#     SQLite 이관으로 close된 뒤 CAND-056 재검증 사이클로 재구현. proof:supplied 자동 라벨(post-sol
-#     with=1/without=2). R-14 Layer A/B dogfood 거침(over-refusal 트레이드오프 PR body Risks 선제 명시).
-#     clawsweeper Codex 리뷰 대기. head ce765f008c.
+#   • #88885 (SOL-0020, CAND-056, issue #88015): **OPEN, ready-for-maintainer-review**, head 4a7a072873.
+#     session-delivery drain 에 기존 SQLite recovery_state 컬럼을 turn-실행 경계(seam onSendAttemptStart/
+#     onSendDeferred)에서 배선 → crash 후 unacked agentTurn blind-replay 거부, pre-send/busy retryable.
+#     #88016(SOL-0018, 파일기반)이 #88665 SQLite 이관으로 close된 뒤 CAND-056 재검증으로 재구현.
+#     clawsweeper R2: platinum hermit/diamond proof/CI green/P1#1 해소. 잔여=메인테이너 수용 항목(§0).
 #   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. head 31536f00a1(upstream/main 위
 #     clean rebase, build+check green). mergeable UNKNOWN(GitHub 재계산). 직전 CI red는 무관 gateway
 #     샤드 flaky timeout(911s SIGTERM, 형제 PR엔 통과), 코드 무관. rating platinum 온전. CI 재실행
@@ -130,10 +130,20 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   - CAL-013 후보 (#68669 종결 후 작성) — cross-review 2-agent 가 만장일치 rebut 했으나 봇 P2 가 valid.
 #     early-return 분기가 그 caller 의 후속 tail 경로 전체를 소멸시키는 함의를 끝까지 추적 못 함.
 #     사용자 "더 깊게 봐라" 편향 경고로 포착. CAL-009 §내부판단편향 강화 사례.
+#   - CAL-014 후보 (substrate-change re-validation, SOL-0018→CAND-056→SOL-0020) — open PR 의 대상
+#     substrate 를 upstream 이 재작성(#88665 delivery queue→SQLite)하면 stale 마커를 rebase 로
+#     force-fit 하지 말고 PR close + 새 CAND 로 재검증 파이프라인 재실행. + 봇 P1 대응 시 임시방편(균일
+#     fail-safe)보다 근본fix(seam send-경계 마킹)가 P1#1·P1#2·over-refusal·리뷰어 커버리지 지적을 하나로
+#     수렴시켜 verdict 를 unranked→platinum 으로 끌어올린 사례.
+#   - CAL-015 후보 (R-14 fix-hardening 신설/dogfood, §7.6) — 봇이 라운드마다 잡던 클래스(partial-failure
+#     /ordering/mock-drift)를 PR 전 결정적 스캐너(diff_guard)+적대 에이전트로 front-load. SOL-0020 에서
+#     over-refusal 을 발행 전 잡아 PR body 에 선제 문서화 → 봇 P1#2 가 "코드수정"이 아닌 "문서화된 메인테이너
+#     결정"으로 바로 분류됨. crab-review(유저 전역 스킬) 원리 차용, 전역 스킬은 미변경.
 #
 #   ## 2. 신규 축/도메인 CAND 백로그 (2026-05-29 gatekeeper + cross-review 완료)
 #   11 CAND(045~055) gatekeeper shadow 완료. verdict: metrics/gatekeeper-verdicts/SUMMARY-20260529.md.
-#   045/047/048/049/050/053 → SOL-0014~0019 로 PR 발행 완료(§0).
+#   045/047/048/049/053 → SOL-0014~0017/0019 PR 발행(대부분 머지). 050 → SOL-0018(#88016)이 #88665 SQLite
+#   이관으로 close → CAND-056 재검증 → SOL-0020(#88885) ready-for-maintainer. 결과 상세=openclaw-pr-tracker.md.
 #   미진행 5건: uncertain 046/052/054 (scope-down 후보), reject 051/055 (abandon 우세). 사용자 판단 대기.
 #
 #   ## 2b. wave-2 도메인 (미실행, STRONG 백로그)
