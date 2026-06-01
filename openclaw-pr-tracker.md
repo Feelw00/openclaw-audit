@@ -4,10 +4,22 @@
 
 ## 내 active PR (Feelw00)
 
-### #88029 — fix(agents): atomic auth.json write to prevent credential lockout on crash
+### SOL 0014-0019 배치 상태 (2026-06-01 갱신)
+
+2026-05-29 발행한 SOL 0014~0019 6 PR + 과거 미머지 2건(#68669/#71648)의 결과. upstream/main 이 584→681 커밋 전진하며 일부 PR 이 CONFLICTING 됨. 2026-05-31 일괄 rebase(메인 ff + node_modules 동기화 후 worktree 별 build+check) + force-push 대응.
+
+- **MERGED 6 (전부 steipete 직접 머지)**:
+  - #68669 (SOL-0002) 2026-05-30 · #71648 (SOL-0008) 2026-05-30
+  - #88029 (SOL-0014) 2026-05-31 · #88018 (SOL-0017) 2026-05-31 · #88011 (SOL-0019) 2026-05-31 · #88008 (SOL-0015) 2026-05-31
+  - #88008 특기: rebase 충돌해소 시 test import(`markTaskTerminalById`/`getTaskById`)를 working tree 에만 고치고 커밋 누락 → 첫 push 후 CI `check-test-types` TS2304 + node test 실패. amend(276adadc73) + Node24 로 22/22 실측 후 재push → 머지. 교훈=[[feedback_verify_committed_not_worktree]].
+- **OPEN 2**:
+  - #88016 (SOL-0018): **CONFLICTING**. upstream 584fa3215c(#88161, restart-sentinel send→outbound 큐 이관)와 sentinel.ts 충돌. 로컬에서 recovery-레이어로 narrow(3e841357b3, sentinel 변경 드롭; sent-before-error 윈도우가 outbound 큐로 이관돼 typed-error 메커니즘 dead → 트림 결정). build+check green + Node24 recovery/sentinel 36/36. **아직 push 안 함** — 트림 마무리 → 최신 upstream rebase → push 필요.
+  - #88013 (SOL-0016): head 31536f00a1(clean rebase, build+check green). mergeable UNKNOWN. 직전 CI red 는 무관 gateway 샤드 flaky timeout(911s SIGTERM), 형제 PR 통과. rating platinum 온전. CI 재실행 admin 권한 없음.
+
+### #88029 — fix(agents): atomic auth.json write to prevent credential lockout on crash  **MERGED 2026-05-31** (steipete)
 
 - **유형**: 파이프라인 SOL-0014 (CAND-045 / FIND-agent-session-store-data-integrity-001, P1). issue #88028.
-- **상태**: OPEN / MERGEABLE (2026-05-29 발행), head `edd0dbf578`, base 현재 upstream/main. 라벨 `agents`, `size: S`.
+- **상태**: **MERGED 2026-05-31T19:06 by steipete**. 머지 직전 2026-05-31 upstream/main(5c5711f061) 위 linear rebase(사용자의 옛 merge-of-main 커밋을 fix 커밋 685ff77ab9로 교체) + force-push. build+check green.
 - **fix**: `withLock`/`withLockAsync` 의 raw `writeFileSync(auth.json)`+`chmodSync` → `replaceFileAtomicSync` (temp+rename, `syncTempFile`+`syncParentDir` durable flush). 2-hunk + 회귀테스트.
 - **proof**: post-sol collected (real-process RLIMIT_FSIZE interrupted-write: base raw lockout 20/20 / head atomic 0/20). `proofs/PROOF-SOL-0014-post-20260529-113603.md`. PR body `evaluateRealBehaviorProof`=passed.
 - **트리거 서사**: interrupted write = disk-full(ENOSPC)/quota(EDQUOT)/power-loss. SIGKILL 은 macOS 단일 write() syscall 이라 비-트리거(PR body What-was-not-tested 에 명시).
@@ -15,19 +27,19 @@
 - **대응 (head edd0dbf578)**: 두 호출에 `syncTempFile: true`+`syncParentDir: true` 추가(power-loss durable) → 대상 회귀테스트 green → force-push + PR body 갱신 + `@clawsweeper review` 재트리거(comment 4575917779). **R2 verdict 대기.**
 - **게이트**: secops(`/src/agents/**/*auth*.ts`) CODEOWNERS 승인 필요. clawsweeper R2 대기 (Greptile 2026-05-29 폐지).
 
-### #68669 — fix(agents): dedupe subagent browser session cleanup wrapper with dispatch flag
+### #68669 — fix(agents): dedupe subagent browser session cleanup wrapper with dispatch flag  **MERGED 2026-05-30** (steipete)
 
 - **유형**: 파이프라인 CAND-011, post-harness + pre-pr + post-commit cross-review (총 11 agent) 모두 real
-- **상태**: OPEN (2026-05-14 기준), head `7067f30ab2`. 2026-05-11 force-push 후 신규 코멘트 없음
+- **상태**: **MERGED 2026-05-30T20:04 by steipete** (mergeCommit a9a86f788b). 장기 대기 후 직접 머지.
 - **라벨**: `proof: supplied + sufficient`, `triage: refactor-only` (vincentkoc 일괄 부여, 우리 PR 도 영향)
 - **steipete 코멘트 (2026-04-25)**: "Codex deep review: this looks correct and worth landing" — Bug/behavior 인정
 - **결정**: 무대응 유지. close 트리거 시 (a) race fix 논거 제시 + reopen 또는 (b) CAL-010 credit-only.
 - **관련**: issue #68668
 
-### #71648 — fix(mcp): bound pendingClaudePermissions / pendingApprovals via TTL sweeper + close clear
+### #71648 — fix(mcp): bound pendingClaudePermissions / pendingApprovals via TTL sweeper + close clear  **MERGED 2026-05-30** (steipete)
 
 - **유형**: 파이프라인 CAND-025 → SOL-0008, pre-pr 3/3 real (round 2)
-- **상태**: OPEN (2026-05-14 기준), head `eb69de7135`. 2026-05-11 force-push 후 신규 코멘트 없음
+- **상태**: **MERGED 2026-05-30T20:36 by steipete** (mergeCommit c6b1fede5a). 2026-05-30 upstream/main 위 rebase(504 커밋 forward) 후 머지.
 - **라벨**: `proof: supplied` 만 (sufficient 미부여). 추정 원인: V4 evidence 가 `vi.useFakeTimers` 사용 → real wall-clock 측정과 차이 (다른 5 PR 은 sufficient 자동 부여)
 - **fix scope**: A (sweeper+ttl-only). cap/FIFO 의도적 후속 PR 분리
 - **CI**: tsgo + 8/8 unit + check-test-types green (eef0be2a2e 에서 BridgeInternals intersection type 좁힘)

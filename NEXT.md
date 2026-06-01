@@ -96,24 +96,28 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   ✓ mcp-memory(integrated→PR#71648) / mcp-lifecycle(done, PR#82426 indirect-merge 종결)
 #   ✓ mcp-concurrency(0 FIND) / mcp-error-boundary(zero_find). mcp v2(cap/FIFO)만 #71648 머지 후 보류.
 #
-# OPEN openclaw PR (8건, 2026-05-30 확인). 2026-05-29 SOL 배치 6건(0014~0019) 전부 PR 발행 완료.
-#   상세 outcome/history: openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
-#   • #88029 (SOL-0014, issue #88028): auth.json atomic write. clawsweeper ready-for-maintainer-review (diamond x3 + proof:sufficient). [P1]2=secops owner 확인 항목. secops(*auth*) 게이트.
-#   • #88018 (SOL-0017, issue #88017): state-migrations guard corrupt target. 컨트리뷰터 sjf APPROVED + CI 전부 green. 메인테이너 머지 대기.
-#   • #88016 (SOL-0018, issue #88015): session delivery reconcile. ready-for-maintainer-review + proof:sufficient. [P1]=fail-safe vs at-least-once 제품 결정(메인테이너 몫, 봇은 marker-write-failure까지 covered 판정).
-#   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. ready-for-maintainer-review (platinum/diamond). 잔여 Phase B rename/crash scope 분리 명시. secops(/src/secrets/) 게이트.
-#   • #88011 (SOL-0019, issue #88010): diagnostic recovery dedup. clawsweeper "needs maintainer review" 대기.
-#   • #88008 (SOL-0015, issue #88007): task-registry persist-before-memory. ready-for-maintainer-review + proof:sufficient + [P2]만. pre-pr cross-review가 잡은 delete 이중-write/snapshot 부활 결함 fix 완료(head 10524ca2ee, 회귀 4건), CI 78 green. 상세=SOL-0015 cross_refs.
-#   • #68669 (SOL-0002, CAND-011): subagent cleanup dedup. 메인테이너 머지 대기. mergeable UNKNOWN.
-#   • #71648 (SOL-0008): mcp pending leak. 2026-05-30 upstream/main(d13c8b03c9) 위로 rebase 완료(504 커밋 forward, 충돌 0, head 2d6158ba16). 로컬 게이트 green(build+check+target mcp 18/18). clawsweeper 재리뷰 트리거(ack 수신). proof:sufficient 라벨. CI 재실행 중 - 단 auto-response/label 적색은 openclaw 자체 봇 GitHub API rate-limit(installation 106147218)이라 코드 무관. 과거 메인테이너 RomneyDa 관여 이력(Dependency Guard).
-#   주: Greptile 봇 2026-05-29 폐지 - clawsweeper 만 트리거.
+# OPEN openclaw PR (2건, 2026-06-01 확인). SOL 배치 0014~0019 중 4건 + 과거 2건 = 6건 머지, 2건 잔류.
+#   머지/history 상세: openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
+#   머지 6건 (2026-05-30~31, 전부 steipete 직접 머지): #68669(SOL-0002) #71648(SOL-0008)
+#     #88029(SOL-0014) #88018(SOL-0017) #88011(SOL-0019) #88008(SOL-0015).
+#   • #88016 (SOL-0018, issue #88015): session delivery reconcile. **CONFLICTING** —
+#     upstream 584fa3215c(#88161, restart-sentinel send를 outbound 큐로 이관)와 sentinel.ts 구조 충돌.
+#     로컬에서 recovery-레이어로 narrow한 단일커밋(3e841357b3, sentinel 변경 드롭, build+check green +
+#     Node24 recovery/sentinel 36/36) 준비됨 — **아직 push 안 함**. 잔여: typed-error
+#     (SessionDeliverySendUncertainError) dead-export 트림 마무리(사용자 트림 결정) → 최신 upstream/main
+#     위 rebase → push + clawsweeper 트리거.
+#   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. head 31536f00a1(upstream/main 위
+#     clean rebase, build+check green). mergeable UNKNOWN(GitHub 재계산). 직전 CI red는 무관 gateway
+#     샤드 flaky timeout(911s SIGTERM, 형제 PR엔 통과), 코드 무관. rating platinum 온전. CI 재실행
+#     admin 권한 없음. secops(/src/secrets/) 게이트.
+#   주: Greptile 봇 2026-05-29 폐지 - clawsweeper 만 트리거. openclaw sqlite 테스트는 Node24 필요(로컬 v23.9.0 불가).
 #
 # 활성 큐 + 다음 우선순위:
 #
-#   ## 0. PR 모니터링 — 2026-05-30 부팅: 봇 verdict 전부 도착, 능동 트리아지 0
-#   open PR 8건 전부 메인테이너/머지 대기 (우리 측 추가 액션 없음). 위 인벤토리 = 현재 상태.
-#   다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.
-#   재점검 트리거: #71648 clawsweeper 재verdict + CI 코드체크 결과(rebase 완료, 봇 rate-limit 적색은 무관), 또는 메인테이너/clawsweeper 신규 코멘트 도착.
+#   ## 0. open PR 2건 마무리 — 2026-06-01 부팅 (능동 액션 있음)
+#   #88016: typed-error dead-export 트림 마무리 → 최신 upstream/main(7562afdca3) 위 rebase → push + `@clawsweeper review`.
+#   #88013: mergeable 재확인. UNKNOWN→CONFLICTING이면 최신 upstream 위 rebase 후 push; flaky red만이면 메인테이너 재실행 대기(우리 액션 없음).
+#   그 다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.
 #
 #   ## 1. CAL 작성 후보
 #   - CAL-011 placeholder (alternative-axis acceptance, PR #71040)
