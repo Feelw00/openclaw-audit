@@ -100,12 +100,11 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #   머지/history 상세: openclaw-pr-tracker.md + solutions/SOL-*.md + git log.
 #   머지 6건 (2026-05-30~31, 전부 steipete 직접 머지): #68669(SOL-0002) #71648(SOL-0008)
 #     #88029(SOL-0014) #88018(SOL-0017) #88011(SOL-0019) #88008(SOL-0015).
-#   • #88016 (SOL-0018, issue #88015): session delivery reconcile. **CONFLICTING** —
-#     upstream 584fa3215c(#88161, restart-sentinel send를 outbound 큐로 이관)와 sentinel.ts 구조 충돌.
-#     로컬에서 recovery-레이어로 narrow한 단일커밋(3e841357b3, sentinel 변경 드롭, build+check green +
-#     Node24 recovery/sentinel 36/36) 준비됨 — **아직 push 안 함**. 잔여: typed-error
-#     (SessionDeliverySendUncertainError) dead-export 트림 마무리(사용자 트림 결정) → 최신 upstream/main
-#     위 rebase → push + clawsweeper 트리거.
+#   • #88016 (SOL-0018, issue #88015): **CLOSED 2026-06-01** (우리가 close). upstream #88665
+#     (1af4c035e4 "move delivery queues to SQLite")가 storage 계층을 파일→SQLite로 재작성 →
+#     substrate 변경. fix는 supersede 안 됨(drain blind-replay 그대로)이나, 파일기반 마커를
+#     force-fit 대신 **CAND-056으로 재검증 파이프라인 재실행**(SQLite arch에서 recovery_state
+#     컬럼 배선). CAND-056 = pending(FSM), pre-sol proof 게이트 대기.
 #   • #88013 (SOL-0016, issue #88012): secrets stage-then-commit. head 31536f00a1(upstream/main 위
 #     clean rebase, build+check green). mergeable UNKNOWN(GitHub 재계산). 직전 CI red는 무관 gateway
 #     샤드 flaky timeout(911s SIGTERM, 형제 PR엔 통과), 코드 무관. rating platinum 온전. CI 재실행
@@ -114,9 +113,13 @@ grep -A3 "phase: 1" grid.yaml | grep -E "^  - id:|state:"
 #
 # 활성 큐 + 다음 우선순위:
 #
-#   ## 0. open PR 2건 마무리 — 2026-06-01 부팅 (능동 액션 있음)
-#   #88016: typed-error dead-export 트림 마무리 → 최신 upstream/main(7562afdca3) 위 rebase → push + `@clawsweeper review`.
-#   #88013: mergeable 재확인. UNKNOWN→CONFLICTING이면 최신 upstream 위 rebase 후 push; flaky red만이면 메인테이너 재실행 대기(우리 액션 없음).
+#   ## 0. 활성 작업 — 2026-06-01 (능동 액션 있음)
+#   CAND-056 (CAND-050 SQLite-재검증, #88016 close 후 재실행): **pre-sol real-behavior-proof 게이트** —
+#     SQLite arch(현재 upstream)에서 unacked agentTurn blind-replay 재현 확인(Node24 필수, StatementSync.columns).
+#     재현 O → gatekeeper(이미 코드근거 강함) → cross-review(P1 필수) → SOL(recovery_state 배선) → post-sol → 새 PR.
+#     재현 X → abandon(superseded/false-positive). proof 시나리오 신규 작성 필요(SQLite task_runs 아닌 session-delivery 큐 drain).
+#   #88013 (open, mergeable UNKNOWN): base가 옛 upstream(5c5711f061)이라 GitHub 미재계산. 최신 upstream 위 rebase →
+#     mergeable 재확인 → push. 직전 red는 무관 gateway 샤드 flaky timeout(코드 무관). 또는 메인테이너 머지 대기.
 #   그 다음 액션은 아래 §1(CAL 작성) / §2(신규 축·도메인 CAND 백로그) / §3(새 셀) 중 선택.
 #
 #   ## 1. CAL 작성 후보

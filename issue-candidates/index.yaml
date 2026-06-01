@@ -580,6 +580,18 @@ candidates:
     prune(sweeper 의존) 하나뿐(FIND-002 P2). 공통 원인: set/add(hot-path 무조건)에 대응하는
     unconditional eviction 경로 부재(제거가 conditional-edge 또는 dead)로 보유 컨테이너
     선형/무제한 성장, retained 가 exec 출력 버퍼. FIND 본문 상호 cross_ref. severity 둘 다 P2.'
+- id: CAND-056
+  type: single
+  finding_count: 1
+  state: pending_gatekeeper
+  note: 'infra-delivery-queue ordering-causality (CAND-050 SQLite-재검증). upstream #88665
+    (1af4c035e4 "move delivery queues to SQLite") 가 session-delivery 저장 계층을 공용 SQLite
+    backing 으로 재작성 → PR #88016(SOL-0018) CONFLICTING. 결함은 생존: drainQueuedEntry
+    (session-delivery-queue-recovery.ts:111)/recover(:214) 미변경, deliver→ack 사이 crash 시
+    unacked agentTurn blind replay 그대로. 변경된 것은 fix 자리 — #88665 가 공용 backing 에
+    recovery_state 컬럼(delivery-queue-sqlite.ts:27/38)을 이미 추가했으나 session 큐 drain 은
+    미사용. fix = recovery_state 를 session drain 에 배선(파일 마커 재구현 아님). 게이트:
+    SQLite arch pre-sol proof 로 결함 생존 재확인(Node24 필수). severity P1.'
 published:
 - cand_id: CAND-004
   issue: 68487
